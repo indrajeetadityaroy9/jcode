@@ -5,7 +5,7 @@ control plane described here is not deployed yet.
 
 ## Product decision
 
-`/remote` is the single activation entry point for Jcode Cloud. It opens the Jcode account activation page, where a user signs in, confirms the subscription entitlement, chooses a region, and creates or wakes their host. `/remote status`, `/remote on`, `/remote pair`, and `/remote revoke` remain the explicit self-hosted gateway controls.
+`/remote` is the single activation entry point for Jcode Cloud. It opens the Jcode account activation page, where a user signs in, confirms the subscription entitlement, chooses a region, and creates or wakes their host.
 
 Cloud access is bundled into paid Jcode subscriptions rather than sold as a second product. The subscription pays for the control plane and a bounded amount of host runtime/storage. Model-token budgets remain governed by the existing subscription tier.
 
@@ -17,10 +17,10 @@ Cloud access is bundled into paid Jcode subscriptions rather than sold as a seco
 3. Sign in with the existing Jcode device/account identity. If needed, subscribe or upgrade.
 4. Pick the nearest supported region. Defaults are automatic and reversible.
 5. Jcode provisions an isolated host, imports only credentials or repository access the user explicitly approves, and displays progress.
-6. The page returns a one-time deep link. Desktop and mobile store a revocable device credential.
+6. The page returns a one-time deep link. Desktop clients store a revocable device credential.
 7. Later connections wake the host automatically. It stops after 30 idle minutes and preserves the encrypted workspace.
 
-The normal path must not expose EC2, SSH, ports, pairing codes, AWS accounts, or instance types. Advanced users retain the local self-hosting commands.
+The normal path must not expose EC2, SSH, ports, AWS accounts, or instance types.
 
 ## AWS architecture
 
@@ -96,7 +96,7 @@ Host lifecycle states are `absent`, `provisioning`, `stopped`, `starting`, `read
 
 ## Rollout
 
-1. **Internal alpha:** keep the existing guarded `jcode-phone` EC2 deployment as the reference host. Validate wake, SSM, gateway, Bedrock, idle stop, and breaker paths.
+1. **Internal alpha:** keep the existing guarded `jcode-phone` EC2 deployment as the reference host. Validate wake, SSM, Bedrock, idle stop, and breaker paths.
 2. **Single-account beta:** deploy AWS control-plane stacks with IaC, provision per-user hosts in `us-east-1`, and manually grant a small allowlist.
 3. **Subscription beta:** connect existing account entitlements and Stripe events, enforce tier limits, and add self-service activation.
 4. **General availability:** multi-region hosts, automated recovery, support tooling, cost attribution, deletion/export flows, and published SLOs.

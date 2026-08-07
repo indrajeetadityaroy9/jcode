@@ -5,7 +5,7 @@ pub mod onboarding_trace;
 mod state_support;
 use chrono::{DateTime, NaiveDate, Utc};
 use jcode_usage_types::{
-    AuthEvent, DiscoveryEvent, ErrorCounts, FeedbackEvent, InstallEvent, OnboardingStepEvent,
+    AuthEvent, ErrorCounts, FeedbackEvent, InstallEvent, OnboardingStepEvent,
     SessionLifecycleEvent, SessionStartEvent, TelemetryProjectProfile as ProjectProfile,
     TelemetryToolCategory as ToolCategory, TelemetryWorkflowCounts, TodoSessionEvent, TurnEndEvent,
     UpgradeEvent, classify_telemetry_tool_category as classify_tool_category,
@@ -29,31 +29,12 @@ const BACKGROUND_QUEUE_CAPACITY: usize = 2048;
 const BLOCKING_INSTALL_TIMEOUT: Duration = Duration::from_millis(1200);
 const BLOCKING_LIFECYCLE_TIMEOUT: Duration = Duration::from_millis(800);
 const TELEMETRY_SCHEMA_VERSION: u32 = 6;
-const DEFAULT_DISCOVERY_ENDPOINT: &str = "https://api.jcode.sh/v1/discovery";
 static TELEMETRY_PERMANENTLY_REJECTED: AtomicBool = AtomicBool::new(false);
 static TELEMETRY_QUEUE_OVERFLOW_WARNED: AtomicBool = AtomicBool::new(false);
 static TELEMETRY_BACKGROUND_SENDER: OnceLock<SyncSender<Value>> = OnceLock::new();
 static TELEMETRY_HTTP_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
 #[cfg(test)]
 static TEST_EMITTED_PAYLOADS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
-
-#[derive(Debug, Clone)]
-pub struct DiscoveryTelemetry<'a> {
-    pub request_id: &'a str,
-    pub phase: &'a str,
-    pub category: Option<&'a str>,
-    pub selected_tool: Option<&'a str>,
-    pub outcome: &'a str,
-    pub failure_reason: Option<&'a str>,
-    pub http_status: Option<u16>,
-    pub latency_ms: u64,
-    pub response_bytes: Option<u64>,
-    pub result_count: Option<u32>,
-    pub query_present: bool,
-    pub reason_present: bool,
-    pub benchmark_run: bool,
-    pub endpoint: &'a str,
-}
 
 /// A distribution-safe numeric summary. Callers provide only scores, never the
 /// todo, goal, plan, or feedback-loop text those scores describe.
@@ -661,60 +642,6 @@ pub fn record_feedback(text: &str) {
     };
     if let Ok(payload) = serde_json::to_value(&event) {
         let _ = send_payload(payload, DeliveryMode::Background);
-    }
-}
-
-/// Emit one completed discovery attempt. This intentionally excludes query and
-/// reason text, endpoint URLs, and all transcript content.
-pub fn record_discovery_event(data: DiscoveryTelemetry<'_>) {
-    if !is_enabled() {
-        return;
-    }
-    let Some(id) = get_or_create_id() else {
-        return;
-    };
-    let session_id = SESSION_STATE
-        .lock()
-        .ok()
-        .and_then(|guard| guard.as_ref().map(|state| state.session_id.clone()));
-    let (schema_version, build_channel, git_checkout, ci, from_cargo) = telemetry_envelope();
-    let event = DiscoveryEvent {
-        event_id: new_event_id(),
-        id,
-        session_id,
-        event: "discovery",
-        version: version(),
-        os: std::env::consts::OS,
-        arch: std::env::consts::ARCH,
-        request_id: sanitize_telemetry_label(data.request_id),
-        phase: sanitize_telemetry_label(data.phase),
-        category: data.category.map(sanitize_telemetry_label),
-        selected_tool: data.selected_tool.map(sanitize_telemetry_label),
-        outcome: sanitize_telemetry_label(data.outcome),
-        failure_reason: data.failure_reason.map(sanitize_telemetry_label),
-        http_status: data.http_status,
-        latency_ms: data.latency_ms,
-        response_bytes: data.response_bytes,
-        result_count: data.result_count,
-        query_present: data.query_present,
-        reason_present: data.reason_present,
-        benchmark_run: data.benchmark_run,
-        custom_endpoint: data.endpoint.trim_end_matches('/') != DEFAULT_DISCOVERY_ENDPOINT,
-        schema_version,
-        build_channel,
-        is_git_checkout: git_checkout,
-        is_ci: ci,
-        ran_from_cargo: from_cargo,
-    };
-    logging::debug(&format!(
-        "emitting telemetry discovery phase={} outcome={} request_id={}",
-        event.phase, event.outcome, event.request_id
-    ));
-    match serde_json::to_value(&event) {
-        Ok(payload) => {
-            send_payload(payload, DeliveryMode::Background);
-        }
-        Err(err) => logging::error(&format!("failed to serialize discovery telemetry: {err}")),
     }
 }
 

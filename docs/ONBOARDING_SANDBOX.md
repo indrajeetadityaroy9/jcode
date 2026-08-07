@@ -78,7 +78,6 @@ scripts/onboarding_sandbox.sh fixture-run normal-openai -- auth-test --provider 
 
 # Run arbitrary jcode commands in the sandbox
 scripts/onboarding_sandbox.sh jcode auth status
-scripts/onboarding_sandbox.sh jcode pair
 ```
 
 ## Reusable local auth fixtures
@@ -131,29 +130,6 @@ Suggested fixture names:
 - `api-key-openrouter`
 - `external-opencode-approved`
 
-## Mobile onboarding simulator
-
-The repo also has a resettable headless mobile simulator with predefined onboarding scenarios.
-
-```bash
-# Start the simulator in the background
-scripts/onboarding_sandbox.sh mobile-start onboarding
-
-# Inspect it
-scripts/onboarding_sandbox.sh mobile-status
-scripts/onboarding_sandbox.sh mobile-state
-scripts/onboarding_sandbox.sh mobile-log
-
-# Reset it back to the scenario start
-scripts/onboarding_sandbox.sh mobile-reset
-```
-
-Supported scenarios today:
-
-- `onboarding`
-- `pairing_ready`
-- `connected_chat`
-
 ## Why this is safer
 
 A fresh sandbox means:
@@ -176,8 +152,6 @@ For tight onboarding iteration, use this loop:
 3. walk the onboarding flow
 4. adjust code
 5. repeat
-
-If you are iterating specifically on mobile onboarding UX, keep the simulator running and use `mobile-reset` between passes.
 
 ## Caveat
 

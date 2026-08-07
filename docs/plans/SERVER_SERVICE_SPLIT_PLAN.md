@@ -53,11 +53,9 @@ flowchart TD
   Server[server.rs::Server] --> Runtime[server/runtime.rs::ServerRuntime]
   Runtime --> MainAccept[main socket accept loop]
   Runtime --> DebugAccept[debug socket accept loop]
-  Runtime --> GatewayAccept[gateway accept loop]
 
   MainAccept --> ClientLifecycle[client_lifecycle.rs::handle_client]
   DebugAccept --> DebugRouter[debug.rs::handle_debug_client]
-  GatewayAccept --> ClientLifecycle
 
   Server --> Maintenance[reload, bus monitor, idle timeout, registry, memory, ambient]
   ClientLifecycle --> SessionModules[session/actions/provider/session-state handlers]
@@ -124,7 +122,6 @@ Interpretation:
 
 - main client handling
 - debug client handling
-- gateway client handling
 
 This makes transport code depend on internal service storage details.
 
@@ -220,7 +217,7 @@ It can expose lifecycle events or return session metadata that another layer use
 
 **Owns:**
 
-- socket, debug socket, gateway transport accept loops
+- socket and debug socket accept loops
 - client connection registry
 - client count / attachment count
 - connection-scoped state and request routing

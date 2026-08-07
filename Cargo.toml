@@ -16,7 +16,6 @@ members = [
     "crates/jcode-ambient-types",
     "crates/jcode-auth-types",
     "crates/jcode-embedding",
-    "crates/jcode-gateway-types",
     "crates/jcode-import-core",
     "crates/jcode-pdf",
     "crates/jcode-logging",
@@ -140,7 +139,6 @@ async-trait = "0.1"
 # HTTP client
 reqwest = { version = "0.12", default-features = false, features = ["json", "charset", "http2", "system-proxy", "rustls-tls", "rustls-tls-native-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
-tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

@@ -99,7 +99,7 @@ Run this guard after adding or changing any type crate dependency:
 python3 scripts/check_dependency_boundaries.py
 ```
 
-The guard blocks direct dependencies from `jcode-*-types` crates to root/runtime-heavy internal crates such as `jcode`, `jcode-core`, provider crates, TUI crates, protocol/runtime crates, and desktop/mobile crates. Type crates may depend on external lightweight libraries and other type crates. If a new internal dependency is needed, first decide whether it should itself be a type crate.
+The guard blocks direct dependencies from `jcode-*-types` crates to root/runtime-heavy internal crates such as `jcode`, `jcode-core`, provider crates, TUI crates, protocol/runtime crates, and desktop crates. Type crates may depend on external lightweight libraries and other type crates. If a new internal dependency is needed, first decide whether it should itself be a type crate.
 
 ## Test policy
 
@@ -119,7 +119,6 @@ Focused validation matrix after the current DTO splits:
 | Area | Fast compile check | Focused root tests used during split | Notes |
 | --- | --- | --- | --- |
 | Usage DTOs | `cargo check --profile selfdev -p jcode-usage-types -p jcode --bin jcode` | Prefer exact tests under usage/copilot usage modules. Avoid bare `usage` as a required gate because it selects display/UI tests too. | DTO crate owns report and local counter contracts. Runtime fetch/cache/display stay root. |
-| Gateway DTOs | `cargo check --profile selfdev -p jcode-gateway-types -p jcode --bin jcode` | Focus gateway persistence/auth tests by exact test names when available. | Pairing/token HTTP/WebSocket behavior stays root. |
 | Ambient DTOs | `cargo check --profile selfdev -p jcode-ambient-types -p jcode --bin jcode` | Scheduler/type consumers only. | Ambient DTO crate owns usage records only. Queue/runtime/prompt behavior stays root. |
 | Ambient behavior modules | `cargo check --profile selfdev -p jcode --bin jcode` | `cargo test --profile selfdev -p jcode ambient::ambient_tests --lib`; `cargo test --profile selfdev -p jcode ambient::scheduler::tests --lib`; `cargo test --profile selfdev -p jcode ambient::runner::runner_tests --lib` | Avoid bare `ambient` as a required gate for module-only refactors because it selects cross-module TUI/config state tests. |
 | Memory activity DTOs | `cargo check --profile selfdev -p jcode-memory-types -p jcode-core -p jcode --bin jcode` | `cargo test --profile selfdev -p jcode runtime_memory_log --lib`; `cargo test --profile selfdev -p jcode tui::info_widget::tests --lib` | `memory::activity` currently matches no tests, so use consumer tests. |
@@ -136,7 +135,7 @@ Measured on 2026-04-30 with `scripts/dev_cargo.sh check --profile selfdev -p jco
 | Touch root behavior module `src/usage.rs` | ~6.25s | A root-only behavior edit can be relatively cheap when dependencies are already built. |
 | Touch `crates/jcode-core/src/usage_types.rs` | ~65.35s | Editing `jcode-core` invalidates broad downstream dependents. Avoid adding high-churn domain DTOs to `jcode-core`. |
 
-Implication: the compile-speed target is not simply "move things out of root". Moving stable, low-churn contracts out of root is good, but putting many high-churn domain DTOs into `jcode-core` can be counterproductive because `jcode-core` has high fan-out. Prefer focused leaf crates such as `jcode-usage-types`, `jcode-gateway-types`, and `jcode-ambient-types` for domain DTOs that are likely to change.
+Implication: the compile-speed target is not simply "move things out of root". Moving stable, low-churn contracts out of root is good, but putting many high-churn domain DTOs into `jcode-core` can be counterproductive because `jcode-core` has high fan-out. Prefer focused leaf crates such as `jcode-usage-types` and `jcode-ambient-types` for domain DTOs that are likely to change.
 
 ## `jcode-core` fan-out audit
 
@@ -160,7 +159,6 @@ Compile-speed priority from this audit:
 | `ambient_usage_types` | Ambient scheduler usage records/rate limit DTOs | moved to `jcode-ambient-types` | Compatibility re-export remains in root module. |
 | `catchup_types` | Catch-up persisted state and rendered brief DTOs | `jcode-catchup-types` or stay in core | Small and low churn. Split only if catch-up grows. |
 | `copilot_usage_types` | Local Copilot usage counters | moved to `jcode-usage-types` | Compatibility re-export remains in root module. |
-| `gateway_types` | Paired device and pairing code persisted records | moved to `jcode-gateway-types` | Pairing/token behavior remains root. |
 | `goal_types` | Goal state, milestones, status, updates | `jcode-goal-types` or `jcode-task-types` | Larger domain. Worth splitting if goal/tool work grows. |
 | `memory_types` | Memory activity DTOs | moved to `jcode-memory-types` | Memory has enough domain weight for its own type crate. |
 | `todo_types` | Todo item DTO | `jcode-task-types`, `jcode-todo-types`, or core | Tiny. Could join goal/catchup task-state crate. |
@@ -180,16 +178,11 @@ Completed/high-value domain type splits:
    - `copilot_usage_types`
    - pure account usage DTOs if/when separated from root formatting/runtime helpers
 
-2. `jcode-gateway-types`
-   - `gateway_types`
-   - possibly `GatewayConfig` after deciding whether config owns it
-   - mobile gateway protocol-safe DTOs if needed by mobile crates
-
-3. `jcode-ambient-types`
+2. `jcode-ambient-types`
    - `ambient_usage_types`
    - ambient state/request/result DTOs, but only after root-only `AmbientState::load/save/record_cycle` methods are separated into root free functions or a persistence layer
 
-4. `jcode-memory-types`
+3. `jcode-memory-types`
    - `memory_types`
    - any memory protocol/activity DTOs used across server/TUI/tools
 
@@ -236,17 +229,6 @@ Target split:
 - display formatting
 - account selection/guidance
 - public report DTOs in `jcode-usage-types`
-
-### `src/gateway.rs`
-
-Target split:
-
-- registry persistence
-- pairing/token auth
-- HTTP route handling
-- WebSocket auth/extraction
-- WebSocket relay
-- public gateway DTOs in `jcode-gateway-types`
 
 ## Definition of “optimal enough”
 

@@ -253,47 +253,6 @@ fn test_session_start_event_serialization() {
 }
 
 #[test]
-fn test_discovery_event_serialization_excludes_free_text() {
-    let event = DiscoveryEvent {
-        event_id: "event-discovery-1".to_string(),
-        id: "test-uuid".to_string(),
-        session_id: Some("session-1".to_string()),
-        event: "discovery",
-        version: "0.41.0".to_string(),
-        os: "linux",
-        arch: "x86_64",
-        request_id: "request-1".to_string(),
-        phase: "select".to_string(),
-        category: Some("payments".to_string()),
-        selected_tool: Some("agentcard".to_string()),
-        outcome: "success".to_string(),
-        failure_reason: None,
-        http_status: Some(200),
-        latency_ms: 123,
-        response_bytes: Some(456),
-        result_count: Some(1),
-        query_present: true,
-        reason_present: true,
-        benchmark_run: true,
-        custom_endpoint: false,
-        schema_version: TELEMETRY_SCHEMA_VERSION,
-        build_channel: "release".to_string(),
-        is_git_checkout: false,
-        is_ci: false,
-        ran_from_cargo: false,
-    };
-    let json = serde_json::to_value(&event).unwrap();
-    assert_eq!(json["event"], "discovery");
-    assert_eq!(json["request_id"], "request-1");
-    assert_eq!(json["phase"], "select");
-    assert_eq!(json["selected_tool"], "agentcard");
-    assert_eq!(json["latency_ms"], 123);
-    assert_eq!(json["benchmark_run"], true);
-    assert!(json.get("query").is_none());
-    assert!(json.get("reason").is_none());
-}
-
-#[test]
 fn test_session_end_event_serialization() {
     let event = SessionLifecycleEvent {
         event_id: "event-2".to_string(),

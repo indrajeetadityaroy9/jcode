@@ -81,13 +81,13 @@ fn restart_required_sections_say_so() {
 
     let path = crate::config::Config::path().expect("config path");
     std::fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
-    let after = "[gateway]\nport = 8888\n";
+    let after = "[acp]\nprofile = \"extended\"\n";
     std::fs::write(&path, after).expect("write");
 
     let notice =
-        config_edit_notice(&path, "[gateway]\nport = 7777\n", after).expect("report expected");
+        config_edit_notice(&path, "[acp]\nprofile = \"standard\"\n", after).expect("report expected");
     assert!(
-        notice.contains("Restart required for: gateway.port"),
+        notice.contains("Restart required for: acp.profile"),
         "{notice}"
     );
 
@@ -151,7 +151,7 @@ async fn the_write_tool_reports_config_changes_end_to_end() {
     std::fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
     std::fs::write(
         &path,
-        "[display]\ncentered = false\n\n[gateway]\nport = 7777\n",
+        "[display]\ncentered = false\n\n[acp]\nprofile = \"standard\"\n",
     )
     .expect("seed config");
     assert!(!crate::config::config().display.centered);
@@ -170,7 +170,7 @@ async fn the_write_tool_reports_config_changes_end_to_end() {
         .execute(
             serde_json::json!({
                 "file_path": path.to_string_lossy(),
-                "content": "[display]\ncentered = true\n\n[gateway]\nport = 8888\n",
+                "content": "[display]\ncentered = true\n\n[acp]\nprofile = \"extended\"\n",
             }),
             ctx,
         )
@@ -181,7 +181,7 @@ async fn the_write_tool_reports_config_changes_end_to_end() {
     assert!(body.contains("display.centered"), "{body}");
     assert!(body.contains("live now"), "{body}");
     assert!(
-        body.contains("Restart required for: gateway.port"),
+        body.contains("Restart required for: acp.profile"),
         "{body}"
     );
     assert!(

@@ -55,45 +55,6 @@ Recent telemetry additions also include: coarse onboarding steps, explicit thumb
 | `feedback_rating` | `"up"` / `"down"` | Legacy explicit product sentiment, if present |
 | `feedback_reason` | `"slow"` | Legacy optional coarse reason bucket, if present |
 
-### Sponsored Discovery Event
-
-One event is sent after each `discover_tools` attempt. A random per-request ID
-is also sent to the discovery API as the `x-jcode-discovery-request-id` header,
-allowing client reliability telemetry to be correlated with server request logs
-without exposing prompts or a persistent telemetry identifier to that service.
-
-| Field | Example | Purpose |
-|-------|---------|----------|
-| `event` | `"discovery"` | Event type |
-| `request_id` | `"9a23..."` | Random correlation ID scoped to one request |
-| `phase` | `"browse"` / `"select"` / `"suggest"` / `"unknown"` | Discovery funnel stage; `suggest` records a missing catalog capability proposal |
-| `category` | `"payments"` | Fixed discovery category, when valid |
-| `selected_tool` | `"agentcard"` | Public catalog tool name in the select phase |
-| `outcome` | `"success"` / `"failure"` | Attempt result |
-| `failure_reason` | `"timeout"` | Allowlisted coarse failure class only |
-| `http_status` | `200` | Discovery service response status, if received |
-| `latency_ms` | `125` | End-to-end client attempt latency |
-| `response_bytes` | `2048` | Response payload size, if received |
-| `result_count` | `3` | Number of browse results, or one for selection |
-| `query_present` / `reason_present` | `true` / `true` | Presence flags only |
-| `custom_endpoint` | `false` | Whether a non-default discovery endpoint was configured |
-| `benchmark_run` | `false` | Explicit marker set by the live Discovery benchmark so it can be excluded from ordinary usage analysis |
-
-The query text, selection-reason text, endpoint URL, prompts, transcript, file
-paths, and tool setup instructions are **not** included in telemetry. The
-backend rejects unknown phase, outcome, and failure labels rather than storing
-arbitrary strings.
-
-The benchmark runner sets `JCODE_DISCOVERY_BENCHMARK=1`. Discovery requests then
-carry `x-jcode-discovery-benchmark: 1`, and the corresponding telemetry event has
-`benchmark_run: true`.
-
-When telemetry is enabled, discovery API requests also carry
-`x-jcode-session-correlation-id`. It is a fresh random UUID for the current
-runtime session, is not derived from the persistent telemetry ID, and is never
-reused across sessions. The same UUID appears on the numeric-only Todo Session
-event below. When telemetry is disabled, this header is omitted.
-
 ### Todo Session Event
 
 This does not replace the todo counters added in migration 0021. Those live on
@@ -106,15 +67,8 @@ event for "did the work finish, and how confident was the agent".
 One aggregate event is sent when an active session ends. Its `id` and
 `correlation_id` fields are the same fresh per-session UUID. The persistent
 telemetry ID, account ID, internal session ID, todo IDs, and all user/model text
-are absent, so the event is joinable to discovery requests from that session but
-not to an install, account, or another session.
-
-That join is not yet possible in practice. The discovery service stores its rows
-in the `jcode-subscriptions` D1 while this event lands in `jcode-telemetry`, and
-nothing on the receiving side reads
-`x-jcode-session-correlation-id` yet, so the header is currently sent and
-discarded. The correlation design is what makes the join possible later; it does
-not by itself make the number available.
+are absent, so the event is not joinable to an install, account, or another
+session.
 
 | Field | Type | Purpose |
 |-------|------|---------|

@@ -613,19 +613,11 @@ Skills are not all loaded on startup. The conversation is embedded as a semantic
 
 ---
 
-## iOS Application / Native OpenClaw
-
-A native iOS application version of jcode is coming soon. This will allow you to work with jcode on your personal machine's environment from your phone, via Tailscale. Openclaw like features will be bundled with this iOS application. 
-
----
-
 ## Other planned features
 
 Agents dont like to commit in dirty git state with active changes. Git was clearly not built for multi-agent workflows, and git worktrees is not a good solution. Given this, I believe that is an opporunity for a new git like primitive to be born. 
 
 Build speed improvements: An incremental debug cargo build with cache enabled takes about 1 minute on my machine. The goal is 5-20 seconds. Refactors and crates seams should be able to make this happen. 
-
-<!-- Add iOS / native OpenClaw preview and fuller writeup here. -->
 
 ---
 
@@ -721,7 +713,6 @@ Notes:
 - [Swarm Architecture](docs/SWARM_ARCHITECTURE.md)
 - [Server Architecture](docs/SERVER_ARCHITECTURE.md)
 - [Safety System](docs/SAFETY_SYSTEM.md)
-- [Sponsored Discovery Sponsor Onboarding](docs/SPONSORED_DISCOVERY_SPONSOR_ONBOARDING.md)
 - [Windows Notes](docs/WINDOWS.md)
 - [Wrappers and Shell Integration](docs/WRAPPERS.md)
 - [Refactoring Notes](docs/REFACTORING.md)

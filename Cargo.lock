@@ -3356,7 +3356,6 @@ dependencies = [
  "tikv-jemallocator",
  "tokio",
  "tokio-stream",
- "tokio-tungstenite",
  "toml",
  "windows-sys 0.59.0",
 ]
@@ -3487,7 +3486,6 @@ dependencies = [
  "jcode-config-types",
  "jcode-core",
  "jcode-embedding",
- "jcode-gateway-types",
  "jcode-import-core",
  "jcode-logging",
  "jcode-memory-types",
@@ -3531,7 +3529,6 @@ dependencies = [
  "tikv-jemalloc-ctl",
  "tikv-jemalloc-sys",
  "tokio",
- "tokio-tungstenite",
  "toml",
  "url",
  "urlencoding",
@@ -3635,13 +3632,6 @@ dependencies = [
 [[package]]
 name = "jcode-fuzzy"
 version = "0.1.0"
-
-[[package]]
-name = "jcode-gateway-types"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "jcode-harness-api"

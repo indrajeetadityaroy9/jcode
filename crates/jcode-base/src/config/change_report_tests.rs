@@ -15,13 +15,13 @@ fn keybinding_edit_reports_as_live() {
 }
 
 #[test]
-fn gateway_edit_reports_as_needing_restart() {
-    let report = summarize_toml_change("[gateway]\nport = 7777\n", "[gateway]\nport = 8888\n")
+fn acp_edit_reports_as_needing_restart() {
+    let report = summarize_toml_change("[acp]\nprofile = \"standard\"\n", "[acp]\nprofile = \"extended\"\n")
         .expect("changed key should produce a report");
 
     assert!(report.contains("needs restart"), "{report}");
     assert!(
-        report.contains("Restart required for: gateway.port"),
+        report.contains("Restart required for: acp.profile"),
         "{report}"
     );
 }
@@ -63,13 +63,13 @@ fn unparseable_previous_content_still_reports_the_new_values() {
 #[test]
 fn mixed_edits_report_restart_only_for_the_restart_keys() {
     let report = summarize_toml_change(
-        "[gateway]\nport = 7777\n\n[display]\ncentered = true\n",
-        "[gateway]\nport = 8888\n\n[display]\ncentered = false\n",
+        "[acp]\nprofile = \"standard\"\n\n[display]\ncentered = true\n",
+        "[acp]\nprofile = \"extended\"\n\n[display]\ncentered = false\n",
     )
     .expect("report");
 
     assert!(
-        report.contains("Restart required for: gateway.port"),
+        report.contains("Restart required for: acp.profile"),
         "{report}"
     );
     assert!(
@@ -98,7 +98,7 @@ fn nested_tables_and_arrays_flatten_to_dotted_keys() {
 fn the_restart_required_list_is_the_reviewed_set() {
     assert_eq!(
         RESTART_REQUIRED_SECTIONS,
-        &["gateway", "acp", "launch_hotkeys"],
+        &["acp", "launch_hotkeys"],
         "changing which sections need a restart changes what users are told; \
          confirm the consuming code really snapshots the value at startup"
     );

@@ -494,9 +494,9 @@ impl MessageChannel for DiscordChannel {
 // ---------------------------------------------------------------------------
 
 /// Remote control via the Jade cloud relay (an append-only per-session event
-/// log in AWS). Unlike the WebSocket gateway, nothing listens on this machine:
-/// the laptop only makes outbound long-poll requests, so there is no inbound
-/// port to attack. A cloud client posts `prompt` events; this channel injects
+/// log in AWS). Nothing listens on this machine: the laptop only makes
+/// outbound long-poll requests, so there is no inbound port to attack.
+/// A cloud client posts `prompt` events; this channel injects
 /// them into the live session and posts the agent's reply back as a `response`
 /// event for the cloud client to read.
 pub struct JadeRelayChannel {

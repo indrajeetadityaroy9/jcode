@@ -668,24 +668,6 @@ impl Config {
             }
         }
 
-        // Gateway (iOS/web)
-        if let Ok(v) = std::env::var("JCODE_GATEWAY_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.gateway.enabled = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_GATEWAY_PORT") {
-            if let Ok(parsed) = v.trim().parse::<u16>() {
-                self.gateway.port = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_GATEWAY_BIND_ADDR") {
-            let trimmed = v.trim();
-            if !trimmed.is_empty() {
-                self.gateway.bind_addr = trimmed.to_string();
-            }
-        }
-
         // Power management
         if let Ok(v) = std::env::var("JCODE_PREVENT_SLEEP_WHILE_STREAMING") {
             if let Some(parsed) = parse_env_bool(&v) {

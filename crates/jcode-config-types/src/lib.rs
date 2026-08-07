@@ -877,34 +877,6 @@ pub struct AutoReviewConfig {
     pub model: Option<String>,
 }
 
-/// Integration discovery configuration (legacy `[sponsors]` section name).
-///
-/// Integration discovery makes third-party developer tools discoverable to
-/// the agent via a `discover_tools` tool backed by a hosted directory. Some
-/// providers may share revenue with Jcode when a referred user becomes a
-/// customer, but partnership status never influences recommendations.
-/// See <https://jcode.sh/discovery-tools>.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct SponsorsConfig {
-    /// Enable integration discovery. Enabled by default; set to false to opt
-    /// out. When false, no discovery categories are added to the prompt, the
-    /// `discover_tools` tool is not registered, and jcode never contacts the
-    /// discovery endpoint.
-    pub enabled: bool,
-    /// Base URL of the discovery endpoint.
-    pub endpoint: String,
-}
-
-impl Default for SponsorsConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            endpoint: "https://api.jcode.sh/v1/discovery".to_string(),
-        }
-    }
-}
-
 /// Automatic end-of-turn execution judging configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -1422,28 +1394,6 @@ impl Default for SafetyConfig {
             jade_relay_reply_enabled: false,
             jade_relay_launch_enabled: false,
             jade_relay_launch_working_dir: None,
-        }
-    }
-}
-
-/// WebSocket gateway configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct GatewayConfig {
-    /// Enable the WebSocket gateway (default: false)
-    pub enabled: bool,
-    /// TCP port to listen on (default: 7643)
-    pub port: u16,
-    /// Bind address (default: 0.0.0.0)
-    pub bind_addr: String,
-}
-
-impl Default for GatewayConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            port: 7643,
-            bind_addr: "0.0.0.0".to_string(),
         }
     }
 }

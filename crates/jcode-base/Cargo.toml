@@ -27,7 +27,6 @@ async-trait = "0.1"
 
 # HTTP client
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "blocking", "charset", "http2", "system-proxy", "rustls-tls", "rustls-tls-native-roots"] }
-tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -49,7 +48,6 @@ proctitle = "0.1"
 
 # Embeddings (local inference) - behind feature flag (163 crates, slow to compile)
 jcode-embedding = { path = "../jcode-embedding", optional = true }
-jcode-gateway-types = { path = "../jcode-gateway-types" }
 jcode-import-core = { path = "../jcode-import-core" }
 jcode-logging = { path = "../jcode-logging" }
 

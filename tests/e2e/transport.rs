@@ -1,11 +1,9 @@
 use crate::test_support::*;
 
 #[tokio::test]
-async fn test_websocket_transport_matches_unix_socket_for_subscribe_history_message_and_resume()
--> Result<()> {
+async fn test_unix_socket_transport_subscribe_history_message_and_resume() -> Result<()> {
     let _env = setup_test_env()?;
     let unix = run_unix_transport_scenario().await?;
-    let websocket = run_websocket_transport_scenario().await?;
 
     assert!(
         unix.subscribe_events
@@ -14,18 +12,6 @@ async fn test_websocket_transport_matches_unix_socket_for_subscribe_history_mess
     );
     assert!(
         unix.subscribe_events
-            .iter()
-            .any(|event| matches!(event, ServerEvent::Done { id } if *id == 1))
-    );
-    assert!(
-        websocket
-            .subscribe_events
-            .iter()
-            .any(|event| matches!(event, ServerEvent::Ack { id } if *id == 1))
-    );
-    assert!(
-        websocket
-            .subscribe_events
             .iter()
             .any(|event| matches!(event, ServerEvent::Done { id } if *id == 1))
     );
@@ -35,14 +21,9 @@ async fn test_websocket_transport_matches_unix_socket_for_subscribe_history_mess
         .iter()
         .find_map(summarize_history_invariant)
         .ok_or_else(|| anyhow::anyhow!("missing unix history event"))?;
-    let websocket_history = websocket
-        .history_events
-        .iter()
-        .find_map(summarize_history_invariant)
-        .ok_or_else(|| anyhow::anyhow!("missing websocket history event"))?;
-    assert_eq!(
-        unix_history, websocket_history,
-        "history payload should match across transports"
+    assert!(
+        !unix_history.is_empty(),
+        "history payload should summarize to a non-empty invariant"
     );
 
     let unix_resume = unix
@@ -50,14 +31,9 @@ async fn test_websocket_transport_matches_unix_socket_for_subscribe_history_mess
         .iter()
         .find_map(summarize_history_invariant)
         .ok_or_else(|| anyhow::anyhow!("missing unix resume history event"))?;
-    let websocket_resume = websocket
-        .resume_events
-        .iter()
-        .find_map(summarize_history_invariant)
-        .ok_or_else(|| anyhow::anyhow!("missing websocket resume history event"))?;
     assert_eq!(
-        unix_resume, websocket_resume,
-        "resume history payload should match across transports"
+        unix_history, unix_resume,
+        "resume should replay the same history payload"
     );
 
     Ok(())

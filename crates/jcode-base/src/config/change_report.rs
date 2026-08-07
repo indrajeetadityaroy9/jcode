@@ -38,9 +38,6 @@ impl Liveness {
 /// that consumes it demonstrably snapshots the value at startup. Everything
 /// else defaults to [`Liveness::Live`], which matches how `config()` works.
 const RESTART_REQUIRED_SECTIONS: &[&str] = &[
-    // `gateway.{enabled,port,bind_addr}` are snapshotted by
-    // `Server::spawn_gateway` when the listener is created.
-    "gateway",
     // ACP adapter settings are consumed when the adapter process starts.
     "acp",
     // Launch hotkeys are baked into the desktop/launcher registration once.

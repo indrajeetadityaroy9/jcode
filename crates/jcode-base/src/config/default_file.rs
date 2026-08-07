@@ -592,14 +592,6 @@ work_branch_prefix = "ambient/"
 # Show ambient cycle in a terminal window (default: true)
 # visible = true
 
-[gateway]
-# Enable WebSocket gateway for iOS/web clients
-enabled = false
-# TCP port for gateway listener
-port = 7643
-# Bind address (0.0.0.0 for LAN/Tailscale reachability)
-bind_addr = "0.0.0.0"
-
 [power]
 # Prevent automatic system sleep while any jcode session is actively working.
 # Linux also blocks lid-switch suspend. Windows still respects explicit lid-close
@@ -653,16 +645,6 @@ desktop_notifications = true
 # jade_relay_reply_enabled = false   # Deliver cloud prompts to one configured live session.
 # jade_relay_launch_enabled = false  # Allow cloud device commands to open headed local sessions.
 # jade_relay_launch_working_dir = "" # Optional default cwd for launched sessions.
-
-# [sponsors] # Legacy config section name retained for compatibility.
-# Integration discovery (enabled by default; set enabled = false to opt out).
-# When enabled, the agent gains a `discover_tools` tool listing third-party
-# developer tools from Jcode's hosted integration directory. Some providers
-# may share revenue with Jcode when a referred user becomes a customer, but
-# partnership status never influences recommendations.
-# See https://jcode.sh/discovery-tools
-# enabled = true
-# endpoint = "https://api.jcode.sh/v1/discovery"
 	"##;
 
         // Substitute platform-specific defaults from the keybinding registry.

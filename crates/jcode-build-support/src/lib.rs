@@ -562,7 +562,6 @@ pub fn smoke_test_server_binary(binary: &Path) -> Result<()> {
         .arg(&socket_path)
         .env("JCODE_NON_INTERACTIVE", "1")
         .env("JCODE_RUNTIME_DIR", &runtime_dir)
-        .env("JCODE_GATEWAY_ENABLED", "0")
         .env("JCODE_TEMP_SERVER", "1")
         .env("JCODE_SERVER_OWNER_PID", std::process::id().to_string())
         .env("JCODE_TEMP_SERVER_IDLE_SECS", "300")

@@ -16,7 +16,6 @@ pub(crate) use jcode::session::{Session, StoredCompactionState};
 pub(crate) use jcode::tool::Registry;
 pub(crate) use std::ffi::OsString;
 pub(crate) use std::io::Read;
-pub(crate) use std::net::TcpListener as StdTcpListener;
 #[cfg(unix)]
 use std::os::fd::FromRawFd;
 #[cfg(unix)]
@@ -25,11 +24,7 @@ pub(crate) use std::process::{Child, Command, Stdio};
 pub(crate) use std::sync::Arc;
 pub(crate) use std::sync::Mutex;
 pub(crate) use std::time::{Duration, Instant};
-pub(crate) use tokio::net::TcpStream;
 pub(crate) use tokio::time::timeout;
-pub(crate) use tokio_tungstenite::connect_async;
-pub(crate) use tokio_tungstenite::tungstenite::Message as WsMessage;
-pub(crate) use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 static JCODE_HOME_LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
 
@@ -185,13 +180,6 @@ impl Drop for EnvVarGuard {
     }
 }
 
-pub(crate) fn reserve_tcp_port() -> Result<u16> {
-    let listener = StdTcpListener::bind(("127.0.0.1", 0))?;
-    let port = listener.local_addr()?.port();
-    drop(listener);
-    Ok(port)
-}
-
 pub(crate) async fn wait_for_socket(path: &std::path::Path) -> Result<()> {
     let start = Instant::now();
     while !path.exists() {
@@ -236,41 +224,6 @@ pub(crate) async fn wait_for_server_ready(
 ) -> Result<()> {
     let _client = wait_for_server_client(socket_path).await?;
     wait_for_debug_socket_ready(debug_socket_path).await
-}
-
-pub(crate) async fn wait_for_tcp_port(port: u16) -> Result<()> {
-    let start = Instant::now();
-    while start.elapsed() < Duration::from_secs(10) {
-        if TcpStream::connect(("127.0.0.1", port)).await.is_ok() {
-            return Ok(());
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    anyhow::bail!("Gateway TCP port {} did not open", port)
-}
-
-fn pair_test_device(token: &str) -> Result<()> {
-    let mut registry = jcode::gateway::DeviceRegistry::load();
-    let now = chrono::Utc::now().to_rfc3339();
-    let mut hasher = sha2::Sha256::new();
-    use sha2::Digest;
-    hasher.update(token.as_bytes());
-    let token_hash = format!("sha256:{}", hex::encode(hasher.finalize()));
-    registry.devices.retain(|d| d.id != "test-device-ws");
-    registry.devices.push(jcode::gateway::PairedDevice {
-        id: "test-device-ws".to_string(),
-        name: "WS Test Device".to_string(),
-        token_hash,
-        apns_token: None,
-        paired_at: now.clone(),
-        last_seen: now,
-    });
-    registry.save()
-}
-
-struct WsTestClient {
-    stream: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<TcpStream>>,
-    next_id: u64,
 }
 
 #[derive(Clone, Default)]
@@ -339,90 +292,6 @@ pub(crate) fn flatten_text_blocks(message: &Message) -> String {
         .join("\n")
 }
 
-impl WsTestClient {
-    async fn connect(port: u16, token: &str) -> Result<Self> {
-        let mut request = format!("ws://127.0.0.1:{port}/ws").into_client_request()?;
-        request
-            .headers_mut()
-            .insert("Authorization", format!("Bearer {token}").parse()?);
-        let (stream, _) = connect_async(request).await?;
-        Ok(Self { stream, next_id: 1 })
-    }
-
-    async fn send_request(&mut self, request: Request) -> Result<u64> {
-        let id = request.id();
-        let json = serde_json::to_string(&request)?;
-        self.stream.send(WsMessage::Text(json)).await?;
-        Ok(id)
-    }
-
-    async fn subscribe(&mut self) -> Result<u64> {
-        let id = self.next_id;
-        self.next_id += 1;
-        let working_dir = std::env::current_dir()?.to_string_lossy().into_owned();
-        self.send_request(Request::Subscribe {
-            id,
-            working_dir: Some(working_dir),
-            selfdev: None,
-            target_session_id: None,
-            client_instance_id: None,
-            client_has_local_history: false,
-            allow_session_takeover: false,
-            terminal_env: Vec::new(),
-        })
-        .await
-    }
-
-    async fn get_history(&mut self) -> Result<u64> {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.send_request(Request::GetHistory { id }).await
-    }
-
-    async fn send_message(&mut self, content: &str) -> Result<u64> {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.send_request(Request::Message {
-            id,
-            content: content.to_string(),
-            images: vec![],
-            system_reminder: None,
-            no_reply: false,
-        })
-        .await
-    }
-
-    async fn resume_session(&mut self, session_id: &str) -> Result<u64> {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.send_request(Request::ResumeSession {
-            id,
-            session_id: session_id.to_string(),
-            client_instance_id: None,
-            client_has_local_history: false,
-            allow_session_takeover: false,
-        })
-        .await
-    }
-
-    async fn read_event(&mut self) -> Result<ServerEvent> {
-        loop {
-            let msg = timeout(Duration::from_secs(5), self.stream.next())
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("websocket disconnected"))??;
-            match msg {
-                WsMessage::Text(text) => return Ok(serde_json::from_str(&text)?),
-                WsMessage::Ping(data) => {
-                    self.stream.send(WsMessage::Pong(data)).await?;
-                }
-                WsMessage::Pong(_) => continue,
-                WsMessage::Close(_) => anyhow::bail!("websocket closed"),
-                other => anyhow::bail!("unexpected websocket message: {other:?}"),
-            }
-        }
-    }
-}
-
 pub(crate) async fn collect_until_done_unix(
     client: &mut server::Client,
     target_id: u64,
@@ -462,40 +331,6 @@ pub(crate) async fn collect_until_history_unix(
         }
     }
     anyhow::bail!("timed out waiting for history event {target_id} over unix socket")
-}
-
-async fn collect_until_done_ws(
-    client: &mut WsTestClient,
-    target_id: u64,
-) -> Result<Vec<ServerEvent>> {
-    let mut events = Vec::new();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        let event = client.read_event().await?;
-        let is_done = matches!(event, ServerEvent::Done { id } if id == target_id);
-        events.push(event);
-        if is_done {
-            return Ok(events);
-        }
-    }
-    anyhow::bail!("timed out waiting for done event {target_id} over websocket")
-}
-
-async fn collect_until_history_ws(
-    client: &mut WsTestClient,
-    target_id: u64,
-) -> Result<Vec<ServerEvent>> {
-    let mut events = Vec::new();
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Instant::now() < deadline {
-        let event = client.read_event().await?;
-        let is_target_history = matches!(event, ServerEvent::History { id, .. } if id == target_id);
-        events.push(event);
-        if is_target_history {
-            return Ok(events);
-        }
-    }
-    anyhow::bail!("timed out waiting for history event {target_id} over websocket")
 }
 
 pub(crate) fn summarize_history_invariant(event: &ServerEvent) -> Option<String> {
@@ -642,104 +477,6 @@ pub(crate) async fn run_unix_transport_scenario() -> Result<TransportScenarioRes
 
         let resume_id = client.resume_session(&server_session_id).await?;
         let resume_events = collect_until_history_unix(&mut client, resume_id).await?;
-
-        Ok::<_, anyhow::Error>(TransportScenarioResult {
-            subscribe_events,
-            history_events,
-            resume_events,
-        })
-    }
-    .await;
-
-    abort_server_and_cleanup(&server_handle, &socket_path, &debug_socket_path);
-    result
-}
-
-pub(crate) async fn run_websocket_transport_scenario() -> Result<TransportScenarioResult> {
-    let runtime_dir = short_runtime_dir(format!(
-        "jcode-ws-e2e-websocket-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir_all(&runtime_dir)?;
-    let socket_path = runtime_dir.join("jcode.sock");
-    let debug_socket_path = runtime_dir.join("jcode-debug.sock");
-    let gateway_port = reserve_tcp_port()?;
-    let ws_token = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    pair_test_device(ws_token)?;
-
-    let provider = MockProvider::new();
-    provider.queue_response(vec![
-        StreamEvent::ConnectionType {
-            connection: "mock-stream".to_string(),
-        },
-        StreamEvent::TextDelta("Hello from mock".to_string()),
-        StreamEvent::MessageEnd {
-            stop_reason: Some("end_turn".to_string()),
-        },
-        StreamEvent::SessionId("provider-session-1".to_string()),
-    ]);
-
-    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
-    let server_instance =
-        server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone())
-            .with_gateway_config(jcode::gateway::GatewayConfig {
-                port: gateway_port,
-                bind_addr: "127.0.0.1".to_string(),
-                enabled: true,
-            });
-    let server_handle = tokio::spawn(async move { server_instance.run().await });
-
-    let result = async {
-        wait_for_socket(&socket_path).await?;
-        wait_for_tcp_port(gateway_port).await?;
-        let mut client = WsTestClient::connect(gateway_port, ws_token).await?;
-
-        let subscribe_id = client.subscribe().await?;
-        let subscribe_events = collect_until_done_ws(&mut client, subscribe_id).await?;
-
-        let history_request_id = client.get_history().await?;
-        let history_events = collect_until_history_ws(&mut client, history_request_id).await?;
-        let server_session_id = history_events
-            .iter()
-            .find_map(|event| match event {
-                ServerEvent::History { session_id, .. } => Some(session_id.clone()),
-                _ => None,
-            })
-            .ok_or_else(|| anyhow::anyhow!("missing websocket history session id"))?;
-
-        let message_id = client.send_message("hello over transport").await?;
-        collect_until_done_ws(&mut client, message_id).await?;
-
-        // Wait for the assistant message to persist (see the unix scenario): poll
-        // the live history until both messages are present so the resume snapshot
-        // matches across transports rather than racing async persistence.
-        let persist_deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            let history_id = client.get_history().await?;
-            let events = collect_until_history_ws(&mut client, history_id).await?;
-            let message_count = events
-                .iter()
-                .find_map(|event| match event {
-                    ServerEvent::History { messages, .. } => Some(messages.len()),
-                    _ => None,
-                })
-                .unwrap_or(0);
-            if message_count >= 2 {
-                break;
-            }
-            if Instant::now() >= persist_deadline {
-                anyhow::bail!(
-                    "websocket: timed out waiting for assistant message to persist (history had {message_count} message(s))"
-                );
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-
-        let resume_id = client.resume_session(&server_session_id).await?;
-        let resume_events = collect_until_history_ws(&mut client, resume_id).await?;
 
         Ok::<_, anyhow::Error>(TransportScenarioResult {
             subscribe_events,
