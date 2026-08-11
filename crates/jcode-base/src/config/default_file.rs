@@ -132,7 +132,7 @@ pin_images = true
 
 # Pin the full session todo list to the top of the chat transcript while it
 # scrolls, like the sticky previous-prompt preview (default: false)
-# pin_todos = false
+# pin_todos = true
 
 # Wrap long lines in the pinned diff pane (default: true)
 # Set to false for horizontal scrolling instead of wrapping
@@ -592,6 +592,14 @@ work_branch_prefix = "ambient/"
 # Show ambient cycle in a terminal window (default: true)
 # visible = true
 
+[gateway]
+# Enable WebSocket gateway for iOS/web clients
+enabled = false
+# TCP port for gateway listener
+port = 7643
+# Bind address (0.0.0.0 for LAN/Tailscale reachability)
+bind_addr = "0.0.0.0"
+
 [power]
 # Prevent automatic system sleep while any jcode session is actively working.
 # Linux also blocks lid-switch suspend. Windows still respects explicit lid-close
@@ -645,6 +653,7 @@ desktop_notifications = true
 # jade_relay_reply_enabled = false   # Deliver cloud prompts to one configured live session.
 # jade_relay_launch_enabled = false  # Allow cloud device commands to open headed local sessions.
 # jade_relay_launch_working_dir = "" # Optional default cwd for launched sessions.
+
 	"##;
 
         // Substitute platform-specific defaults from the keybinding registry.

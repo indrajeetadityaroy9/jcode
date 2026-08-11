@@ -7,7 +7,7 @@ use crate::todo::{
     feedback_loop_passes, intent_understanding_passes, load_goals, load_plan, load_todos,
     save_goals, save_plan, save_todos, update_todo_review_cycle,
 };
-use anyhow::Result;
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -72,6 +72,21 @@ struct TodoInput {
     plan: Option<TodoPlan>,
 }
 
+fn parse_todo_input(input: Value) -> Result<TodoInput> {
+    let params: TodoInput = serde_json::from_value(normalize_todo_input(input))?;
+    if let Some(todo) = params.todos.as_ref().and_then(|todos| {
+        todos
+            .iter()
+            .find(|todo| crate::todo::canonical_todo_status(&todo.status).is_none())
+    }) {
+        bail!(
+            "invalid todo status {:?}; expected one of: pending, in_progress, completed, cancelled",
+            todo.status
+        );
+    }
+    Ok(params)
+}
+
 /// Normalize a goal's group label: trimmed, with empty/whitespace collapsed
 /// to `None` (the implicit goal of an ungrouped list).
 fn goal_group_key(group: Option<&str>) -> Option<String> {
@@ -80,8 +95,6 @@ fn goal_group_key(group: Option<&str>) -> Option<String> {
         .filter(|group| !group.is_empty())
         .map(str::to_string)
 }
-
-
 
 /// Append `value` to `history` when it is a new observation.
 ///
@@ -121,6 +134,9 @@ fn merge_goals(stored: &[TodoGoal], incoming: Option<Vec<TodoGoal>>) -> Vec<Todo
         goal.feedback_loop_coverage_history = previous
             .map(|prev| prev.feedback_loop_coverage_history.clone())
             .unwrap_or_default();
+        goal.feedback_loop_traceability_history = previous
+            .map(|prev| prev.feedback_loop_traceability_history.clone())
+            .unwrap_or_default();
         goal.delivery_state_history = previous
             .map(|prev| prev.delivery_state_history.clone())
             .unwrap_or_default();
@@ -140,6 +156,9 @@ fn merge_goals(stored: &[TodoGoal], incoming: Option<Vec<TodoGoal>>) -> Vec<Todo
             }
             if goal.feedback_loop_coverage.is_none() {
                 goal.feedback_loop_coverage = prev.feedback_loop_coverage;
+            }
+            if goal.feedback_loop_traceability.is_none() {
+                goal.feedback_loop_traceability = prev.feedback_loop_traceability;
             }
             if goal.difficulty.is_none() {
                 goal.difficulty = prev.difficulty;
@@ -168,6 +187,10 @@ fn merge_goals(stored: &[TodoGoal], incoming: Option<Vec<TodoGoal>>) -> Vec<Todo
         record_score_observation(
             &mut goal.feedback_loop_coverage_history,
             goal.feedback_loop_coverage,
+        );
+        record_score_observation(
+            &mut goal.feedback_loop_traceability_history,
+            goal.feedback_loop_traceability,
         );
         record_score_observation(&mut goal.delivery_state_history, goal.delivery_state);
         if let Some(slot) = merged
@@ -231,6 +254,11 @@ fn changed_goal_fields(before: Option<&TodoGoal>, after: Option<&TodoGoal>) -> V
         != after.and_then(|goal| goal.feedback_loop_coverage)
     {
         fields.push(TodoGoalField::FeedbackLoopCoverage);
+    }
+    if before.and_then(|goal| goal.feedback_loop_traceability)
+        != after.and_then(|goal| goal.feedback_loop_traceability)
+    {
+        fields.push(TodoGoalField::FeedbackLoopTraceability);
     }
     if before.and_then(|goal| goal.delivery_state) != after.and_then(|goal| goal.delivery_state) {
         fields.push(TodoGoalField::DeliveryState);
@@ -535,6 +563,12 @@ fn normalize_todo_input(mut input: Value) -> Value {
                 let Some(fields) = item.as_object_mut() else {
                     continue;
                 };
+                if key == "todos"
+                    && let Some(Value::String(status)) = fields.get_mut("status")
+                    && let Some(canonical) = crate::todo::canonical_todo_status(status)
+                {
+                    *status = canonical.to_string();
+                }
                 for key in [
                     "confidence",
                     "completion_confidence",
@@ -548,6 +582,7 @@ fn normalize_todo_input(mut input: Value) -> Value {
                     "delivery_state",
                     "feedback_loop_relevance",
                     "feedback_loop_coverage",
+                    "feedback_loop_traceability",
                     "difficulty",
                     "autonomy",
                 ] {
@@ -605,7 +640,8 @@ impl Tool for TodoTool {
                             },
                             "status": {
                                 "type": "string",
-                                "description": "Status."
+                                "enum": ["pending", "in_progress", "completed", "cancelled"],
+                                "description": "Status. Use completed when the task is done."
                             },
                             "priority": {
                                 "type": "string",
@@ -653,7 +689,7 @@ impl Tool for TodoTool {
                     "description": "Goal-level assessments, one per todo group (null = ungrouped). Omitted groups are retained.",
                     "items": {
                         "type": "object",
-                        "required": ["closed_feedback_loop", "feedback_loop", "feedback_loop_relevance", "feedback_loop_coverage"],
+                        "required": ["closed_feedback_loop", "feedback_loop", "feedback_loop_relevance", "feedback_loop_coverage", "feedback_loop_traceability"],
                         "properties": {
                             "group": {
                                 "type": "string",
@@ -670,13 +706,18 @@ impl Tool for TodoTool {
                             },
                             "feedback_loop_relevance": {
                                 "type": "string",
-                                "enum": ["indirect", "representative", "acceptance_aligned"],
-                                "description": "How directly the checks represent observable acceptance behavior through public interfaces rather than an internal proxy."
+                                "enum": ["indirect", "synthetic", "representative", "acceptance_blocked", "acceptance_aligned"],
+                                "description": "How directly checks represent observable acceptance behavior. indirect = inspection or an internal proxy; synthetic = custom harnesses, stubs, mocks, copied sources, or synthetic fixtures; representative = real public interfaces but not the complete acceptance workflow; acceptance_blocked = the real acceptance workflow was attempted but an external constraint prevented a result; acceptance_aligned = the real project build, integration test, or end-user workflow passed. Substitute-only validation is never acceptance_aligned."
                             },
                             "feedback_loop_coverage": {
                                 "type": "string",
                                 "enum": ["narrow", "main_paths", "edge_and_integration_paths"],
                                 "description": "How broadly the checks exercise main workflows, integration boundaries, edge cases, packaging, and likely failure modes."
+                            },
+                            "feedback_loop_traceability": {
+                                "type": "string",
+                                "enum": ["unmapped", "partial", "complete"],
+                                "description": "How completely requirements map to evidence. unmapped = requirements are not tied to checks; partial = only some explicit requirements or changed public outputs have concrete checks and observed results; complete = every explicit requirement and changed public output has a concrete check and observed result. Aggregate test counts alone do not establish complete traceability."
                             },
                             "delivery_state": {
                                 "type": "string",
@@ -710,7 +751,7 @@ impl Tool for TodoTool {
     }
 
     async fn execute(&self, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
-        let params: TodoInput = serde_json::from_value(normalize_todo_input(input))?;
+        let params = parse_todo_input(input)?;
         let is_write = params.todos.is_some() || params.goals.is_some() || params.plan.is_some();
         let operation = if is_write { "write" } else { "read" };
         let result = if is_write {
@@ -856,6 +897,7 @@ mod tests {
         assert!(goal_props.contains_key("feedback_loop"));
         assert!(goal_props.contains_key("feedback_loop_relevance"));
         assert!(goal_props.contains_key("feedback_loop_coverage"));
+        assert!(goal_props.contains_key("feedback_loop_traceability"));
         assert!(goal_props.contains_key("delivery_state"));
         assert!(goal_props.contains_key("difficulty"));
         assert!(goal_props.contains_key("autonomy"));
@@ -866,7 +908,28 @@ mod tests {
         assert!(!goal_props.contains_key("user_intention"));
         assert!(!goal_props.contains_key("alignment_score"));
         assert!(!goal_props.contains_key("objective"));
-        assert_eq!(goal_props.len(), 10);
+        assert_eq!(goal_props.len(), 11);
+        assert_eq!(
+            goal_props["feedback_loop_relevance"]["enum"],
+            json!([
+                "indirect",
+                "synthetic",
+                "representative",
+                "acceptance_blocked",
+                "acceptance_aligned"
+            ])
+        );
+        let relevance_description = goal_props["feedback_loop_relevance"]["description"]
+            .as_str()
+            .expect("feedback-loop relevance should explain every state");
+        for required_concept in [
+            "custom harnesses",
+            "real public interfaces",
+            "external constraint",
+            "Substitute-only validation is never acceptance_aligned",
+        ] {
+            assert!(relevance_description.contains(required_concept));
+        }
 
         let goal_required = props["goals"]["items"]["required"]
             .as_array()
@@ -886,6 +949,11 @@ mod tests {
             goal_required
                 .iter()
                 .any(|value| value == "feedback_loop_coverage")
+        );
+        assert!(
+            goal_required
+                .iter()
+                .any(|value| value == "feedback_loop_traceability")
         );
 
         let alignment_description = plan_props["understands_user_intent"]
@@ -1002,8 +1070,8 @@ mod tests {
         }
     }
 
-    fn parse(input: Value) -> Result<TodoInput, serde_json::Error> {
-        serde_json::from_value(normalize_todo_input(input))
+    fn parse(input: Value) -> Result<TodoInput> {
+        parse_todo_input(input)
     }
 
     #[test]
@@ -1044,6 +1112,39 @@ mod tests {
             todos[1].confidence,
             Some(crate::todo::ConfidenceState::Plausible)
         );
+    }
+
+    #[test]
+    fn normalizes_natural_and_case_varied_todo_statuses() {
+        let parsed = parse(json!({
+            "todos": [
+                {"content": "a", "status": "done", "priority": "high", "id": "1", "confidence": "verified"},
+                {"content": "b", "status": " Finished ", "priority": "low", "id": "2", "confidence": "validated"},
+                {"content": "c", "status": "Canceled", "priority": "low", "id": "3", "confidence": "plausible"}
+            ]
+        }))
+        .expect("status synonyms should parse");
+        let statuses: Vec<_> = parsed
+            .todos
+            .expect("todos present")
+            .into_iter()
+            .map(|todo| todo.status)
+            .collect();
+        assert_eq!(statuses, ["completed", "completed", "cancelled"]);
+    }
+
+    #[test]
+    fn rejects_unknown_todo_statuses_with_valid_vocabulary() {
+        let error = parse(json!({
+            "todos": [
+                {"content": "a", "status": "blocked", "priority": "high", "id": "1", "confidence": "plausible"}
+            ]
+        }))
+        .err()
+        .expect("unknown status should be rejected");
+        let message = error.to_string();
+        assert!(message.contains("invalid todo status \"blocked\""));
+        assert!(message.contains("pending, in_progress, completed, cancelled"));
     }
 
     #[test]
@@ -1161,6 +1262,7 @@ mod tests {
             closed_feedback_loop: Some(state),
             feedback_loop_relevance: Some(crate::todo::FeedbackLoopRelevance::Representative),
             feedback_loop_coverage: Some(crate::todo::FeedbackLoopCoverage::MainPaths),
+            feedback_loop_traceability: Some(crate::todo::FeedbackLoopTraceability::Complete),
             ..Default::default()
         }
     }
@@ -1184,6 +1286,89 @@ mod tests {
             group: group.map(str::to_string),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn todo_telemetry_derives_lifecycle_groups_and_score_summaries() {
+        let mut pending = todo_in_group(Some("build"), "pending");
+        pending.confidence = Some(crate::todo::ConfidenceState::Plausible);
+        let mut removed = todo_in_group(Some("build"), "removed");
+        removed.status = "in_progress".to_string();
+        removed.confidence = Some(crate::todo::ConfidenceState::Plausible);
+        let previous = vec![pending.clone(), removed];
+
+        pending.status = "completed".to_string();
+        pending.completion_confidence = Some(crate::todo::ConfidenceState::Validated);
+        let mut created = todo_in_group(Some("verify"), "created");
+        created.confidence = Some(crate::todo::ConfidenceState::Plausible);
+        let current = vec![pending, created];
+        let goals = vec![
+            TodoGoal {
+                group: Some("build".to_string()),
+                closed_feedback_loop: Some(crate::todo::FeedbackLoopState::Strong),
+                feedback_loop_relevance: Some(crate::todo::FeedbackLoopRelevance::Representative),
+                feedback_loop_coverage: Some(crate::todo::FeedbackLoopCoverage::MainPaths),
+                delivery_state: Some(crate::todo::DeliveryState::OutcomeDelivered),
+                ..Default::default()
+            },
+            TodoGoal {
+                group: Some("verify".to_string()),
+                closed_feedback_loop: Some(crate::todo::FeedbackLoopState::Strong),
+                feedback_loop_relevance: Some(
+                    crate::todo::FeedbackLoopRelevance::AcceptanceAligned,
+                ),
+                feedback_loop_coverage: Some(
+                    crate::todo::FeedbackLoopCoverage::EdgeAndIntegrationPaths,
+                ),
+                delivery_state: Some(crate::todo::DeliveryState::OutcomeDelivered),
+                ..Default::default()
+            },
+        ];
+        let plan = TodoPlan {
+            understands_user_intent: Some(crate::todo::IntentUnderstanding::Partial),
+            ..Default::default()
+        };
+
+        assert_eq!(update.todos_created, 1);
+        assert_eq!(update.todos_completed, 1);
+        assert_eq!(update.todos_abandoned, 1);
+        assert_eq!(update.current_incomplete, 1);
+        assert_eq!(update.list_size, 2);
+        assert_eq!(update.groups_completed, 1);
+        assert_eq!(update.groups_total, 2);
+        assert_eq!(update.confidence.min, Some(80));
+        assert_eq!(update.confidence.mean, Some(80.0));
+        assert_eq!(update.confidence.count, 2);
+        assert_eq!(update.completion_confidence.min, Some(96));
+        assert_eq!(update.completion_confidence.count, 1);
+        assert_eq!(update.understands_user_intent.min, Some(80));
+        assert_eq!(update.closed_feedback_loop.min, Some(88));
+        assert_eq!(update.closed_feedback_loop.mean, Some(88.0));
+        assert_eq!(update.feedback_loop_relevance.min, Some(75));
+        assert_eq!(update.feedback_loop_relevance.count, 2);
+        assert_eq!(update.feedback_loop_coverage.min, Some(75));
+        assert_eq!(update.feedback_loop_coverage.count, 2);
+        assert_eq!(update.end_to_end_ownership.min, Some(98));
+        assert_eq!(update.end_to_end_ownership.mean, Some(98.0));
+    }
+
+    #[test]
+    fn todo_telemetry_regrouping_does_not_create_or_abandon_items() {
+        let mut completed = todo_in_group(Some("old"), "a");
+        completed.status = "completed".to_string();
+        let pending = todo_in_group(Some("old"), "b");
+        let previous = vec![completed.clone(), pending.clone()];
+
+        completed.group = Some("done".to_string());
+        let mut pending = pending;
+        pending.group = Some("remaining".to_string());
+        let current = vec![completed, pending];
+
+        assert_eq!(update.todos_created, 0);
+        assert_eq!(update.todos_completed, 0);
+        assert_eq!(update.todos_abandoned, 0);
+        assert_eq!(update.groups_completed, 1);
+        assert_eq!(update.groups_total, 2);
     }
 
     /// Issue #695: after the agent moves to a new task and replaces the todo
@@ -1543,7 +1728,7 @@ mod tests {
 
         // The points were recorded for the turn-end digest instead.
         let observations = crate::todo::load_gate_observations(session).expect("observations");
-        assert_eq!(observations.len(), 4);
+        assert_eq!(observations.len(), 5);
         assert!(
             observations.iter().any(|observation| {
                 observation.kind == GateObservationKind::FeedbackLoopRelevance
@@ -1554,6 +1739,9 @@ mod tests {
                 observation.kind == GateObservationKind::FeedbackLoopCoverage
             })
         );
+        assert!(observations.iter().any(|observation| {
+            observation.kind == GateObservationKind::FeedbackLoopTraceability
+        }));
 
         // Histories are accumulating, which is what the digest reasons over.
         let plan = load_plan(session).expect("plan");
