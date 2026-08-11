@@ -229,46 +229,17 @@ impl MessageChannel for TelegramChannel {
                             continue;
                         }
 
-                        if let Some(req_id) = crate::notifications::extract_permission_id(trimmed) {
-                            let (approved, message) =
-                                crate::notifications::parse_permission_reply(trimmed);
-                            if let Err(e) = crate::safety::record_permission_via_file(
-                                &req_id,
-                                approved,
-                                "telegram_reply",
-                                message,
-                            ) {
-                                logging::error(&format!(
-                                    "Failed to record permission from Telegram for {}: {}",
-                                    req_id, e
-                                ));
-                            } else {
-                                logging::info(&format!(
-                                    "Permission {} via Telegram: {}",
-                                    if approved { "approved" } else { "denied" },
-                                    req_id
-                                ));
-                                let _ = self
-                                    .send(&format!(
-                                        "✅ Permission {} for `{}`",
-                                        if approved { "approved" } else { "denied" },
-                                        req_id
-                                    ))
-                                    .await;
-                            }
+                        let injected = runner.inject_message(trimmed, "telegram").await;
+                        logging::info(&format!(
+                            "telegram reply injected into session injected={}",
+                            injected
+                        ));
+                        let ack = if injected {
+                            format!("💬 Message sent to active session: _{}_", trimmed)
                         } else {
-                            let injected = runner.inject_message(trimmed, "telegram").await;
-                            logging::info(&format!(
-                                "telegram reply injected into session injected={}",
-                                injected
-                            ));
-                            let ack = if injected {
-                                format!("💬 Message sent to active session: _{}_", trimmed)
-                            } else {
-                                format!("📋 Message queued, waking agent: _{}_", trimmed)
-                            };
-                            let _ = self.send(&ack).await;
-                        }
+                            format!("📋 Message queued, waking agent: _{}_", trimmed)
+                        };
+                        let _ = self.send(&ack).await;
                     }
                 }
                 Err(e) => {
@@ -438,46 +409,17 @@ impl MessageChannel for DiscordChannel {
                             continue;
                         }
 
-                        if let Some(req_id) = crate::notifications::extract_permission_id(trimmed) {
-                            let (approved, message) =
-                                crate::notifications::parse_permission_reply(trimmed);
-                            if let Err(e) = crate::safety::record_permission_via_file(
-                                &req_id,
-                                approved,
-                                "discord_reply",
-                                message,
-                            ) {
-                                logging::error(&format!(
-                                    "Failed to record permission from Discord for {}: {}",
-                                    req_id, e
-                                ));
-                            } else {
-                                logging::info(&format!(
-                                    "Permission {} via Discord: {}",
-                                    if approved { "approved" } else { "denied" },
-                                    req_id
-                                ));
-                                let _ = self
-                                    .send(&format!(
-                                        "✅ Permission {} for `{}`",
-                                        if approved { "approved" } else { "denied" },
-                                        req_id
-                                    ))
-                                    .await;
-                            }
+                        let injected = runner.inject_message(trimmed, "discord").await;
+                        logging::info(&format!(
+                            "discord reply injected into session injected={}",
+                            injected
+                        ));
+                        let ack = if injected {
+                            format!("💬 Message sent to active session: *{}*", trimmed)
                         } else {
-                            let injected = runner.inject_message(trimmed, "discord").await;
-                            logging::info(&format!(
-                                "discord reply injected into session injected={}",
-                                injected
-                            ));
-                            let ack = if injected {
-                                format!("💬 Message sent to active session: *{}*", trimmed)
-                            } else {
-                                format!("📋 Message queued, waking agent: *{}*", trimmed)
-                            };
-                            let _ = self.send(&ack).await;
-                        }
+                            format!("📋 Message queued, waking agent: *{}*", trimmed)
+                        };
+                        let _ = self.send(&ack).await;
                     }
                 }
                 Err(e) => {
@@ -697,33 +639,6 @@ impl MessageChannel for JadeRelayChannel {
                         let text = ev.text.unwrap_or_default();
                         let trimmed = text.trim();
                         if trimmed.is_empty() {
-                            continue;
-                        }
-                        if let Some(req_id) = crate::notifications::extract_permission_id(trimmed) {
-                            let (approved, message) =
-                                crate::notifications::parse_permission_reply(trimmed);
-                            if let Err(e) = crate::safety::record_permission_via_file(
-                                &req_id,
-                                approved,
-                                "jade_relay",
-                                message,
-                            ) {
-                                logging::error(&format!(
-                                    "Failed to record permission from jade relay for {}: {}",
-                                    req_id, e
-                                ));
-                            } else {
-                                let _ = self
-                                    .post_response(
-                                        &format!(
-                                            "Permission {} for {}",
-                                            if approved { "approved" } else { "denied" },
-                                            req_id
-                                        ),
-                                        ev.seq,
-                                    )
-                                    .await;
-                            }
                             continue;
                         }
                         let injected = runner.inject_message(trimmed, "jade_relay").await;

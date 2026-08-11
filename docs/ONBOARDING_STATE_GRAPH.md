@@ -1,12 +1,11 @@
-# Robust Onboarding: An Explicit State-Space Graph + Privacy-Preserving Trace Telemetry
+# Robust Onboarding: An Explicit State-Space Graph
 
-Status: partially implemented (steps 1, 2, 5, 6 landed; see §5)
+Status: partially implemented (steps 1, 2, 5 landed; see §4)
 Owner: onboarding
 Related code: `crates/jcode-tui/src/tui/app/onboarding_flow.rs`,
 `onboarding_flow_control.rs`, `onboarding_graph.rs`, `onboarding_repair.rs`,
 `onboarding_sim.rs`, `crates/jcode-tui/src/tui/app/tests/onboarding_eval.rs`,
-`crates/jcode-base/src/auth/{env_facts,login_diagnostics,refresh_state,status_types}.rs`,
-`crates/jcode-telemetry-core/src/{lib,onboarding_trace}.rs`
+`crates/jcode-base/src/auth/{env_facts,login_diagnostics,refresh_state,status_types}.rs`
 
 ---
 
@@ -54,7 +53,6 @@ pub struct OnboardingWorld {
     pub creds: BTreeMap<ProviderId, CredState>,
     pub imports: ImportFacts,
     pub transport: Transport,
-    pub consent: TelemetryLevel,
 }
 
 pub struct OnboardingNode {
@@ -167,99 +165,10 @@ that `classify_phase_surface`'s wildcard-free `match` gestures at today, general
 
 ---
 
-## 3. Telemetry: traces of a graph, not logs of a program
-
-The question was how to monitor this without touching credentials. The graph makes
-that easy, because **the interesting signal is the shape of the traversal, and the
-shape is a list of small integers.**
-
-### 3.1 What we send
-
-One event per session: an ordered trace.
-
-```jsonc
-{
-  "event": "onboarding_trace",
-  "schema_version": 3,
-  "install_id": "<existing anonymous telemetry id>",
-  "run_id": "<random per boot>",
-  "env": {                      // Tri values only, no hostnames, no paths
-    "tty": "yes", "browser": "no", "loopback_bind": "yes",
-    "config_writable": "yes", "network": "yes", "clock_skew_ok": "yes",
-    "container": "yes", "proxy": "unknown"
-  },
-  "steps": [
-    { "node": "boot",              "edge": "probe_done",        "dt_ms": 180 },
-    { "node": "login_pick",        "edge": "choose_openai",     "dt_ms": 4200 },
-    { "node": "oauth_loopback",    "edge": "fail",              "dt_ms": 61000,
-      "reason": "callback_timeout" },
-    { "node": "recover_offer",     "edge": "device_code",       "dt_ms": 2100 },
-    { "node": "device_code",       "edge": "ok",                "dt_ms": 15400 },
-    { "node": "validate",          "edge": "ok",                "dt_ms": 900 },
-    { "node": "ready",             "edge": null,                "dt_ms": 0 }
-  ],
-  "outcome": "ready",           // ready | abandoned | degraded | stuck
-  "keystrokes": 7
-}
-```
-
-Everything in `node`, `edge`, `reason`, and `outcome` comes from a **closed
-`&'static str` vocabulary defined in the graph itself**. There is no path for
-user data to enter these fields, because there is no free-text field. That is a
-structural privacy guarantee, not a scrubbing policy. Contrast with the current
-`auth_failure_reason`, which is right in spirit (`AuthFailureReason` is already a
-closed enum) but is derived by string-matching an error message we do also log.
-
-### 3.2 Privacy rules (enforced by types, then by test)
-
-1. **Closed vocabulary only.** The trace event struct's string fields are
-   `&'static str` sourced from `NodeId`/`EdgeId`/`ReasonId` enums. A test asserts
-   every emitted value is a member of the registry.
-2. **No secrets, ever.** Where identity matters (did the refresh token change?) send
-   `sha256(secret)[..8]` and only ever compare it to a locally stored fingerprint.
-   Salted per install so fingerprints are not cross-user joinable.
-3. **No paths, hostnames, usernames, emails, org names, model IDs from private
-   deployments.** Provider is an enum member (`openai`, `anthropic`, ...); an
-   unrecognized custom provider reports as `custom`.
-4. **Timings are bucketed** (`dt_ms` rounded to 100ms, capped at 300s) so latency
-   patterns can't act as a behavioral fingerprint.
-5. **Consent-tiered**, reusing the existing three-way `TelemetryLevel`:
-   `Nothing` sends nothing; `NoContent` sends the full trace (it contains no content
-   by construction); `Everything` additionally allows attaching the redacted error
-   *string* for unclassified `reason: "unknown"` cases, which is how the taxonomy
-   grows.
-6. **k-anonymity on the aggregation side.** Any (env, trace-shape) cohort with fewer
-   than k=20 installs is reported only as "rare". Rare-but-fatal shapes still surface
-   as a count, without the env vector.
-7. **Local-first and inspectable.** `jcode telemetry show-last-trace` prints the exact
-   bytes we would send. `--dry-run` mode writes them to disk and sends nothing. If a
-   user can read the whole payload in 20 lines, trust is cheap.
-8. **Cap and drop.** Traces are bounded (say 64 steps); overflow reports
-   `truncated: true`. No unbounded queues (already the case in telemetry-core).
-
-### 3.3 What we learn, and the loop it closes
-
-Because every trace is a path through a known graph, aggregation is trivial and the
-questions answer themselves:
-
-- **Edge failure rate**: `oauth_loopback --fail--> ...` at 30% in `container=yes`
-  installs means we should never pick loopback in containers. That is one table entry.
-- **Abandonment attribution**: which node was last before `outcome=abandoned`, split
-  by env. Today we genuinely cannot answer this, which is why `onboarding_eval.rs`
-  opens with "we cannot collect data from real users, so we score the artifact".
-  The artifact score is a good proxy; it is not a funnel.
-- **Unreachable-in-practice nodes**: authored screens nobody ever hits -> delete them.
-- **Novel failures**: `reason: "unknown"` rate is the taxonomy's health metric. Drive
-  it toward zero, one classifier at a time.
-- **Regression alarms**: a release that moves `p50 steps-to-ready` or the
-  `ready` rate outside an error budget is a release you roll back.
-- **Replay**: a trace is a deterministic script. Feed a real user's failing trace into
-  the sim harness and watch their exact screens, with zero access to their data. This
-  is the single biggest debugging upgrade in the proposal.
 
 ---
 
-## 4. Runtime robustness policies the graph makes expressible
+## 3. Runtime robustness policies the graph makes expressible
 
 Once states are explicit, the fixes for today's log are one-liners rather than
 whack-a-mole:
@@ -268,8 +177,7 @@ whack-a-mole:
   providers by `CredState`, skipping `Rejected`. Applies to OpenAI, Copilot, Cursor,
   Gemini, all of them, because it is a property of the state, not the provider.
 - **Circuit breaker per (provider, effect)**: exponential backoff with a cap, and a
-  hard stop on terminal classifications. Telemetry-core already has a process breaker
-  for permanent statuses; generalize the concept to auth.
+  hard stop on terminal classifications.
 - **Degraded-ready is a first-class outcome**: if *any* provider is `Verified`, the
   user reaches a working app and the broken provider becomes a dismissible task, not
   a blocking screen. Today's session did offer the Gemini fallback, which is the right
@@ -282,7 +190,7 @@ whack-a-mole:
 
 ---
 
-## 5. Implementation plan (incremental, no big bang)
+## 4. Implementation plan (incremental, no big bang)
 
 The existing code is in decent shape; this is mostly consolidation.
 
@@ -307,16 +215,9 @@ The existing code is in decent shape; this is mostly consolidation.
    data (including the `EnvBlocked`, `LoginFailed`, and `CredRejected` states the
    flow always had but never modelled) and `check_invariants` enforces the §2.4
    properties. Wired into `scripts/check_guardrails.sh`.
-6. **Trace telemetry.** *Landed as a library.*
-   `jcode_telemetry_core::onboarding_trace` records traversals with bucketed
-   timings, a hard step cap, and a closed vocabulary enforced by a test that
-   walks the serialized payload and rejects any free text. Not yet emitted from
-   the live flow: that waits on step 3, which is what produces the edge events.
-7. **Method selection from `EnvFacts`.** *Partially landed* via
+6. **Method selection from `EnvFacts`.** *Partially landed* via
    `browser_suppressed`; the full table drives only the browser/no-browser
    decision so far, not device-code vs paste-callback.
-8. **Aggregation + k-anonymity** on the receiving side, plus a `steps-to-ready` /
-   `ready-rate` dashboard with an error budget. *Not started.*
 
 Rough ordering principle: every step is independently shippable and independently
 valuable, and steps 1 and 5 alone would have prevented both bugs visible in the
@@ -324,7 +225,7 @@ log that prompted this document.
 
 ---
 
-## 6. Risks
+## 5. Risks
 
 - **Over-abstraction.** A state machine framework that is harder to read than the
   conditionals it replaced is a net loss. Mitigation: the transition table must be
@@ -332,6 +233,7 @@ log that prompted this document.
 - **Probe flakiness.** A wrong `browser=No` sends users down a worse path than
   failing forward would have. Mitigation: `Unknown` biases toward the optimistic path,
   and step 2 validates probes against reality before they gate anything.
-- **Telemetry trust.** Any perception that we ship credentials or prompts is fatal and
-  irreversible. Mitigation: closed vocabulary by construction, `show-last-trace`,
-  default to `NoContent`, and document the exact schema publicly (this file).
+- **Closed vocabulary drift.** The node/edge labels are the graph's public
+  surface: if a label becomes free text, replaying and checking traversals
+  stops working. Mitigation: closed vocabulary enforced by construction and by
+  the invariant tests.

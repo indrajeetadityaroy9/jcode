@@ -195,12 +195,6 @@ The agent should use a todos tool to plan its cycle. This provides:
 - If the cycle is interrupted, we know what's left
 - Structure for the agent's reasoning
 
-### `request_permission`
-
-From the [Safety System](./SAFETY_SYSTEM.md). Used for any Tier 2 action.
-
----
-
 ## Handling Unexpected Stops
 
 The model may stop unexpectedly (output length limit, API error, random stop). The system handles this:
@@ -309,7 +303,7 @@ have budget left.
 For proactive work: be conservative. A bad surprise is worse than
 no surprise. Check the user feedback memories — if they've rejected
 similar work before, don't do it. Code changes must go on a worktree
-branch with a PR via request_permission.
+branch with a PR.
 
 When done, you MUST call end_ambient_cycle with a summary of
 everything you did, including compaction count. Always schedule
@@ -715,16 +709,17 @@ graph LR
 
 ### Safety
 
-Ambient mode operates under the [Safety System](./SAFETY_SYSTEM.md) — a human-in-the-loop layer that classifies actions, requests permission for anything risky, and notifies the user via email/SMS/desktop.
+Ambient work is constrained by convention rather than by an approval gate: this
+fork runs without a human-in-the-loop permission queue.
 
 Key constraints for ambient:
-- **All actions classified** — auto-allowed (read, local branches, memory ops), requires permission (PRs, pushes, communication), or always denied (force-push, delete remote branches)
 - **Commits to a separate branch** — never pushes to main/master directly
 - **Code changes require worktree + PR** — modifications always go through review
 - **Small, focused changes** — no large refactors without user request
 - **Session transcript** — full log of every action, sent as summary after each cycle
 - **Respects .gitignore and sensitive files** — same security rules as interactive mode
-- **Can be reviewed** — user sees ambient work in the TUI and pending permission requests
+- **Can be reviewed** — the user sees ambient work in the TUI, and every cycle
+  writes a transcript summarizing what it did
 
 ---
 
@@ -844,7 +839,7 @@ Ambient must assume the process can die at any point (battery death, crash, OOM,
 
 - **Atomic writes** — memory graph and state files are written to a temp file first, then atomically renamed. A crash mid-write doesn't corrupt existing data.
 - **Incremental checkpointing** — if ambient is halfway through gardening 50 memories and crashes, it shouldn't redo the ones already finished. A "last processed" marker tracks progress within a cycle.
-- **Persistent queue survives crashes** — scheduled queue and permission requests are on disk, not in memory. They survive restarts.
+- **Persistent queue survives crashes** — the scheduled queue is on disk, not in memory. It survives restarts.
 - **Interrupted transcripts** — if a cycle doesn't complete, the transcript is marked as `interrupted` rather than `completed`, so the user knows it didn't finish.
 
 ### Recovery on Restart

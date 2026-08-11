@@ -12,7 +12,6 @@ use super::args::{
 };
 use crate::{
     agent, auth, build, provider, provider_catalog, server, session, setup_hints, startup_profile,
-    tui,
 };
 
 use super::{
@@ -385,9 +384,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         }
         Some(Command::Cloud(subcmd)) => {
             commands::run_cloud_command(map_cloud_subcommand(subcmd))?;
-        }
-        Some(Command::Permissions) => {
-            tui::permissions::run_permissions()?;
         }
         Some(Command::Transcript {
             text,

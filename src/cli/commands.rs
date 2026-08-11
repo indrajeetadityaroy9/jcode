@@ -1526,9 +1526,6 @@ async fn run_ambient_visible() -> Result<()> {
 
     registry.register_ambient_tools().await;
 
-    let safety = std::sync::Arc::new(crate::safety::SafetySystem::new());
-    crate::tool::ambient::init_safety_system(safety);
-
     let (terminal, tui_runtime) = init_tui_runtime()?;
 
     let mut app = tui::App::new(provider, registry);
@@ -2554,13 +2551,11 @@ fn build_run_todo_validation_message(
     }
 
     if completion_confidence_needs_validation {
-        crate::telemetry::record_todo_gate(crate::telemetry::TodoGateKind::Completion);
         Some((
             crate::todo::build_todo_completion_continuation_message(todos),
             false,
         ))
     } else {
-        crate::telemetry::record_todo_gate(crate::telemetry::TodoGateKind::ConfidenceSpike);
         Some((
             crate::todo::build_todo_confidence_spike_continuation_message(todos),
             true,

@@ -93,44 +93,6 @@ where
     }
 }
 
-struct BoolOrString;
-
-impl<'de> de::Visitor<'de> for BoolOrString {
-    type Value = bool;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("a bool or a string representing a bool")
-    }
-
-    fn visit_bool<E: de::Error>(self, v: bool) -> Result<bool, E> {
-        Ok(v)
-    }
-
-    fn visit_str<E: de::Error>(self, v: &str) -> Result<bool, E> {
-        match v.trim().to_ascii_lowercase().as_str() {
-            "true" | "1" | "yes" | "y" => Ok(true),
-            "false" | "0" | "no" | "n" | "" => Ok(false),
-            other => Err(E::custom(format!("string {other:?} is not a valid bool"))),
-        }
-    }
-
-    fn visit_u64<E: de::Error>(self, v: u64) -> Result<bool, E> {
-        Ok(v != 0)
-    }
-
-    fn visit_i64<E: de::Error>(self, v: i64) -> Result<bool, E> {
-        Ok(v != 0)
-    }
-}
-
-/// Deserialize a `bool` from either a JSON bool or a string/number representation.
-pub fn bool_from_string_or_bool<'de, D>(deserializer: D) -> Result<bool, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    deserializer.deserialize_any(BoolOrString)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,8 +104,6 @@ mod tests {
         n: u32,
         #[serde(default, deserialize_with = "opt_u32_from_string_or_number")]
         maybe: Option<u32>,
-        #[serde(default, deserialize_with = "bool_from_string_or_bool")]
-        flag: bool,
     }
 
     #[test]
@@ -179,15 +139,5 @@ mod tests {
         assert_eq!(d.maybe, Some(7));
         let d: Demo = serde_json::from_value(serde_json::json!({"n": 1, "maybe": 9})).unwrap();
         assert_eq!(d.maybe, Some(9));
-    }
-
-    #[test]
-    fn bool_accepts_string_and_native() {
-        let d: Demo = serde_json::from_value(serde_json::json!({"n": 1, "flag": true})).unwrap();
-        assert!(d.flag);
-        let d: Demo = serde_json::from_value(serde_json::json!({"n": 1, "flag": "true"})).unwrap();
-        assert!(d.flag);
-        let d: Demo = serde_json::from_value(serde_json::json!({"n": 1, "flag": "false"})).unwrap();
-        assert!(!d.flag);
     }
 }

@@ -7,8 +7,8 @@
 //! reachable and (b) request a replacement server when a reload stalls.
 //!
 //! To avoid a `tui -> cli` dependency, the CLI registers a default spawner here
-//! at startup (mirroring the `register_permission_notifier` /
-//! `register_api_key_fallback_resolver` inversion pattern). Consumers call
+//! at startup (mirroring the `register_api_key_fallback_resolver`
+//! inversion pattern). Consumers call
 //! [`is_running`] and [`spawn_default_server`] without knowing about `cli`.
 
 use anyhow::Result;

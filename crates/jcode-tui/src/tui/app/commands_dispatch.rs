@@ -13,7 +13,7 @@ use super::App;
 /// Run `trimmed` against every locally handled slash command.
 ///
 /// Returns `true` when a handler claimed the input. Callers own presentation
-/// concerns (clearing the input line, telemetry) because those differ between
+/// concerns (clearing the input line) because those differ between
 /// the local and remote entry points.
 pub(super) fn dispatch_local_command(app: &mut App, trimmed: &str) -> bool {
     super::commands::handle_cancel_command(app, trimmed)
@@ -34,7 +34,6 @@ pub(super) fn dispatch_local_command(app: &mut App, trimmed: &str) -> bool {
         || super::commands::handle_usage_command(app, trimmed)
         || super::productivity::handle_productivity_command(app, trimmed)
         || super::commands::handle_feedback_command(app, trimmed)
-        || super::commands::handle_telemetry_command(app, trimmed)
         || super::support::handle_support_command(app, trimmed)
         || super::state_ui::handle_info_command(app, trimmed)
         || super::auth::handle_auth_command(app, trimmed)

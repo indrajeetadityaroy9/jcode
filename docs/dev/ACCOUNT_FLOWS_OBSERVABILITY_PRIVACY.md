@@ -10,40 +10,30 @@ surfaces live in this repo; backend surfaces live in `solosystems-backend`.
 
 ## Existing surfaces (grounding)
 
-- Client telemetry pipeline: `crates/jcode-telemetry-core/src/lib.rs`
-  (`record_auth_success` @1409, `sanitize_telemetry_label` applied to all
-  auth labels @398-400; `AuthEvent` schema in
-  `crates/jcode-usage-types/src/lib.rs:270-284` has NO account_id/email slot,
-  by design — see the TODO at `src/cli/login/jcode_device.rs:370-374`).
-- Onboarding auth funnel: `auth_provider`, `auth_method`,
-  `auth_failure_reason` on onboarding step events
-  (`crates/jcode-telemetry-core/src/lib.rs:369-400`).
+- Client telemetry: **removed in this fork.** There is no client analytics
+  pipeline, no anonymous install id, and no outbound event endpoint. Anything
+  below describing client-side event collection is backend guidance only.
 - Failure classification labels: `crates/jcode-base/src/auth/login_diagnostics.rs`
   (`AuthFailureReason::label`) — the only failure detail that may be reported.
 - Local logs: `~/.jcode/logs/jcode-YYYY-MM-DD.log`.
-- Backend telemetry store: `telemetry-worker/` (D1; subscription analytics
-  columns from migration `0016_web_subscription_analytics.sql`).
-- Public privacy contract: `TELEMETRY.md` ("anonymous, minimal", no prompts
-  or code; opt-out env vars).
+- Backend analytics store: lives in `solosystems-backend`, not this repo.
 
 ## Never-log list (both repos, enforced by tests)
 
-These values must never appear in logs, telemetry, traces, crash reports, or
+These values must never appear in logs, traces, crash reports, or
 support bundles, at any log level:
 
 - `api_key` (JCODE_API_KEY) — full or truncated beyond `jc_...last4`.
 - `device_code`, magic-link tokens, approval URL query params.
-- Raw email addresses in telemetry (local logs may show what the user already
-  sees on screen; telemetry must not carry email; backend audit log stores
-  email only in the audit table, not app logs).
+- Raw email addresses (local logs may show what the user already sees on
+  screen; the backend audit log stores email only in the audit table, not
+  app logs).
 - Stripe secrets: webhook signing secret, customer payment details, full
   checkout/portal session URLs (they embed session secrets).
 - Env-file contents (`jcode-subscription` env file) and `Authorization`
   headers in any HTTP client debug logging.
 
-Enforcement: SN-03 conformance test greps captured login output; add a
-CI grep over `record_*` call sites asserting only sanitized labels flow into
-telemetry (all auth labels already pass through `sanitize_telemetry_label`).
+Enforcement: SN-03 conformance test greps captured login output.
 
 ## Audit events (backend, durable)
 
@@ -65,22 +55,7 @@ Correlation requirements: every audit row carries `account_id`,
 `request_id` (per HTTP request), and `flow_id` (one device-login attempt or
 one checkout attempt). `device_code_id` links flows 1-2; `stripe_event_id`
 links 4-6. The client sends no correlation IDs today; if added, use a random
-per-attempt UUID only, never the telemetry install id joined with account_id
-in the same event (keeps anonymous telemetry unlinkable to accounts).
-
-## Client telemetry (this repo, anonymous)
-
-Keep the current shape: success events with coarse `auth_provider` +
-`auth_method` ("jcode-subscription", "device_code_magic_link"), failure
-reasons restricted to `AuthFailureReason::label` values. Additions:
-
-- `auth_failure` event mirroring `auth_success` (reason label only).
-- Poll-loop outcome counter: approved/denied/expired/slow_down/error, plus
-  bucketed time-to-approve (e.g. <30s, <2m, <15m) — no timestamps precise
-  enough to correlate with backend logs.
-- Do NOT add `account_id` to `AuthEvent` (the existing TODO at
-  `src/cli/login/jcode_device.rs:370` should be resolved as "backend audit
-  owns account-linked events; client telemetry stays anonymous").
+per-attempt UUID only.
 
 ## Metrics and alerting (backend)
 
@@ -101,10 +76,6 @@ Metrics (per flow, labeled by outcome and tier where applicable):
   RV-01/CK-02 conformance bound), any DLQ depth > 0 for 15m.
 - `key_revocations_total{actor}`; alert on system/admin bulk revocations.
 
-Client-side (via existing anonymous telemetry, dashboarded in
-telemetry-worker): login success ratio by version, `auth_failure_reason`
-distribution — regression alert when a new release shifts failure mix.
-
 ## Traces
 
 Backend: one trace per request; parent span per flow_id so a device-login
@@ -124,7 +95,6 @@ login flow use the daily log with the flow outcome only.
 | Backend app logs | backend | 30 days |
 | Traces | backend | 7-14 days |
 | Stripe webhook payload archive | backend (encrypted) | 90 days |
-| Anonymous client telemetry | telemetry-worker D1 | per TELEMETRY.md; no account linkage |
 | Local client logs | `~/.jcode/logs/` | user-owned; must satisfy never-log list |
 | Support bundles | created on demand | delete after case close (<= 90 days) |
 
@@ -156,8 +126,5 @@ the audit table. No flow requires the user to paste a key or link.
 
 ## Follow-ups (actionable in this repo)
 
-- Add `record_auth_failure` for the jcode device flow (labels only).
-- Resolve the `account_linked` TODO in `jcode_device.rs` as "won't add to
-  client telemetry" and point to backend audit.
 - Add SN-03-style output-capture test asserting the never-log list for the
   login flow, and a doctor command for account diagnostics.

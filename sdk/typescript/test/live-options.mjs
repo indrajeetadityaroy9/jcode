@@ -69,7 +69,7 @@ await step("env reaches the instance", async () => {
   const c = await JcodeClient.launch({
     binary,
     workingDir: process.cwd(),
-    env: { JCODE_NO_TELEMETRY: "1" },
+    env: {},
   });
   await c.close();
 });

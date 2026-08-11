@@ -309,9 +309,6 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Cloud(CloudCommand),
 
-    /// Review and respond to pending ambient permission requests
-    Permissions,
-
     /// Inject externally transcribed text into the active Jcode TUI
     Transcript {
         /// Transcript text. If omitted, reads from stdin.

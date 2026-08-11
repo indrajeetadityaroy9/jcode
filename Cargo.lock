@@ -3507,7 +3507,6 @@ dependencies = [
  "jcode-side-panel-types",
  "jcode-storage",
  "jcode-task-types",
- "jcode-telemetry-core",
  "jcode-terminal-image",
  "jcode-terminal-launch",
  "jcode-tool-core",
@@ -3716,7 +3715,6 @@ dependencies = [
  "mail-parser",
  "native-tls",
  "pulldown-cmark",
- "urlencoding",
 ]
 
 [[package]]
@@ -4226,26 +4224,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jcode-telemetry-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "jcode-build-meta",
- "jcode-core",
- "jcode-logging",
- "jcode-provider-core",
- "jcode-selfdev-types",
- "jcode-storage",
- "jcode-usage-types",
- "reqwest 0.12.28",
- "serde_json",
- "tempfile",
- "tokio",
- "uuid",
- "walkdir",
-]
-
-[[package]]
 name = "jcode-terminal-image"
 version = "0.1.0"
 dependencies = [
@@ -4323,7 +4301,6 @@ dependencies = [
  "jcode-tui-markdown",
  "jcode-tui-mermaid",
  "jcode-tui-messages",
- "jcode-tui-permissions",
  "jcode-tui-render",
  "jcode-tui-session-picker",
  "jcode-tui-style",
@@ -4420,20 +4397,6 @@ dependencies = [
  "jcode-message-types",
  "jcode-session-types",
  "jcode-tui-markdown",
- "ratatui",
- "serde_json",
-]
-
-[[package]]
-name = "jcode-tui-permissions"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "crossterm",
- "jcode-base",
- "jcode-core",
- "jcode-tui-style",
  "ratatui",
  "serde_json",
 ]

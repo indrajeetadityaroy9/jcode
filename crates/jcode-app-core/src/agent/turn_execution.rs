@@ -63,7 +63,6 @@ impl Agent {
             system_reminder.filter(|value| !value.trim().is_empty());
 
         self.append_user_context_message(user_message, images)?;
-        crate::telemetry::record_turn();
         let turn_started_at = Instant::now();
         let start_message_index = self.message_count();
         self.fire_turn_start_hook("chat");

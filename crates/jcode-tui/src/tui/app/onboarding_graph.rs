@@ -9,7 +9,7 @@
 //! Three things live here:
 //!
 //!   1. [`NodeId`] / [`EdgeId`] / [`FailureReason`]: the closed vocabulary. These
-//!      are the only strings that ever reach telemetry, which is what makes the
+//!      are the only strings the graph ever emits, which is what makes the
 //!      trace payload structurally incapable of carrying user data.
 //!   2. [`graph`]: the authored nodes and edges, including the failure and
 //!      recovery nodes that the flow really has but never modelled.
@@ -61,7 +61,7 @@ pub enum NodeId {
 }
 
 impl NodeId {
-    /// Closed-vocabulary label. Safe to send in telemetry verbatim.
+    /// Closed-vocabulary label. Stable across releases.
     pub fn label(self) -> &'static str {
         match self {
             NodeId::Start => "start",
@@ -100,7 +100,7 @@ impl NodeId {
     }
 }
 
-/// Why a traversal left a node. Closed vocabulary; telemetry-safe.
+/// Why a traversal left a node. Closed vocabulary.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EdgeId {
     /// Probe found a blocking environment problem.
@@ -144,7 +144,7 @@ pub enum EdgeId {
 }
 
 impl EdgeId {
-    /// Closed-vocabulary label. Safe to send in telemetry verbatim.
+    /// Closed-vocabulary label. Stable across releases.
     pub fn label(self) -> &'static str {
         match self {
             EdgeId::RouteEnvBlocked => "route_env_blocked",
@@ -544,7 +544,7 @@ pub fn graph() -> Vec<Edge> {
 ///
 /// This is what connects the description to the implementation: the running
 /// flow reports its transitions in graph terms, so a debug log (and, later, a
-/// telemetry trace) describes a path we can replay and check. Wildcard-free, so
+/// recorded traversal) describes a path we can replay and check. Wildcard-free, so
 /// a new phase variant fails to compile until it has a node.
 pub fn node_for_phase(phase: &super::onboarding_flow::OnboardingPhase) -> NodeId {
     use super::onboarding_flow::OnboardingPhase as P;
@@ -872,7 +872,7 @@ mod tests {
 
     #[test]
     fn labels_are_a_closed_snake_case_vocabulary() {
-        // Telemetry sends these verbatim, so they must be stable identifiers
+        // These are emitted verbatim, so they must be stable identifiers
         // with no user data, no spaces, and no punctuation.
         let mut seen = BTreeSet::new();
         for node in NodeId::all() {

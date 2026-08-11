@@ -571,9 +571,6 @@ impl AmbientRunnerHandle {
         };
         let mut scheduler = AdaptiveScheduler::new(scheduler_config);
 
-        // Initialize safety system for ambient tools
-        ambient_tools::init_safety_system(Arc::clone(&self.inner.safety));
-
         loop {
             // Check state
             let state = { self.inner.state.read().await.clone() };
@@ -600,27 +597,6 @@ impl AmbientRunnerHandle {
                         _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {},
                     }
                     continue;
-                }
-
-                // Drop stale permission requests whose originating session is no longer active.
-                match self
-                    .inner
-                    .safety
-                    .expire_dead_session_requests("ambient_runner_gc")
-                {
-                    Ok(expired) if !expired.is_empty() => {
-                        logging::info(&format!(
-                            "Ambient runner: expired {} stale permission request(s)",
-                            expired.len()
-                        ));
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        logging::warn(&format!(
-                            "Ambient runner: failed to expire stale permission requests: {}",
-                            e
-                        ));
-                    }
                 }
             }
 
@@ -752,7 +728,6 @@ impl AmbientRunnerHandle {
                         provider: provider.name().to_string(),
                         model: provider.model(),
                         actions: Vec::new(),
-                        pending_permissions: self.inner.safety.pending_requests().len(),
                         summary: Some(result.summary.clone()),
                         compactions: result.compactions,
                         memories_modified: result.memories_modified,

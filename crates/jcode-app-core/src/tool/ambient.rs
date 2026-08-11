@@ -4,14 +4,13 @@ use crate::ambient::{
     ScheduleTarget, ScheduledItem,
 };
 use crate::ambient_runner::AmbientRunnerHandle;
-use crate::safety::{self, PermissionRequest, PermissionResult, SafetySystem, Urgency};
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use std::collections::HashSet;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock};
 
 // ---------------------------------------------------------------------------
 // Global state for ambient tools
@@ -40,29 +39,16 @@ pub fn take_cycle_result() -> Option<AmbientCycleResult> {
         .and_then(|mut slot| slot.take())
 }
 
-/// Global SafetySystem instance shared with ambient tools.
-static SAFETY_SYSTEM: OnceLock<Arc<SafetySystem>> = OnceLock::new();
 /// Shared schedule/ambient runner handle used to wake the background loop after
 /// queue changes.
 static SCHEDULE_RUNNER: OnceLock<Mutex<Option<AmbientRunnerHandle>>> = OnceLock::new();
 /// Session IDs currently allowed to use ambient-only permission workflows.
 static AMBIENT_SESSION_IDS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 
-pub fn init_safety_system(system: Arc<SafetySystem>) {
-    let _ = SAFETY_SYSTEM.set(system);
-}
-
 pub fn init_schedule_runner(handle: AmbientRunnerHandle) {
     if let Ok(mut slot) = SCHEDULE_RUNNER.get_or_init(|| Mutex::new(None)).lock() {
         *slot = Some(handle);
     }
-}
-
-fn get_safety_system() -> Arc<SafetySystem> {
-    SAFETY_SYSTEM
-        .get()
-        .cloned()
-        .unwrap_or_else(|| Arc::new(SafetySystem::new()))
 }
 
 fn ambient_session_ids() -> &'static Mutex<HashSet<String>> {
@@ -83,22 +69,12 @@ pub fn unregister_ambient_session(session_id: &str) {
     }
 }
 
+#[cfg(test)]
 fn is_ambient_session_registered(session_id: &str) -> bool {
     ambient_session_ids()
         .lock()
         .map(|ids| ids.contains(session_id))
         .unwrap_or(false)
-}
-
-fn ensure_ambient_session(ctx: &ToolContext) -> Result<()> {
-    if is_ambient_session_registered(&ctx.session_id) {
-        Ok(())
-    } else {
-        anyhow::bail!(
-            "request_permission is only available to ambient sessions (session '{}')",
-            ctx.session_id
-        )
-    }
 }
 
 // ===========================================================================
@@ -376,334 +352,6 @@ impl Tool for ScheduleAmbientTool {
             ToolOutput::new(format!("Scheduled ambient task {} for {}", id, when))
                 .with_title(format!("scheduled: {}", params.context)),
         )
-    }
-}
-
-// ===========================================================================
-// RequestPermissionTool
-// ===========================================================================
-
-pub struct RequestPermissionTool;
-
-impl Default for RequestPermissionTool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl RequestPermissionTool {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-#[derive(Deserialize)]
-struct RequestPermissionInput {
-    action: String,
-    description: String,
-    rationale: String,
-    #[serde(default)]
-    urgency: Option<String>,
-    #[serde(
-        default = "default_false",
-        deserialize_with = "super::serde_coerce::bool_from_string_or_bool"
-    )]
-    wait: bool,
-    #[serde(default)]
-    context: Option<Value>,
-}
-
-fn default_false() -> bool {
-    false
-}
-
-fn extract_context_string(map: &Map<String, Value>, keys: &[&str]) -> Option<String> {
-    keys.iter().find_map(|key| {
-        map.get(*key).and_then(|value| {
-            value.as_str().and_then(|s| {
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                }
-            })
-        })
-    })
-}
-
-fn extract_context_list(map: &Map<String, Value>, keys: &[&str]) -> Vec<String> {
-    for key in keys {
-        let Some(value) = map.get(*key) else {
-            continue;
-        };
-
-        if let Some(items) = value.as_array() {
-            let list: Vec<String> = items
-                .iter()
-                .filter_map(|item| item.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(ToString::to_string)
-                .collect();
-            if !list.is_empty() {
-                return list;
-            }
-        } else if let Some(single) = value.as_str() {
-            let trimmed = single.trim();
-            if !trimmed.is_empty() {
-                return vec![trimmed.to_string()];
-            }
-        }
-    }
-    Vec::new()
-}
-
-fn build_permission_review_context(
-    action: &str,
-    description: &str,
-    rationale: &str,
-    context: Option<&Value>,
-) -> Value {
-    let context_obj = context.and_then(Value::as_object);
-
-    let summary = context_obj
-        .and_then(|m| extract_context_string(m, &["summary", "what", "activity_summary"]))
-        .unwrap_or_else(|| description.to_string());
-
-    let why_permission_needed = context_obj
-        .and_then(|m| {
-            extract_context_string(
-                m,
-                &[
-                    "why_permission_needed",
-                    "why",
-                    "reason",
-                    "rationale",
-                    "justification",
-                ],
-            )
-        })
-        .unwrap_or_else(|| rationale.to_string());
-
-    let mut review = Map::new();
-    review.insert("summary".to_string(), Value::String(summary));
-    review.insert(
-        "why_permission_needed".to_string(),
-        Value::String(why_permission_needed),
-    );
-    review.insert(
-        "requested_action".to_string(),
-        Value::String(action.to_string()),
-    );
-
-    let string_fields: [(&str, &[&str]); 4] = [
-        (
-            "current_activity",
-            &["current_activity", "activity", "task", "current_task"],
-        ),
-        (
-            "expected_outcome",
-            &["expected_outcome", "outcome", "success_criteria", "success"],
-        ),
-        ("impact", &["impact", "user_impact"]),
-        ("rollback_plan", &["rollback_plan", "rollback"]),
-    ];
-
-    if let Some(map) = context_obj {
-        for (field_name, keys) in string_fields {
-            if let Some(value) = extract_context_string(map, keys) {
-                review.insert(field_name.to_string(), Value::String(value));
-            }
-        }
-
-        let list_fields: [(&str, &[&str]); 4] = [
-            (
-                "planned_steps",
-                &["planned_steps", "steps", "plan", "checklist"],
-            ),
-            ("files", &["files", "file_paths", "planned_files"]),
-            ("commands", &["commands", "planned_commands"]),
-            ("risks", &["risks", "risk", "safety_risks"]),
-        ];
-
-        for (field_name, keys) in list_fields {
-            let items = extract_context_list(map, keys);
-            if !items.is_empty() {
-                review.insert(
-                    field_name.to_string(),
-                    Value::Array(items.into_iter().map(Value::String).collect()),
-                );
-            }
-        }
-    }
-
-    if let Some(raw) = context
-        && !raw.is_object()
-    {
-        review.insert("notes".to_string(), raw.clone());
-    }
-
-    Value::Object(review)
-}
-
-#[async_trait]
-impl Tool for RequestPermissionTool {
-    fn name(&self) -> &str {
-        "request_permission"
-    }
-
-    fn description(&self) -> &str {
-        "Request user permission."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "required": ["action", "description", "rationale"],
-            "properties": {
-                "intent": super::intent_schema_property(),
-                "action": {
-                    "type": "string",
-                    "description": "The action requiring permission (e.g., 'create_pull_request', 'push', 'edit')"
-                },
-                "description": {
-                    "type": "string",
-                    "description": "What the action will do"
-                },
-                "rationale": {
-                    "type": "string",
-                    "description": "Why this action is beneficial"
-                },
-                "urgency": {
-                    "type": "string",
-                    "enum": ["low", "normal", "high"],
-                    "description": "How urgent the permission request is (default: normal)"
-                },
-                "wait": {
-                    "type": "boolean",
-                    "description": "If true, block until user decides (with timeout). If false, queue and continue."
-                },
-                "context": {
-                    "type": "object",
-                    "description": "Structured reviewer context. Include summary of current work and why permission is needed.",
-                    "properties": {
-                        "summary": {
-                            "type": "string",
-                            "description": "One-paragraph summary of what you are currently doing"
-                        },
-                        "why_permission_needed": {
-                            "type": "string",
-                            "description": "Why this action needs user approval right now"
-                        },
-                        "current_activity": {
-                            "type": "string",
-                            "description": "Current task or ambient objective"
-                        },
-                        "planned_steps": {
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "Short ordered plan of intended steps"
-                        },
-                        "files": {
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "Files expected to be created/modified"
-                        },
-                        "commands": {
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "Commands expected to be executed"
-                        },
-                        "risks": {
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "Known risks or side effects"
-                        },
-                        "rollback_plan": {
-                            "type": "string",
-                            "description": "How to back out changes if needed"
-                        },
-                        "expected_outcome": {
-                            "type": "string",
-                            "description": "What successful completion should look like"
-                        }
-                    },
-                    "additionalProperties": true
-                }
-            }
-        })
-    }
-
-    async fn execute(&self, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
-        ensure_ambient_session(&ctx)?;
-
-        let params: RequestPermissionInput = serde_json::from_value(input)?;
-
-        let urgency = match params.urgency.as_deref() {
-            Some("low") => Urgency::Low,
-            Some("high") => Urgency::High,
-            _ => Urgency::Normal,
-        };
-
-        let request_id = safety::new_request_id();
-        let now = Utc::now();
-        let review = build_permission_review_context(
-            &params.action,
-            &params.description,
-            &params.rationale,
-            params.context.as_ref(),
-        );
-        let mut request_context = json!({
-            "session_id": ctx.session_id,
-            "message_id": ctx.message_id,
-            "tool_call_id": ctx.tool_call_id,
-            "working_dir": ctx.working_dir.as_ref().map(|p| p.display().to_string()),
-            "requested_at": now.to_rfc3339(),
-        });
-        if let Some(obj) = request_context.as_object_mut() {
-            obj.insert("review".to_string(), review);
-            if let Some(user_context) = params.context {
-                obj.insert("details".to_string(), user_context);
-            }
-        }
-
-        let request = PermissionRequest {
-            id: request_id.clone(),
-            action: params.action.clone(),
-            description: params.description.clone(),
-            rationale: params.rationale.clone(),
-            urgency,
-            wait: params.wait,
-            created_at: now,
-            context: Some(request_context),
-        };
-
-        let system = get_safety_system();
-        let result = system.request_permission(request);
-
-        let output = match result {
-            PermissionResult::Approved { ref message } => {
-                let msg = message.as_deref().unwrap_or("no message");
-                format!("Permission approved: {}", msg)
-            }
-            PermissionResult::Denied { ref reason } => {
-                let reason = reason.as_deref().unwrap_or("no reason given");
-                format!("Permission denied: {}", reason)
-            }
-            PermissionResult::Queued { ref request_id } => {
-                format!(
-                    "Permission request queued (id: {}). \
-                     Action '{}' is pending user review.",
-                    request_id, params.action
-                )
-            }
-            PermissionResult::Timeout => {
-                "Permission request timed out. The user did not respond in time.".to_string()
-            }
-        };
-
-        Ok(ToolOutput::new(output).with_title(format!("permission: {}", params.action)))
     }
 }
 

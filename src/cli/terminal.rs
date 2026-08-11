@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::io::{self, IsTerminal, Write};
 use std::panic;
 
-use crate::{id, session, telemetry, tui};
+use crate::{id, session, tui};
 
 pub struct TuiRuntimeState {
     mouse_capture: bool,
@@ -189,9 +189,6 @@ pub fn install_panic_hook() {
         if let Some(session_id) = get_current_session() {
             print_session_resume_hint(&session_id);
 
-            if let Some((provider, model)) = telemetry::current_provider_model() {
-                telemetry::record_crash(&provider, &model, telemetry::SessionEndReason::Panic);
-            }
 
             if let Ok(mut session) = session::Session::load(&session_id)
                 && should_record_panic_as_crash(&session.status)
@@ -205,9 +202,6 @@ pub fn install_panic_hook() {
 
 pub fn mark_current_session_crashed(message: String) {
     if let Some(session_id) = get_current_session() {
-        if let Some((provider, model)) = telemetry::current_provider_model() {
-            telemetry::record_crash(&provider, &model, telemetry::SessionEndReason::Signal);
-        }
         if let Ok(mut session) = session::Session::load(&session_id)
             && matches!(session.status, session::SessionStatus::Active)
         {

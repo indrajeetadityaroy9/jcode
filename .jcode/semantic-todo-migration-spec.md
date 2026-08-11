@@ -81,7 +81,7 @@ continuation" plumbing stays, only comparisons change:
   - difficulty None | Trivial | Routine  -> WorkflowValidated or better
   - Involved and above                   -> OutcomeDelivered
   Difficulty itself is never a gate: absent difficulty just uses the lenient bar.
-- Autonomy: never gated anywhere. Display/telemetry only.
+- Autonomy: never gated anywhere. Display only.
 
 Delete or replace numeric constants (QUALITY_GATE_THRESHOLD, LOW_*,
 SEVERE_INTENT_MISUNDERSTANDING, TODO_CONFIDENCE_SPIKE) with enum-based
@@ -106,13 +106,12 @@ TUI code referencing the old constants must use these predicates.
   enum string so legacy transcripts/providers still parse. Empty string -> null.
 - Histories remain tool-maintained; record_score_observation generalizes over
   the enums (push when last != new).
-- Telemetry: TelemetryScoreSummary stays u8-based; map each enum to a
-  representative score via `legacy_score()` on each enum:
+- Numeric interop: each enum keeps a representative u8 via `legacy_score()`,
+  used by the todo UI for weighting and display:
   - IntentUnderstanding: 40/80/96/100
   - FeedbackLoopState: 10/35/65/88/98
   - ConfidenceState: 40/80/96/100
   - DeliveryState: 25/65/88/98
-  This keeps jcode-telemetry-core, usage-types, and the worker schema untouched.
 
 ## Always-save requirement
 
@@ -131,7 +130,7 @@ block persisting.
 - tui: update todos_view/ui_messages/info_widget tests to render state words.
 - Commands: `cargo test -p jcode-task-types -p jcode-base`,
   `cargo test -p jcode-app-core todo`, `cargo test -p jcode-tui todo`,
-  `cargo check -p jcode-tui -p jcode-telemetry-core`.
+  `cargo check -p jcode-tui`.
 
 Do NOT touch unrelated dirty files (desktop2, render-core, etc). Commit nothing;
 the coordinator commits.

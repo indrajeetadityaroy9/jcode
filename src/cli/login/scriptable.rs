@@ -82,7 +82,6 @@ pub(super) async fn run_automatic_google_login(
         eprintln!("Access tier: {}", tokens.tier.label());
         eprintln!("Tokens saved to {}", tokens_path.display());
     }
-    crate::telemetry::record_auth_success(provider_id, "oauth");
     Ok(LoginFlowOutcome::Completed)
 }
 
@@ -341,7 +340,6 @@ pub(super) async fn complete_scriptable_claude_login(
             .await
             .unwrap_or(None);
     clear_pending_login(&pending_path);
-    crate::telemetry::record_auth_success(provider_id, "oauth");
     emit_scriptable_auth_success(
         options.json,
         ScriptableAuthSuccess {
@@ -399,7 +397,6 @@ pub(super) async fn complete_scriptable_openai_login(
     .await?;
     auth::oauth::save_openai_tokens_for_account(&tokens, &account_label)?;
     clear_pending_login(&pending_path);
-    crate::telemetry::record_auth_success(provider_id, "oauth");
     let credentials_path = crate::storage::jcode_dir()?.join("openai-auth.json");
     emit_scriptable_auth_success(
         options.json,
@@ -443,7 +440,6 @@ pub(super) async fn complete_scriptable_gemini_login(
     };
     let tokens = auth::gemini::exchange_callback_code(&auth_code, &verifier, &redirect_uri).await?;
     clear_pending_login(&pending_path);
-    crate::telemetry::record_auth_success(provider_id, "oauth");
     emit_scriptable_auth_success(
         options.json,
         ScriptableAuthSuccess {
@@ -493,7 +489,6 @@ pub(super) async fn complete_scriptable_antigravity_login(
     )
     .await?;
     clear_pending_login(&pending_path);
-    crate::telemetry::record_auth_success(provider_id, "oauth");
     emit_scriptable_auth_success(
         options.json,
         ScriptableAuthSuccess {
@@ -555,7 +550,6 @@ pub(super) async fn complete_scriptable_google_login(
     )
     .await?;
     clear_pending_login(&pending_path);
-    crate::telemetry::record_auth_success(provider_id, "oauth");
     emit_scriptable_auth_success(
         options.json,
         ScriptableAuthSuccess {
@@ -598,7 +592,6 @@ pub(super) async fn complete_scriptable_copilot_login(
         .unwrap_or_else(|_| "unknown".to_string());
     auth::copilot::save_github_token(&token, &username)?;
     clear_pending_login(&pending_path);
-    crate::telemetry::record_auth_success(provider_id, "oauth_device_code");
     emit_scriptable_auth_success(
         options.json,
         ScriptableAuthSuccess {

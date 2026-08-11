@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Environment variable that marks a child process as running in self-dev client
-/// mode. Defined here (a low-level crate) so cross-cutting consumers (telemetry,
-/// process title, server tester spawning) can reference it without depending on
+/// mode. Defined here (a low-level crate) so cross-cutting consumers
+/// (process title, server tester spawning) can reference it without depending on
 /// the `cli` subsystem.
 pub const CLIENT_SELFDEV_ENV: &str = "JCODE_CLIENT_SELFDEV_MODE";
 

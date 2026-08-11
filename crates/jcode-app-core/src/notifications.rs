@@ -12,9 +12,8 @@ use crate::logging;
 use crate::safety::AmbientTranscript;
 
 use jcode_notify_email::{
-    ReplyAction, SendEmailRequest, build_permission_email_html, poll_imap_once, send_email,
+    ReplyAction, SendEmailRequest, poll_imap_once, send_email,
 };
-pub use jcode_notify_email::{extract_permission_id, parse_permission_reply};
 
 /// Stable schema version for files handed to the bundled macOS notification
 /// broker. The broker ignores payloads with a newer schema instead of guessing
@@ -61,7 +60,7 @@ pub struct MacosNotificationEnvelope {
 pub enum Priority {
     /// Routine cycle summaries
     Default,
-    /// Permission requests, errors
+    /// Errors and urgent conditions
     High,
     /// Critical safety issues
     Urgent,
@@ -127,45 +126,12 @@ impl NotificationDispatcher {
         let safe_body = format_cycle_body_safe(transcript);
         let detailed_body = format_cycle_body_detailed(transcript);
 
-        let priority = if transcript.pending_permissions > 0 {
-            Priority::High
-        } else {
-            Priority::Default
-        };
-
         self.send_all(
             &title,
             &safe_body,
             &detailed_body,
-            priority,
+            Priority::Default,
             Some(&transcript.session_id),
-        );
-    }
-
-    /// Send a permission request notification (high priority).
-    pub fn dispatch_permission_request(&self, action: &str, description: &str, request_id: &str) {
-        let title = format!("jcode: permission needed ({})", action);
-        let safe_body = "An ambient action needs your approval. Open jcode to review.".to_string();
-        let detailed_body = format!(
-            "Action: {}\n{}\n\nRequest ID: {}\nReview in jcode to approve or deny.",
-            action, description, request_id
-        );
-
-        // Build rich HTML email with approve/deny buttons
-        let reply_to = self
-            .config
-            .email_from
-            .as_deref()
-            .unwrap_or("jcode@localhost");
-        let email_html = build_permission_email_html(action, description, request_id, reply_to);
-
-        self.send_all_with_email_override(
-            &title,
-            &safe_body,
-            &detailed_body,
-            Priority::High,
-            Some(request_id),
-            Some(&email_html),
         );
     }
 
@@ -809,29 +775,6 @@ pub async fn imap_reply_loop(config: SafetyConfig) {
             Ok(Ok(actions)) => {
                 for action in &actions {
                     match action {
-                        ReplyAction::PermissionDecision {
-                            request_id,
-                            approved,
-                            message,
-                        } => {
-                            if let Err(e) = crate::safety::record_permission_via_file(
-                                request_id,
-                                *approved,
-                                "email_reply",
-                                message.clone(),
-                            ) {
-                                logging::error(&format!(
-                                    "Failed to record permission decision for {}: {}",
-                                    request_id, e
-                                ));
-                            } else {
-                                logging::info(&format!(
-                                    "Permission {} via email: {}",
-                                    if *approved { "approved" } else { "denied" },
-                                    request_id
-                                ));
-                            }
-                        }
                         ReplyAction::DirectiveReply { cycle_id, text } => {
                             if let Err(e) =
                                 crate::ambient::add_directive(text.clone(), cycle_id.clone())
@@ -875,13 +818,6 @@ fn format_cycle_body_safe(transcript: &AmbientTranscript) -> String {
     ));
     lines.push(format!("Compactions: {}", transcript.compactions));
 
-    if transcript.pending_permissions > 0 {
-        lines.push(format!(
-            "{} permission request(s) pending",
-            transcript.pending_permissions
-        ));
-    }
-
     lines.push("Check jcode for full details.".to_string());
     lines.join("\n")
 }
@@ -910,14 +846,6 @@ fn format_cycle_body_detailed(transcript: &AmbientTranscript) -> String {
         transcript.compactions,
     ));
 
-    if transcript.pending_permissions > 0 {
-        lines.push(String::new());
-        lines.push(format!(
-            "**⚠ {} permission request(s) pending** — review in jcode",
-            transcript.pending_permissions
-        ));
-    }
-
     // Include full conversation transcript if available
     if let Some(ref conversation) = transcript.conversation {
         lines.push(String::new());
@@ -945,7 +873,6 @@ mod tests {
             provider: "claude".to_string(),
             model: "claude-sonnet-4".to_string(),
             actions: Vec::new(),
-            pending_permissions: 0,
             summary: Some("Cleaned up 3 stale memories.".to_string()),
             compactions: 1,
             memories_modified: 3,
@@ -958,7 +885,6 @@ mod tests {
         assert!(body.contains("Check jcode for full details"));
         // Safe body must NOT include model-generated summary
         assert!(!body.contains("Cleaned up"));
-        assert!(!body.contains("permission"));
     }
 
     #[test]
@@ -971,7 +897,6 @@ mod tests {
             provider: "claude".to_string(),
             model: "claude-sonnet-4".to_string(),
             actions: Vec::new(),
-            pending_permissions: 0,
             summary: Some("Cleaned up 3 stale memories.".to_string()),
             compactions: 1,
             memories_modified: 3,
@@ -987,31 +912,6 @@ mod tests {
         assert!(body.contains("# Full Transcript"));
         assert!(body.contains("### User"));
         assert!(body.contains("Begin cycle."));
-    }
-
-    #[test]
-    fn test_format_cycle_body_with_pending_permissions() {
-        let transcript = AmbientTranscript {
-            session_id: "test_002".to_string(),
-            started_at: chrono::Utc::now(),
-            ended_at: Some(chrono::Utc::now()),
-            status: crate::safety::TranscriptStatus::Complete,
-            provider: "claude".to_string(),
-            model: "claude-sonnet-4".to_string(),
-            actions: Vec::new(),
-            pending_permissions: 2,
-            summary: None,
-            compactions: 0,
-            memories_modified: 0,
-            conversation: None,
-        };
-
-        let safe = format_cycle_body_safe(&transcript);
-        assert!(safe.contains("2 permission request(s) pending"));
-        assert!(safe.contains("Check jcode for full details"));
-
-        let detailed = format_cycle_body_detailed(&transcript);
-        assert!(detailed.contains("2 permission request(s) pending"));
     }
 
     #[test]

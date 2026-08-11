@@ -3,7 +3,7 @@ use clap::Parser;
 use std::process::Command as ProcessCommand;
 
 use crate::{
-    build, logging, perf, server, setup_hints, startup_profile, storage, telemetry, update,
+    build, logging, perf, server, setup_hints, startup_profile, storage, update,
 };
 
 use super::{
@@ -59,17 +59,6 @@ pub async fn run() -> Result<()> {
     // name their concrete types; this composition root wires them up instead.
     register_external_provider_runtimes();
 
-    // Invert the legacy safety -> notifications dependency: safety raises a
-    // permission request and the notifications layer (which depends on safety
-    // types) delivers it via the dispatcher registered here.
-    crate::safety::register_permission_notifier(|action, description, request_id| {
-        crate::notifications::NotificationDispatcher::new().dispatch_permission_request(
-            action,
-            description,
-            request_id,
-        );
-    });
-
     // Invert the legacy memory -> skill dependency: memory collects synthetic
     // entries from registered providers, and skill (the higher layer that
     // depends on MemoryEntry) registers its registry->memory adapter here.
@@ -112,10 +101,6 @@ pub async fn run() -> Result<()> {
 
     perf::init_background();
     startup_profile::mark("perf_init");
-
-    telemetry::record_install_if_first_run();
-    telemetry::record_upgrade_if_needed();
-    startup_profile::mark("telemetry_check");
 
     let args = parse_and_prepare_args()?;
     spawn_background_update_check(&args);

@@ -32,57 +32,11 @@ sha256_file() {
   fi
 }
 
-valid_conversion_id() {
-  printf '%s' "${JCODE_INSTALL_CONVERSION_ID:-}" |
-    grep -Eiq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-}
-
-telemetry_value() {
-  printf '%s' "$1" | tr -cd '[:alnum:]_. -' | cut -c1-100
-}
-
-report_install_funnel() {
-  stage="$1"
-  outcome="$2"
-  failure_stage="${3:-}"
-  [ "${JCODE_NO_TELEMETRY:-}" != "1" ] || return 0
-  [ "${DO_NOT_TRACK:-}" != "1" ] || return 0
-  valid_conversion_id || return 0
-
-  payload=$(printf '{"id":"%s","event":"install_funnel","version":"%s","os":"%s","arch":"%s","conversion_id":"%s","stage":"%s","outcome":"%s","source":"installer","install_method":"shell","failure_stage":"%s"}' \
-    "$JCODE_INSTALL_CONVERSION_ID" \
-    "$(telemetry_value "$INSTALL_VERSION")" \
-    "$(telemetry_value "$INSTALL_OS")" \
-    "$(telemetry_value "$INSTALL_ARCH")" \
-    "$JCODE_INSTALL_CONVERSION_ID" \
-    "$(telemetry_value "$stage")" \
-    "$(telemetry_value "$outcome")" \
-    "$(telemetry_value "$failure_stage")")
-  curl -fsS --max-time 2 -H 'Content-Type: application/json' \
-    --data "$payload" https://telemetry.jcode.sh/v1/event >/dev/null 2>&1 || true
-}
-
-persist_install_conversion_id() {
-  [ "${JCODE_NO_TELEMETRY:-}" != "1" ] || return 0
-  [ "${DO_NOT_TRACK:-}" != "1" ] || return 0
-  valid_conversion_id || return 0
-  jcode_home="${JCODE_HOME:-$HOME/.jcode}"
-  mkdir -p "$jcode_home" 2>/dev/null || return 0
-  (umask 077; printf '%s\n' "$JCODE_INSTALL_CONVERSION_ID" > "$jcode_home/install_conversion_id") \
-    2>/dev/null || return 0
-  chmod 600 "$jcode_home/install_conversion_id" 2>/dev/null || true
-}
-
 install_exit() {
   status=$?
   trap - EXIT
   set +e
   [ -z "$tmpdir" ] || rm -rf "$tmpdir"
-  if [ "$INSTALL_SUCCEEDED" = "1" ] && [ "$status" = "0" ]; then
-    report_install_funnel "installer_finish" "success" ""
-  else
-    report_install_funnel "installer_finish" "failure" "$INSTALL_STAGE"
-  fi
   exit "$status"
 }
 trap install_exit EXIT
@@ -139,8 +93,6 @@ case "$OS" in
     err "Unsupported OS: $OS (try building from source: https://github.com/$REPO)"
     ;;
 esac
-
-report_install_funnel "installer_start" "success" ""
 
 if [ "$IS_WINDOWS" = true ]; then
   INSTALL_DIR="${JCODE_INSTALL_DIR:-$LOCALAPPDATA/jcode/bin}"
@@ -530,6 +482,5 @@ else
   fi
 fi
 
-persist_install_conversion_id
 INSTALL_STAGE="complete"
 INSTALL_SUCCEEDED=1

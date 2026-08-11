@@ -7,7 +7,6 @@ __pycache__/
 # from $HOME (see scripts/onboarding_sandbox.sh seed-real-logins). Never commit.
 /.tmp/
 /.jcode/generated-images/
-/telemetry-worker/backups/
 target-ttest/
 target-ttest*/
 

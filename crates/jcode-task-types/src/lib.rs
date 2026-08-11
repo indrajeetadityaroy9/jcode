@@ -235,7 +235,7 @@ macro_rules! semantic_state {
                 }
             }
 
-            /// Representative 0-100 score for consumers (telemetry) that still
+            /// Representative 0-100 score for consumers (todo UI weighting) that still
             /// aggregate numerically.
             pub fn legacy_score(&self) -> u8 {
                 match self {
