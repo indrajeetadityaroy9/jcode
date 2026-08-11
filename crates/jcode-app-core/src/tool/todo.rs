@@ -414,6 +414,15 @@ fn record_reframe_observations(
                     .map(|state| state.as_str().to_string()),
             });
         }
+        if !crate::todo::feedback_loop_traceability_passes(goal) {
+            observations.push(GateObservation {
+                kind: GateObservationKind::FeedbackLoopTraceability,
+                group: goal.group.clone(),
+                state: goal
+                    .feedback_loop_traceability
+                    .map(|state| state.as_str().to_string()),
+            });
+        }
     }
     (observations, immediate)
 }
