@@ -1226,6 +1226,11 @@ pub(super) fn is_prompt_recall_modifier(modifiers: KeyModifiers) -> bool {
     )
 }
 
+pub(super) fn is_alternate_enter(code: KeyCode, modifiers: KeyModifiers) -> bool {
+    code == KeyCode::Enter
+        && modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER | KeyModifiers::META)
+}
+
 pub(super) fn handle_prompt_history_navigation(
     app: &mut App,
     code: KeyCode,
@@ -1788,11 +1793,11 @@ pub(super) fn is_next_prompt_new_session_hotkey(code: KeyCode, modifiers: KeyMod
     if code != KeyCode::Char(' ') {
         return false;
     }
-    // Accept either Command/Super+Space (macOS Cmd, often eaten by Spotlight) or
-    // Option/Alt+Space (macOS Option) so the fork-to-new-session arming hotkey is
-    // reachable across terminals. Reject Ctrl/Hyper combos so other chords still
-    // route to their own handlers.
-    let has_super = modifiers.contains(KeyModifiers::SUPER);
+    // Terminals report Command/Super as either SUPER or META depending on their
+    // keyboard protocol. Accept both encodings, plus Option/Alt+Space, so the
+    // shortcut remains reachable across terminals. Reject Ctrl/Hyper combos so
+    // other chords still route to their own handlers.
+    let has_super = modifiers.intersects(KeyModifiers::SUPER | KeyModifiers::META);
     let has_alt = modifiers.contains(KeyModifiers::ALT);
     (has_super || has_alt) && !modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::HYPER)
 }
@@ -2946,10 +2951,9 @@ impl App {
             return Ok(());
         }
 
-        // Ctrl+Enter / Cmd+Enter: does opposite of queue_mode during processing
-        if code == KeyCode::Enter
-            && modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER)
-        {
+        // Ctrl+Enter / Cmd+Enter: does opposite of queue_mode during processing.
+        // Terminals may encode Command as either Super or Meta.
+        if is_alternate_enter(code, modifiers) {
             handle_alternate_enter(self);
             return Ok(());
         }
