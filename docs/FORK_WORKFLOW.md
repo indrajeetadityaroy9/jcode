@@ -415,7 +415,10 @@ Commit the doc update as part of the sync, before building — §4 requires a cl
 cd "$MAIN"
 git status --porcelain        # empty, so the version string is reproducible
 
-cargo build --profile release-lto 2>&1; echo "CARGO_EXIT=$?"
+# Pin the hash. Without this the binary embeds whatever hash the build script
+# last cached — see Pitfall 10; committing does NOT refresh it.
+JCODE_BUILD_GIT_HASH="$(git rev-parse --short HEAD)" \
+  cargo build --profile release-lto 2>&1; echo "CARGO_EXIT=$?"
 ```
 
 - **Never pipe cargo through `tail`/`head`** — you get the *pager's* exit code and a failed
@@ -425,9 +428,14 @@ cargo build --profile release-lto 2>&1; echo "CARGO_EXIT=$?"
   as advisory only (it always fails here).
 - `release-lto` = thin LTO, ~5–7 min cold on an M-series laptop at the repo's pinned
   `jobs = 4` (`.cargo/config.toml`, deliberate RAM cap).
-- **Commit before building.** `jcode-build-meta` bakes the git hash in; building from a dirty
-  tree yields an unreproducible binary. Forcing a re-stamp afterwards (`touch
-  crates/jcode-build-meta/build.rs`) costs another full LTO rebuild.
+- **Commit before building, but do not rely on it for the stamp.** A clean tree keeps the
+  `-dirty` suffix off, which is real — but the embedded *hash* comes from a build-script cache
+  that git activity deliberately does not invalidate. Pin it with `JCODE_BUILD_GIT_HASH` as
+  above. `touch crates/jcode-build-meta/build.rs` also works and costs the same full LTO
+  rebuild, but the env override is the mechanism the build script documents as intended.
+- **A failed build still poisons the stamp.** The cache survives the failure, so a later
+  successful build silently inherits the *earlier* HEAD. This is why the env override matters
+  more than build ordering.
 
 ---
 
@@ -568,8 +576,32 @@ Each of these cost real time. The symptom is what made it visible.
    upstream bug, invisible on Linux, that breaks the first macOS build. Fixed in this fork;
    re-check after syncs.
 
-10. **`jcode-build-meta` caches the version stamp.** Committing after building leaves a stale
-    hash in the binary; re-stamping forces a full LTO rebuild. Commit first.
+10. **`jcode-build-meta` caches the version stamp — and "commit first" does NOT fix it.**
+    This entry previously said to commit before building. That advice is wrong: the build
+    script *deliberately* does not declare `.git/HEAD` or `.git/index` as `rerun-if-changed`
+    inputs, because doing so turned every `git add`/`git status` into a full-tree recompile
+    (see the long comment in `crates/jcode-build-meta/build.rs`). Committing therefore does not
+    invalidate the stamp at all.
+    *Symptom:* after committing `a9ff3a78b` and rebuilding, `jcode --version` still reported
+    `5c2f81b0e` — the hash cached by an **earlier failed build** in the same session. Gate 9
+    fails and no amount of committing or rebuilding changes it.
+    *Fix:* use the env overrides, which **are** declared `rerun-if-env-changed`:
+    ```bash
+    JCODE_BUILD_GIT_HASH="$(git rev-parse --short HEAD)" cargo build --profile release-lto
+    ```
+    The build script's own comment confirms this is the intended path: release/dist builds set
+    `JCODE_RELEASE_BUILD=1` / `JCODE_BUILD_SEMVER` precisely so "released binaries always embed
+    the exact version/hash", while ordinary dev builds accept hash lag as cosmetic.
+    **Any build you are about to install is a release build, not a dev build** — §5 keys the
+    install directory off the hash, so a binary that self-reports a different commit than the
+    `versions/<hash>/` it lives in is exactly the incoherence gate 9 exists to catch.
+
+10b. **A wrapper's trailing `echo` masks cargo's exit code too.** Pitfall 2 covers piping
+    through `tail`. The same failure wears a second disguise: running
+    `cargo build … > log; echo "CARGO_EXIT=$?" >> log` in a background task makes the *task*
+    exit 0 because `echo` succeeded, and the harness then reports **"completed (exit code 0)"**
+    for a build that failed with 101. *Fix:* never trust the task-completion status; read
+    `CARGO_EXIT=` out of the log, and grep the log for `^error`.
 
 11. **`tail -f` monitors never self-terminate.** For "tell me when the build finishes", use a
     background command that exits — the harness notifies on completion by itself.
