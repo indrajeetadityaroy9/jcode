@@ -43,9 +43,14 @@ section "deleted crates must not reappear in any manifest"
 verdict "$(grep -rn 'jcode-telemetry-core\|jcode-tui-permissions\|jcode-gateway-types' \
     Cargo.toml crates/*/Cargo.toml 2>/dev/null | sed 's/^/  /')"
 
+# `transcript_telemetry`/`upload_transcript` are here because the v0.76.0 sync
+# merged a `transcript_telemetry_sent` struct field and its initializer with no
+# conflict marker. Neither carries a `crate::telemetry::` prefix, so every
+# pattern above was blind to them and only the unused-field warning would have
+# surfaced it.
 section "deleted Rust APIs must have no call sites"
 verdict "$(grep -rnE \
-    'crate::telemetry::|jcode_telemetry_core|crate::gateway::|jcode_gateway_types|jcode_tui_permissions|crate::sponsors|DiscoverToolsTool|record_permission_via_file|register_permission_notifier|RequestPermissionTool|safety::(PermissionRequest|PermissionResult|ActionTier|Urgency)|\.record_decision\(|\.pending_requests\(\)' \
+    'crate::telemetry::|jcode_telemetry_core|crate::gateway::|jcode_gateway_types|jcode_tui_permissions|crate::sponsors|DiscoverToolsTool|record_permission_via_file|register_permission_notifier|RequestPermissionTool|safety::(PermissionRequest|PermissionResult|ActionTier|Urgency)|\.record_decision\(|\.pending_requests\(\)|transcript_telemetry|upload_transcript' \
     --include='*.rs' crates/ src/ tests/ 2>/dev/null | filter_tests | sed 's/^/  /')"
 
 section "removed tool / CLI registrations"

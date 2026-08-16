@@ -42,7 +42,7 @@ EXCLUDED_DESC='subscription onboarding|onboarding[^.]*subscription|defaults to t
 # Each subsystem needs a BARE stem, not just its crate name. `jcode-gateway-types`
 # matches the crate but not `GatewayConfig`, which is how three purged config
 # fields were first misreported as dropped upstream work.
-PURGED_IDENT='telemetry|sponsors|gateway|discover|integration_tools|request_permission|jcode-tui-permissions|^[[:space:]]*(Pair|Permissions|Telemetry)\b'
+PURGED_IDENT='telemetry|sponsors|gateway|discover|integration_tools|request_permission|jcode-tui-permissions|phone-server|scripts/remote/|jcode-pair|^[[:space:]]*(Pair|Permissions|Telemetry)\b'
 
 hdr() { printf '\n\033[1m== %s ==\033[0m\n' "$1"; }
 mark() {
@@ -57,6 +57,40 @@ mark_i() { grep -qiE "$PURGED_IDENT" <<<"$1" && printf 'PURGED' || printf 'KEEP'
 emit_i() { while IFS= read -r l; do
     t=$(sed 's/^+//' <<<"$l"); printf '    %-6s %s\n' "$(mark_i "$t")" "$(sed 's/^ *//' <<<"$t")"
   done; }
+
+# Emit "EnumName.Variant" for each CLI variant added in <base>..<ref>.
+# A variant name alone is ambiguous — `Enable`/`Disable` belong to
+# TelemetryCommand, which is purged — so attribute each to its enclosing enum,
+# exactly as config fields are attributed to their struct.
+cli_variants() {
+  git diff -U15 "$1".."$2" -- src/cli/args.rs 2>/dev/null | awk '
+    /^[+ ].*enum [A-Za-z_]+/ { e=$0; sub(/^.*enum /,"",e); sub(/[^A-Za-z_].*/,"",e); next }
+    /^@@/ { e="?"; next }
+    /^\+[[:space:]]{4}[A-Z][A-Za-z]+[[:space:]]*[({,]/ {
+      v=$0; sub(/^\+[[:space:]]+/,"",v); sub(/[^A-Za-z_].*/,"",v)
+      print (e=="" ? "?" : e) "." v
+    }' | sort -u
+}
+
+# Emit "StructName.field" for each config field added in <base>..<ref>.
+config_fields() {
+  git diff -U15 "$1".."$2" -- crates/jcode-config-types/src/lib.rs 2>/dev/null | awk '
+    /^[+ ]pub struct [A-Za-z_]+/ { s=$0; sub(/^[+ ]pub struct /,"",s); sub(/[^A-Za-z_].*/,"",s); next }
+    /^@@/ { s="?"; next }
+    /^\+[[:space:]]+pub [a-z_]+:/ {
+      f=$0; sub(/^\+[[:space:]]+pub /,"",f); sub(/:.*/,"",f)
+      print (s=="" ? "?" : s) "." f
+    }' | sort -u
+}
+
+# Classify an "Owner.member" pair. When the owner could not be determined from
+# diff context, the member name alone is often still decisive (`Pair`,
+# `Telemetry`); only fall back to REVIEW when neither resolves.
+classify_pair() { # classify_pair <owner> <member> -> PURGED|KEEP|REVIEW
+  if [ "$(mark_i "$1")" = PURGED ] || [ "$(mark_i "$2")" = PURGED ]; then printf 'PURGED'
+  elif [ "$1" = "?" ]; then printf 'REVIEW'
+  else printf 'KEEP'; fi
+}
 
 # ---------------------------------------------------------------- inventory --
 if [ "$MODE" = inventory ]; then
@@ -97,8 +131,11 @@ if [ "$MODE" = inventory ]; then
     | grep -E '^\+\s+"crates/' | emit_i
 
   echo "  -- new CLI subcommands (src/cli/args.rs) --"
-  git diff "$BASE".."$REF" -- src/cli/args.rs 2>/dev/null \
-    | grep -E '^\+\s{4}[A-Z][A-Za-z]+\s*[({,]' | emit_i
+  cli_variants "$BASE" "$REF" | while IFS= read -r e; do
+    [ -z "$e" ] && continue
+    en=${e%%.*}; va=${e#*.}
+    printf '    %-6s %s.%s\n' "$(classify_pair "$en" "$va")" "$en" "$va"
+  done
 
   # Registrations span several lines, so the tool NAME is usually on its own
   # line rather than beside the insert_tool call. Pull the quoted names.
@@ -107,8 +144,11 @@ if [ "$MODE" = inventory ]; then
     | grep '^+' | grep -oE '"[a-z][a-z_]{2,}"' | sort -u | emit_i
 
   echo "  -- new config fields --"
-  git diff "$BASE".."$REF" -- crates/jcode-config-types/src/lib.rs 2>/dev/null \
-    | grep -E '^\+\s+pub [a-z_]+:' | emit_i
+  config_fields "$BASE" "$REF" | while IFS= read -r e; do
+    [ -z "$e" ] && continue
+    st=${e%%.*}; fl=${e#*.}
+    printf '    %-6s %s.%s\n' "$(classify_pair "$st" "$fl")" "$st" "$fl"
+  done
 
   echo "  -- new scripts --"
   git diff --name-only --diff-filter=A "$BASE".."$REF" -- scripts/ 2>/dev/null | emit_i
@@ -148,13 +188,15 @@ elif [ "$MODE" = verify ]; then
                     || { printf '  MISS  workspace member %s\n' "$crate"; fail=1; }
   done < <(git diff "$BASE".."$REF" -- Cargo.toml 2>/dev/null | grep -E '^\+\s+"crates/')
 
-  while IFS= read -r name; do
-    [ -z "$name" ] && continue
-    [ "$(mark_i "$name")" = PURGED ] && { printf '  SKIP  CLI %s (purged by policy)\n' "$name"; continue; }
-    check "CLI subcommand $name" "^[[:space:]]+${name}[[:space:]]*[({,]" src/cli/args.rs
-  done < <(git diff "$BASE".."$REF" -- src/cli/args.rs 2>/dev/null \
-             | grep -E '^\+[[:space:]]{4}[A-Z][A-Za-z]+[[:space:]]*[({,]' \
-             | sed -E 's/^\+[[:space:]]+([A-Za-z]+).*/\1/' | sort -u)
+  while IFS= read -r entry; do
+    [ -z "$entry" ] && continue
+    en=${entry%%.*}; name=${entry#*.}
+    case "$(classify_pair "$en" "$name")" in
+      PURGED) printf '  SKIP  CLI %s.%s (purged by policy)\n' "$en" "$name" ;;
+      REVIEW) printf '  REVIEW CLI %s (enclosing enum not in diff context — classify by hand)\n' "$name" ;;
+      *)      check "CLI subcommand $en.$name" "^[[:space:]]+${name}[[:space:]]*[({,]" src/cli/args.rs ;;
+    esac
+  done < <(cli_variants "$BASE" "$REF")
 
   # A bare field name carries no subsystem: `bind_addr`, `port` and `endpoint`
   # all belong to GatewayConfig, which this fork purges. Classifying on the
@@ -163,19 +205,12 @@ elif [ "$MODE" = verify ]; then
   while IFS= read -r entry; do
     [ -z "$entry" ] && continue
     struct=${entry%%.*}; field=${entry#*.}
-    if [ "$struct" = "?" ]; then
-      printf '  REVIEW config field %s (enclosing struct not in diff context — classify by hand)\n' "$field"
-      continue
-    fi
-    [ "$(mark_i "$struct")" = PURGED ] && { printf '  SKIP  config %s.%s (purged by policy)\n' "$struct" "$field"; continue; }
-    check "config field $struct.$field" "pub ${field}:" crates/jcode-config-types/src/lib.rs
-  done < <(git diff -U15 "$BASE".."$REF" -- crates/jcode-config-types/src/lib.rs 2>/dev/null | awk '
-      /^[+ ]pub struct [A-Za-z_]+/ { s=$0; sub(/^[+ ]pub struct /,"",s); sub(/[^A-Za-z_].*/,"",s); next }
-      /^@@/ { s="?"; next }
-      /^\+[[:space:]]+pub [a-z_]+:/ {
-        f=$0; sub(/^\+[[:space:]]+pub /,"",f); sub(/:.*/,"",f)
-        print (s=="" ? "?" : s) "." f
-      }' | sort -u)
+    case "$(classify_pair "$struct" "$field")" in
+      PURGED) printf '  SKIP  config %s.%s (purged by policy)\n' "$struct" "$field" ;;
+      REVIEW) printf '  REVIEW config field %s (enclosing struct not in diff context — classify by hand)\n' "$field" ;;
+      *)      check "config field $struct.$field" "pub ${field}:" crates/jcode-config-types/src/lib.rs ;;
+    esac
+  done < <(config_fields "$BASE" "$REF")
 
   echo
   if [ "$fail" -eq 0 ]; then echo "FEATURE VERIFY: all KEEP items present"

@@ -25,7 +25,7 @@
 | Upstream | `https://github.com/1jehuang/jcode` (branch `master`) |
 | This fork's origin | `git@github.com:indrajeetadityaroy9/jcode.git` |
 | Local checkout | `/Users/indrajeetadityaroy/jcode` (`$MAIN` throughout this doc) |
-| **Last upstream merge** | **`fd1ff012c` — v0.75.3** |
+| **Last upstream merge** | **`c4cdc6768` — v0.76.0** (merged 2026-08-16 as `2fb0f158e`) |
 | Rollback tag convention | `pre-merge-YYYY-MM-DD` |
 | Install layout | `~/.jcode/builds/versions/<hash>/` + `stable`/`current` symlinks + `~/.local/bin/jcode` |
 
@@ -371,12 +371,18 @@ git log -1 --pretty=%p        # MUST print TWO hashes. One = not recorded as a
                               # merge; future syncs will re-conflict everything.
 ```
 
-Transfer the **verified commit** — never replay resolutions by hand:
+Transfer the **verified commit** — never replay resolutions by hand. §3.1 clones `$MAIN`, so
+the tmp clone is on **`master`**; there is no `merge-upstream` branch to fetch:
 ```bash
 cd "$MAIN"
-git fetch "$WS/fork" merge-upstream:verified
+git fetch "$WS/fork" master:verified
 git merge --ff-only verified
 ```
+
+> **`--ff-only` constrains ordering for the whole sync.** It succeeds only while `$MAIN`'s HEAD
+> is still the merge's first parent. Any commit landed in `$MAIN` between the §3.1 clone and
+> this transfer breaks it. Stash unrelated work (tooling fixes, doc edits) and commit it
+> *after* the transfer, not before.
 
 ### 3.6 Update this document
 
@@ -610,3 +616,17 @@ Each of these cost real time. The symptom is what made it visible.
     *Symptom:* `expected /^\s++    Pair {\s*[({,]/`. *Fix:* `[[:space:]]` in every `sed`
     expression. GNU-only regex shorthands are a recurring hazard in this repo's scripts —
     `grep -E` accepts `\s` here, `sed -E` does not.
+
+21. **v0.76.0 shipped its headline feature *inside* a purged subsystem.** "Opt-in transcript
+    telemetry" meant the sync's biggest diff was code we delete, while its real keepers (Grok
+    Build TUI login, Anthropic-compatible profiles) were small. *Lesson:* commit count is a poor
+    proxy for effort — 77 commits with 3 `MIXED` took longer than the prior 159 with 12, because
+    the telemetry surface reached into `agent.rs`, `args.rs`, `dispatch.rs`, `startup.rs` and
+    `mod.rs` and **almost none of it conflicted**.
+
+22. **`git rm` refuses on merge-added files.** Purged files that arrive as clean `A` additions
+    (`.github/`, `src/cli/telemetry.rs`) are already staged, so `git rm` errors with "changes
+    staged in the index". *Fix:* `git rm -r -f`. Do not `--cached`, which keeps them on disk.
+
+23. **The tmp clone is on `master`, not `merge-upstream`.** §3.5 documented a branch §3.1 never
+    creates. *Symptom:* `fatal: couldn't find remote ref merge-upstream`. Fixed in §3.5.
