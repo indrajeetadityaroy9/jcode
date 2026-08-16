@@ -249,6 +249,8 @@ pub struct Agent {
     /// Persists across turns so the coordinator's viewport never blanks at
     /// turn boundaries or freezes during long tool calls.
     inline_tail: inline_tail::InlineTailBuffer,
+    /// Prevent duplicate content uploads when shutdown/finalization is invoked
+    /// more than once for the same in-memory agent.
 }
 
 impl Agent {
@@ -556,6 +558,17 @@ impl Agent {
         self.locked_tools = None;
         self.mcp_late_register_resolved = false;
         self.rewind_undo_snapshot = None;
+    }
+
+    /// Synchronize the remote client's selected skill, accepting only names
+    /// present in the daemon's own registry snapshot.
+    pub(super) fn set_remote_active_skill(&mut self, active_skill: Option<String>) -> bool {
+        let skills = self.current_skills_snapshot();
+        let recognized = active_skill
+            .as_ref()
+            .is_none_or(|name| skills.get(name).is_some());
+        self.active_skill = active_skill.filter(|name| skills.get(name).is_some());
+        recognized
     }
 
     fn sync_session_compaction_state_from_manager(

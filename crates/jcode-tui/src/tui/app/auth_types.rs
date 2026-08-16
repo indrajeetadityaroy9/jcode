@@ -46,6 +46,8 @@ pub(crate) enum PendingLogin {
     CursorApiKey,
     /// GitHub Copilot device flow in progress (polling in background)
     Copilot,
+    /// Grok Build device/browser flow in progress via Jcode's managed backend.
+    GrokBuild,
     /// Waiting for the user to choose which external auth sources to import.
     AutoImportSelection {
         candidates: Vec<crate::external_auth::ExternalAuthReviewCandidate>,
