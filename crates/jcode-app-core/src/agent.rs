@@ -249,8 +249,6 @@ pub struct Agent {
     /// Persists across turns so the coordinator's viewport never blanks at
     /// turn boundaries or freezes during long tool calls.
     inline_tail: inline_tail::InlineTailBuffer,
-    /// Prevent duplicate content uploads when shutdown/finalization is invoked
-    /// more than once for the same in-memory agent.
 }
 
 impl Agent {

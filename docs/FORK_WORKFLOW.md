@@ -630,3 +630,12 @@ Each of these cost real time. The symptom is what made it visible.
 
 23. **The tmp clone is on `master`, not `merge-upstream`.** §3.5 documented a branch §3.1 never
     creates. *Symptom:* `fatal: couldn't find remote ref merge-upstream`. Fixed in §3.5.
+
+24. **Deleting a purged struct field by line leaves its doc comment, and E0585 cascades.**
+    Stripping `transcript_telemetry_sent` with a line filter orphaned the `///` above it. That
+    is a *parse* error, so the whole `Agent` struct mis-parsed and **12 additional bogus E0308 /
+    E0277 "mismatched types" errors** appeared in files the merge never touched
+    (`turn_execution.rs`), which reads exactly like a real semantic merge break.
+    *Fix:* delete the doc comment with the field, and always fix the **first** error before
+    believing any that follow. `cargo check -p <crate>` confirms in seconds what a full LTO
+    build takes minutes to re-prove.
