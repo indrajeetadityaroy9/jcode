@@ -8,7 +8,9 @@
 **Scope of this document**
 1. What this fork removes, and why that must survive every sync
 2. Full uninstall / clean slate
-3. Sync with upstream, filtering out the purged subsystems
+3. Sync with upstream — filtering out the purged subsystems **and** confirming upstream's new
+   features actually arrived. Both directions matter: a sync that quietly loses features is as
+   much a failure as one that quietly reabsorbs telemetry.
 4. Build
 5. Install
 6. Verification gates
@@ -22,9 +24,15 @@
 |---|---|
 | Upstream | `https://github.com/1jehuang/jcode` (branch `master`) |
 | This fork's origin | `git@github.com:indrajeetadityaroy9/jcode.git` |
-| Last upstream merge | `fd1ff012c` — v0.75.3 |
+| Local checkout | `/Users/indrajeetadityaroy/jcode` (`$MAIN` throughout this doc) |
+| **Last upstream merge** | **`fd1ff012c` — v0.75.3** |
 | Rollback tag convention | `pre-merge-YYYY-MM-DD` |
 | Install layout | `~/.jcode/builds/versions/<hash>/` + `stable`/`current` symlinks + `~/.local/bin/jcode` |
+
+> ⚠️ **The "Last upstream merge" row is load-bearing.** §3.2 classifies
+> `BASE..upstream/master`, and `BASE` comes from this row. If it goes stale the next
+> sync classifies against the wrong base and silently under-reports the work.
+> **§3.6 updates it — do not skip that step.**
 
 **Architecture facts that shape this runbook**
 
@@ -56,12 +64,12 @@ file we kept.
 
 **Deliberately *not* removed** (easy to delete by mistake):
 
-- `jcode-base/src/login_qr.rs` + `qrcode` dep — OAuth device-code login, 13 callers
+- `jcode-base/src/login_qr.rs` + `qrcode` dep — OAuth device-code login, 14 references across 7 files
 - `jcode-base/src/session/load_telemetry.rs` — session-load burst detection, **not** analytics
 - Provider KV-cache "telemetry" in `info_widget.rs` / `state_ui.rs` — the cold-cache warning
 - `subscription_api.rs` / `subscription_catalog.rs` / `/subscription` / `jcode login --provider jcode` — provider auth
 - `ApiEvent::PermissionRequest` in `jcode-harness-api` / `jcode-sdk` — desktop wire protocol
-- All 19 `jcode-provider-*` crates and every OAuth flow
+- All 20 `jcode-provider-*` crates and every OAuth flow
 
 **Also excluded by choice** (not purged, just not merged from upstream):
 subscription onboarding pill · discovery reframing · upstream's other onboarding changes.
@@ -77,6 +85,24 @@ subscription onboarding pill · discovery reframing · upstream's other onboardi
 
 Keep its patterns **tight**. A guard that cries wolf gets ignored — bare `request_permission`
 matches an unrelated Grok provider method; the quoted tool name and the type name do not.
+
+### The three scripts, and why they must move together
+
+| Script | Direction | Answers |
+|---|---|---|
+| `purge-guard.sh` | defensive | is purged code present in the tree? |
+| `classify-upstream.sh` | defensive | which incoming commits *risk* reintroducing it? |
+| `upstream-features.sh` | **offensive** | what did upstream add, and did it actually land? |
+
+All three encode the same §1 invariant in three different vocabularies — a tree scan, a commit
+walk, and a changelog/structural read. **Change one, change all three.** A classifier that lags
+the guard reports work as safe that the guard later rejects; a feature script that lags either
+one reports purged code as missing upstream work.
+
+One subtlety worth stating, because it has already caused a false alarm: prose patterns and
+identifier patterns are *not* interchangeable. A changelog line says "pair your phone"; the
+manifest says `jcode-gateway-types`; the config type says `GatewayConfig`. Each subsystem needs
+a **bare stem** in the identifier pattern, not just its crate name.
 
 ---
 
@@ -142,12 +168,21 @@ is verified.
 ### 3.1 Stage in tmp
 
 ```bash
-MAIN=/path/to/jcode
+MAIN=/Users/indrajeetadityaroy/jcode
 WS=/tmp/jcode-sync && rm -rf "$WS" && mkdir -p "$WS"
 
 cd "$MAIN"
 git status --porcelain        # MUST be empty
+
+# Push BEFORE you start. The tmp clone below copies $MAIN, so the sync works
+# unpushed — but then the merge you are about to attempt, and the rollback tag
+# that protects it, exist on exactly one disk. Pushing also makes the next
+# sync's BASE reproducible from a second checkout.
+git push origin master
 git tag -a "pre-merge-$(date +%F)" -m "rollback point" HEAD   # -a: annotated tags may be forced
+git push origin "pre-merge-$(date +%F)"                       # tags are NOT pushed by `git push`
+
+git rev-list --left-right --count origin/master...master      # MUST print "0	0"
 
 git clone -q --no-hardlinks "$MAIN" "$WS/fork"
 cd "$WS/fork"
@@ -163,15 +198,90 @@ test -f .git/MERGE_HEAD || echo "MERGE DID NOT START"
 ### 3.2 Classify before resolving
 
 Most upstream commits never touch purged code. Classifying tells you how much judgement is
-actually required (last run: **136 pure-kept / 9 mixed / 10 pure-purged / 4 empty** out of 159).
+actually required, and — more importantly — **which shas to hand-audit**.
+
+`scripts/classify-upstream.sh` does this. Run it from inside the tmp clone:
 
 ```bash
-# For each commit in BASE..upstream/master, bucket by the paths it touches and
-# whether its added lines mention purged identifiers.
-# PURE_KEPT  -> merge handles automatically
-# PURE_PURGED-> skip (our deletions win)
-# MIXED      -> real feature + purged code in one commit; needs surgery
+cd "$WS/fork"
+./scripts/classify-upstream.sh "$BASE" upstream/master --list-mixed
 ```
+
+| Bucket | Meaning | Action |
+|---|---|---|
+| `PURE_KEPT` | no purged path, no purged identifier added | none — the merge handles it |
+| `MIXED` | touches files we keep **and** adds purged identifiers | **hand-audit every one** (§3.3) |
+| `PURE_PURGED` | touches only purged paths | `DU` conflicts → `git rm` |
+| `EMPTY` | no file changes | none |
+
+Its patterns are deliberately kept in sync with `scripts/purge-guard.sh`. **Change one, change
+both** — a classifier that lags the guard reports work as safe that the guard will later reject.
+
+**Validation.** Replaying the previous sync's range reproduces its total exactly and identifies
+the commits that actually caused damage:
+
+```
+$ ./scripts/classify-upstream.sh f3f48aa3d fd1ff012c
+  PURE_KEPT    137     MIXED  12     PURE_PURGED  6     EMPTY  4     TOTAL 159
+```
+
+Its `MIXED` list contains both build-breakers that §3.4 previously caught only *after* the
+compiler failed — `25463c35c` (todo traceability + telemetry call) and `659b8cc15` (Grok Build
+login + `record_auth_surface_blocked`) — plus the four subscription-onboarding commits §1
+excludes by choice.
+
+> An earlier hand-rolled pass recorded this range as 136/9/10/4. That number is **not
+> reproducible** and is superseded by the script. The script buckets a commit touching both
+> purged and kept paths as `MIXED`/`PURE_KEPT` rather than `PURE_PURGED`, which is why it
+> reports more `MIXED` and fewer `PURE_PURGED`. Erring toward `MIXED` is the safe direction.
+
+### 3.2b Inventory what upstream added
+
+§3.2, `purge-guard.sh`, and the compiler are all **defensive** — they detect purged code that
+should not be present. None of them can detect the opposite failure: **upstream work that should
+be present and is not.** A feature dropped during conflict resolution leaves no trace. No
+conflict marker, no compile error, no guard hit. It simply never arrives, and nobody looks for
+it because nobody read what upstream shipped.
+
+That is how a sync quietly turns into a downgrade.
+
+```bash
+cd "$WS/fork"
+./scripts/upstream-features.sh inventory "$BASE" upstream/master
+```
+
+The authoritative source is upstream's own `changelog/vX.Y.Z.json` files — human-written
+`highlights` / `improvements` / `fixes` per release. Commit subjects are a weak substitute:
+in the v0.75.3→v0.76.0 range only 5 of 77 commits are tagged `feat`, and 21 use no conventional
+prefix at all.
+
+Each line is marked:
+
+| Mark | Meaning |
+|---|---|
+| `KEEP` | must be present after the merge — verify it |
+| `PURGED` | §1 deletes this subsystem; its absence is correct |
+| `EXCLUDED` | §1 "excluded by choice" (e.g. the subscription onboarding pill) |
+
+The script also lists the **structural surface** upstream grew — new workspace members, CLI
+subcommands, registered tools, config fields, scripts — because those are mechanically
+checkable later, unlike prose.
+
+> **Cross-reference the `KEEP` list against §3.2's `MIXED` shas.** A `KEEP` feature whose commit
+> landed in `MIXED` is the highest-risk item in the whole sync: that commit needed hand-surgery,
+> so it is exactly where a feature gets stripped along with the purged code sharing its hunk.
+
+After the transfer (§3.5), assert the structural items actually landed:
+
+```bash
+cd "$MAIN"
+./scripts/upstream-features.sh verify "$BASE" upstream/master   # exit 0 = nothing dropped
+```
+
+Replaying the *previous* sync through this reports `all KEEP items present` — its one KEEP
+structural item (`jcode-provider-grok-build-runtime`) is on disk, and the gateway / telemetry /
+permissions crates, the `Pair` and `Permissions` subcommands, and the `GatewayConfig` /
+`SponsorsConfig` fields are all correctly skipped rather than reported as losses.
 
 ### 3.3 Resolve
 
@@ -218,20 +328,44 @@ two build-breakers that no gate would otherwise have caught:
 - `auth.rs` — upstream's new **GrokBuild** login target shipped with a `record_auth_surface_blocked()`
   call. Keep the feature, drop the call.
 
+Both are now covered by `scripts/purge-guard.sh` (`SummaryPill::(Subscription|Telemetry)` and
+the `record_*` patterns), and §3.2's classifier flags their commits up front. Run all three
+checks — they fail differently:
+
 ```bash
+# 1. Purged code reintroduced anywhere in the tree.
 ./scripts/purge-guard.sh
-# plus: diff upstream's added lines against our tree to find non-purged work that
-# went missing (the check that caught the --ours damage).
+
+# 2. Module declarations without files — catches a `mod foo;` kept while foo.rs was purged.
+python3 scripts/check_module_files.py
+
+# 3. Upstream work that went MISSING. This is the check that caught the --ours
+#    damage, and no other gate detects it: the guard only finds code that should
+#    not be there, never code that should be and isn't.
+git diff "$BASE"...upstream/master --stat > /tmp/upstream-expected.txt
+git diff "$BASE"..HEAD             --stat > /tmp/ours-actual.txt
+diff /tmp/upstream-expected.txt /tmp/ours-actual.txt   # every delta must be a deliberate purge
 ```
+
+Then hand-audit each sha from §3.2's `--list-mixed` output. A `MIXED` commit that produced no
+conflict is the most dangerous case in this entire runbook: it merged clean and carries purged
+code.
 
 ### 3.5 Commit in tmp, then transfer
 
 ```bash
 git add -A
+
+# Gate 4 runs HERE, not in §6. `--staged` scans the index, and after the commit
+# below there is nothing staged — running it in §6 silently scans nothing and
+# passes. This is the only point where the incoming upstream files are staged.
+gitleaks git --staged --redact --no-banner -v
+
 git commit --no-verify -m "Merge upstream <ver>, excluding purged subsystems"
 #          ^^^^^^^^^^^ gitleaks pre-commit hook false-positives on upstream's
 #          keyboard-shortcut table (`key: "Ctrl+Shift+Tab"`). REVIEW the findings
-#          first — you are importing hundreds of upstream files — then bypass.
+#          from the scan above first — you are importing hundreds of upstream
+#          files — then bypass.
 
 git log -1 --pretty=%p        # MUST print TWO hashes. One = not recorded as a
                               # merge; future syncs will re-conflict everything.
@@ -243,6 +377,29 @@ cd "$MAIN"
 git fetch "$WS/fork" merge-upstream:verified
 git merge --ff-only verified
 ```
+
+### 3.6 Update this document
+
+The merge is not finished until the runbook describes the state it produced. Skipping this is
+what makes the *next* sync classify against a stale base.
+
+```bash
+cd "$MAIN"
+git log -1 --pretty='%h' verified^2      # the upstream parent = new "last upstream merge"
+grep -m1 '^version' Cargo.toml           # the new version string
+```
+
+1. **§0 — update the "Last upstream merge" row** to that sha and version.
+2. **Appendix — add any new pitfall** this sync cost you, with the symptom that revealed it.
+3. **§1 — record any newly purged or newly kept subsystem**, and update all three scripts
+   together if the pattern set changed: `purge-guard.sh`, `classify-upstream.sh`,
+   `upstream-features.sh` (both its prose *and* identifier patterns).
+4. **Skim the `KEEP` inventory from §3.2b one last time.** Gate 10 only checks the
+   mechanically verifiable items — new crates, subcommands, config fields. Prose highlights
+   like "streams handle transient failures more reliably" cannot be asserted by a script; a
+   human read is the only check they get.
+
+Commit the doc update as part of the sync, before building — §4 requires a clean tree.
 
 ---
 
@@ -290,40 +447,79 @@ printf '%s\n' "$hash" > "$builds/current-version"
 ln -sfn "$builds/current/jcode" "$HOME/.local/bin/jcode"
 ```
 
-**If a daemon is running** (`pgrep -fl jcode`), adopt the new binary afterwards:
+**Always kill the two long-running helpers** — they are separate processes holding the old
+binary and no reload reaches them:
+```bash
+pkill -f 'jcode menubar'; pkill -f 'jcode setup-hotkey'
+```
+
+**If a `jcode serve` daemon is running** (`pgrep -f 'jcode( .*)? serve'`), adopt the new binary:
 ```bash
 jcode server reload        # exec()s into the new binary on the same socket
-pkill -f 'jcode menubar'; pkill -f 'jcode setup-hotkey'   # long-running, keep old code
-python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.jcode/servers.json')))
-  [list(json.load(open(os.path.expanduser('~/.jcode/servers.json'))))[0]]['git_hash'])"
-# ^ the git_hash must change — that is the proof the daemon adopted the new binary
+python3 - <<'PY'
+import json, os
+p = os.path.expanduser('~/.jcode/servers.json')
+d = json.load(open(p)) if os.path.exists(p) else {}
+if not d:
+    print("no registered servers — nothing to adopt (expected when no daemon runs)")
+else:
+    for name, s in d.items():
+        print(f"{name}: {s.get('git_hash', '<absent>')}")
+PY
+# ^ every git_hash must change — that is the proof the daemon adopted the new binary
 ```
+
+> `servers.json` is `{}` whenever no daemon is registered. The previous one-liner here indexed
+> `list(d)[0]` unconditionally and died with `IndexError` in exactly that case, which is the
+> normal state after a clean shutdown. The block above reports instead of crashing.
 
 **Rollback:** repoint `current`/`stable` at the previous `versions/<hash>/` and reload. No
 rebuild. (After a `--purge` there is no previous version, so rollback becomes
 `git reset --hard pre-merge-<date>` + rebuild.)
 
+**Keep at least one previous `versions/<hash>/`.** That directory *is* the rollback; the store
+is append-only by design. Prune older ones only when more than two are present.
+
 ---
 
 ## 6. Verification gates
 
-Run in order. Everything except the build is seconds.
+Gates are **not all run at the same point.** Two of them can only pass at one specific moment;
+running them in this table's position instead makes them vacuous. The "When" column is binding.
 
-| # | Gate | Command | Pass |
-|---|---|---|---|
-| 1 | Purge invariant | `./scripts/purge-guard.sh` | exit 0 |
-| 2 | Module decls resolve | `python3 scripts/check_module_files.py` | exit 0 |
-| 3 | Lockfile coherent | `cargo metadata --locked --format-version 1 >/dev/null` | exit 0 |
-| 4 | Secret scan of incoming | `gitleaks git --staged --redact --no-banner -v` | reviewed |
-| 5 | Merge recorded | `git log -1 --pretty=%p` | **two** hashes |
-| 6 | Build | `cargo build --profile release-lto; echo $?` | 0 |
-| 7 | Smoke, isolated | `./target/release-lto/jcode --no-update --socket /tmp/verify.sock run 'hi'` | reaches provider layer |
-| 8 | Removed CLI absent | `jcode --help \| grep -E '^\s+(pair\|permissions)\b'` | no match |
-| 9 | Version reproducible | `jcode --version` | matches HEAD, no `-dirty` |
+| # | Gate | When | Command | Pass |
+|---|---|---|---|---|
+| 1 | Purge invariant | §3.4, tmp | `./scripts/purge-guard.sh` | exit 0 |
+| 2 | Module decls resolve | §3.4, tmp | `python3 scripts/check_module_files.py` | exit 0 |
+| 3 | Lockfile coherent | §3.4, tmp | `cargo metadata --locked --format-version 1 >/dev/null` | exit 0 |
+| 4 | Secret scan of incoming | **§3.5, staged, pre-commit** | `gitleaks git --staged --redact --no-banner -v` | reviewed |
+| 5 | Merge recorded | **§3.5, post-commit** | `git log -1 --pretty=%p` | **two** hashes |
+| 6 | Build | §4, `$MAIN` | `cargo build --profile release-lto; echo $?` | 0 |
+| 7 | Smoke, isolated | §4, `$MAIN` | `./target/release-lto/jcode --no-update --socket /tmp/verify.sock run 'hi'` | see below |
+| 8 | Removed CLI absent | §5, post-install | `jcode --help \| grep -E '^\s+(pair\|permissions)\b'` | no match |
+| 9 | Version reproducible | §5, post-install | `jcode --version` | matches HEAD, no `-dirty` |
+| 10 | **No upstream work dropped** | §3.5, post-transfer | `./scripts/upstream-features.sh verify "$BASE" upstream/master` | exit 0 |
 
-Gate 7 uses an **isolated socket** deliberately (`AGENTS.md`): it proves the *new* binary
-works rather than an old daemon answering. Without credentials it stops at
-`No credentials configured for provider auto-detection` — that is a **pass**.
+- **Gate 4 must precede the commit.** `--staged` scans the index; after `git commit` the index
+  is empty and the scan passes having examined nothing.
+- **Gate 5 must follow the commit** — it inspects `HEAD`'s parents.
+- **Gates 8–9 must follow the symlink flip.** They invoke `jcode` from `PATH`, which resolves
+  through `~/.local/bin/jcode` → `builds/current`. Before §5 they measure the *old* binary.
+- **Gate 10 is the only gate that can fail on absence.** Gates 1–9 all check that something
+  wrong is not there; gate 10 checks that something right *is*. Do not skip it because the
+  build is green — a dropped feature compiles perfectly.
+
+Gate 7 uses an **isolated socket** deliberately (`AGENTS.md`): it proves the *new* binary works
+rather than an old daemon answering. Two distinct passes, depending on whether `~/.jcode/auth.json`
+holds credentials:
+
+| State | Expected output | Verdict |
+|---|---|---|
+| Credentials present | a real model reply, then a `[Tokens] upload: … download: …` line | **pass** (stronger — the full turn loop ran) |
+| No credentials | stops at `No credentials configured for provider auto-detection` | **pass** (reached the provider layer) |
+
+Anything else — a panic, a hang, a socket error, a missing-tool error — is a failure. Remove
+`/tmp/verify.sock` afterwards so the next run does not adopt a stale socket.
 
 The ratchet scripts (`check_code_size_budget.py`, `check_panic_budget.py`,
 `check_swallowed_error_budget.py`, …) **already fail at upstream HEAD**. Verify against a
@@ -374,3 +570,43 @@ Each of these cost real time. The symptom is what made it visible.
 
 12. **`~/.jcode` reappears** from any `jcode --version` invocation (migration markers + a log).
     Harmless; not a failed purge.
+
+13. **`gitleaks --staged` after committing scans nothing and passes.** The gate table used to
+    list it as step 4 of a post-merge block, by which point §3.5 had already committed.
+    *Symptom:* a "reviewed" secret gate on a sync that imported 133 upstream files without ever
+    examining one. *Fix:* gate 4 now runs inside §3.5 while the index is populated.
+
+14. **`git push` does not push tags.** The rollback tag is the entire recovery story for §3, and
+    `git push origin master` leaves it local. *Symptom:* `git ls-remote --tags origin` empty
+    while `git tag` listed `pre-merge-…`. *Fix:* §3.1 pushes the tag explicitly.
+
+15. **GitHub orders commit history by author date, not push time.** After pushing a merge whose
+    commits were authored days earlier, nothing appears at today's date and the contribution
+    graph stays blank. *Symptom:* "the push does not appear on the repo commit history" when
+    `git ls-remote` and the GitHub API both confirmed it had landed. Not a fault — verify with
+    `gh api repos/<owner>/<repo>/commits?sha=master` before debugging a push.
+
+16. **`servers.json` is `{}` when no daemon is registered**, which is the normal post-shutdown
+    state — not an error. The old §5 proof one-liner indexed `list(d)[0]` and raised
+    `IndexError` there. *Fix:* iterate and report (§5).
+
+17. **A classifier that drifts from the guard is worse than none.** `classify-upstream.sh` and
+    `purge-guard.sh` duplicate the pattern set by necessity (one walks commits, one walks the
+    tree). If only one is updated, the classifier reports work as safe that the guard later
+    rejects — after you have already resolved it. Change both together.
+
+18. **Every gate was defensive; none checked that upstream work arrived.** A feature dropped in
+    resolution produces no conflict, no compile error and no guard hit — a clean green sync that
+    is silently a downgrade. *Symptom:* none, which is the point; it was found by reasoning about
+    what the gates could not see, not by an incident. *Fix:* §3.2b + gate 10.
+
+19. **A crate-name pattern does not match a type name.** `jcode-gateway-types` in the identifier
+    list left `GatewayConfig` unmatched, so three purged config fields were reported as dropped
+    upstream work. *Symptom:* `MISS config field bind_addr` on a sync that had correctly deleted
+    it. *Fix:* bare stems (`gateway`, not `jcode-gateway-types`).
+
+20. **BSD `sed` does not understand `\s`.** On macOS the extraction silently returns the entire
+    diff line instead of the identifier, and every downstream check reports a false MISS.
+    *Symptom:* `expected /^\s++    Pair {\s*[({,]/`. *Fix:* `[[:space:]]` in every `sed`
+    expression. GNU-only regex shorthands are a recurring hazard in this repo's scripts —
+    `grep -E` accepts `\s` here, `sed -E` does not.
