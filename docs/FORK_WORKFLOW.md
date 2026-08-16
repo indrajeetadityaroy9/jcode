@@ -407,6 +407,14 @@ grep -m1 '^version' Cargo.toml           # the new version string
 
 Commit the doc update as part of the sync, before building — §4 requires a clean tree.
 
+> **Every commit must land before §4.** §5 derives the install directory from
+> `git rev-parse --short HEAD`, and §4 bakes a hash into the binary. A commit made *after*
+> the build — even a docs-only one — desynchronises the two, and the only fix is a **full
+> LTO rebuild** to re-stamp. The same applies to editing a tracked file while a build is in
+> flight: `jcode-build-meta` computes the dirty flag when its build script runs, so a
+> mid-build edit can stamp `-dirty` and cost another rebuild. Finish all writing, commit,
+> *then* build. This cost two of the three rebuilds in the v0.76.0 sync.
+
 ---
 
 ## 4. Build
@@ -436,6 +444,8 @@ JCODE_BUILD_GIT_HASH="$(git rev-parse --short HEAD)" \
 - **A failed build still poisons the stamp.** The cache survives the failure, so a later
   successful build silently inherits the *earlier* HEAD. This is why the env override matters
   more than build ordering.
+- **Do not touch tracked files while the build runs**, and make no further commits until §5 is
+  done. Each violation costs a full re-stamp rebuild (~6–10 min at the pinned `jobs = 4`).
 
 ---
 
@@ -671,3 +681,15 @@ Each of these cost real time. The symptom is what made it visible.
     *Fix:* delete the doc comment with the field, and always fix the **first** error before
     believing any that follow. `cargo check -p <crate>` confirms in seconds what a full LTO
     build takes minutes to re-prove.
+
+25. **Committing after the build costs a full rebuild.** A docs-only commit moved HEAD from
+    `a9ff3a78b` to `4c25acf91`; §5 would then have installed a binary stamped `a9ff3a78b` into
+    `versions/4c25acf91`. *Symptom:* nothing at build time — it surfaces only as a gate 9
+    mismatch, or worse, silently as a mislabelled install directory that the next rollback
+    trusts. *Fix:* land every commit before §4; see the callout in §3.6.
+
+26. **The `com.jcode.hotkey` LaunchAgent respawn is useful at install time.** Pitfall 5 covers
+    it as an uninstall hazard, but during §5 it works in your favour: `pkill` the listener
+    *after* the symlink flip and launchd immediately restarts it from `~/.local/bin/jcode`,
+    which now resolves to the new build. Killing it *before* the flip just reloads old code.
+    `jcode menubar` has no KeepAlive and stays down until launched again.
