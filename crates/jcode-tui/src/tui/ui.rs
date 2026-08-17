@@ -1197,6 +1197,18 @@ struct FullPrepCacheKey {
     expanded_images_version: u64,
     /// Signature of live swarm member cards embedded beneath spawn tool calls.
     swarm_members_signature: u64,
+    /// Identity of the persistent header baked into this prepared frame:
+    /// provider/model, server and client names, connection type, and the auth
+    /// generation (see `prepare::header_prep_signature`).
+    ///
+    /// A prepared frame embeds the rendered header, so this cache must never
+    /// outlive an input the header itself keys on. Without this a frame
+    /// prepared during the pre-bootstrap window kept serving its "connecting to
+    /// server…" header for the life of the session: every later frame hit this
+    /// cache and so never reached `prepare_header_cached`, whose own signature
+    /// would have caught the change. Only a resize (a new width/height key)
+    /// dislodged it.
+    header_signature: u64,
 }
 
 #[derive(Clone)]

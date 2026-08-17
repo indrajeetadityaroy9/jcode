@@ -645,22 +645,17 @@ fn prepare_active_batch_progress(
     wrap_lines_with_map(lines, &[], &[], &[], &[], &[], width, &[], &[], &[])
 }
 
-pub(super) fn prepare_messages(
+/// Every input the prepared frame bakes in, including its header.
+///
+/// Extracted from [`prepare_messages`] so the header-identity coupling is
+/// testable: a prepared frame carries the rendered header, so this key must
+/// change whenever [`header_prep_signature`] would.
+pub(super) fn full_prep_cache_key(
     app: &dyn TuiState,
     width: u16,
     height: u16,
-) -> Arc<PreparedChatFrame> {
-    // A cached prepared frame intentionally owns only image ids. Recover any
-    // staged source evicted by the byte budget or a visibility toggle before an
-    // exact frame-cache hit can bypass the normal anchored-image resolver.
-    let restage_start = Instant::now();
-    super::inline_image_ui::restage_requested_payloads(app);
-    super::note_prep_restage(restage_start.elapsed());
-    if cfg!(test) {
-        return Arc::new(prepare_messages_inner(app, width, height));
-    }
-
-    let key = FullPrepCacheKey {
+) -> FullPrepCacheKey {
+    FullPrepCacheKey {
         width,
         height,
         diff_mode: app.diff_mode(),
@@ -687,7 +682,30 @@ pub(super) fn prepare_messages(
         inline_images_visible: app.inline_images_visible(),
         expanded_images_version: app.expanded_images_version(),
         swarm_members_signature: swarm_members_signature(&app.swarm_members_for_transcript()),
-    };
+        // Reuse the header cache's own signature rather than restating its
+        // inputs: keeping one definition means a field added there can never be
+        // forgotten here, which is exactly how the stale "connecting to server…"
+        // header survived every frame after the remote bootstrap.
+        header_signature: header_prep_signature(app, width),
+    }
+}
+
+pub(super) fn prepare_messages(
+    app: &dyn TuiState,
+    width: u16,
+    height: u16,
+) -> Arc<PreparedChatFrame> {
+    // A cached prepared frame intentionally owns only image ids. Recover any
+    // staged source evicted by the byte budget or a visibility toggle before an
+    // exact frame-cache hit can bypass the normal anchored-image resolver.
+    let restage_start = Instant::now();
+    super::inline_image_ui::restage_requested_payloads(app);
+    super::note_prep_restage(restage_start.elapsed());
+    if cfg!(test) {
+        return Arc::new(prepare_messages_inner(app, width, height));
+    }
+
+    let key = full_prep_cache_key(app, width, height);
 
     super::note_full_prep_request();
     let cache_lookup_start = Instant::now();

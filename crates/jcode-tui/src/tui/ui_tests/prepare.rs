@@ -1283,3 +1283,34 @@ fn test_prepare_messages_renders_anchored_reasoning_message_in_flow() {
         joined[reasoning_idx]
     );
 }
+
+/// The prepared-frame cache bakes in the rendered header, so its key must move
+/// whenever the header's own signature would.
+///
+/// Regression coverage: the key tracked only transcript/geometry inputs, so a
+/// frame prepared before the remote bootstrap finished kept serving its
+/// "connecting to server…" header for the whole session. Every subsequent frame
+/// hit the outer cache and never reached `prepare_header_cached`, whose
+/// signature does track provider/model and the client/server identity — the
+/// screen only corrected itself on a resize, which changed the width key.
+#[test]
+fn full_prep_cache_key_tracks_header_identity() {
+    let connecting = TestState::default();
+    let mut bootstrapped = connecting.clone();
+    bootstrapped.provider_model = Some("claude-opus-5".to_string());
+
+    let width = 120;
+    let height = 40;
+
+    assert_eq!(
+        crate::tui::ui::prepare::full_prep_cache_key(&connecting, width, height),
+        crate::tui::ui::prepare::full_prep_cache_key(&connecting, width, height),
+        "an unchanged state must keep hitting the cache"
+    );
+    assert_ne!(
+        crate::tui::ui::prepare::full_prep_cache_key(&connecting, width, height),
+        crate::tui::ui::prepare::full_prep_cache_key(&bootstrapped, width, height),
+        "a header identity change must invalidate the prepared frame that \
+         embeds that header, without waiting for a resize"
+    );
+}
