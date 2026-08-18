@@ -1488,7 +1488,7 @@ pub(crate) fn subscribe_metadata(
     resolve_subscribe_metadata(
         working_dir.as_deref(),
         remote_working_dir,
-        jcode_selfdev_types::client_selfdev_requested(),
+        jcode_dev_types::client_selfdev_requested(),
     )
 }
 

@@ -24,7 +24,7 @@ A `*-types` crate should contain:
 - No filesystem, network, process, TUI, provider client, global state, or storage access.
 - Dependencies limited to serde, chrono, and other type crates where necessary.
 
-Examples: `jcode-session-types`, `jcode-side-panel-types`, `jcode-selfdev-types`, `jcode-background-types`.
+Examples: `jcode-session-types`, `jcode-side-panel-types`, `jcode-dev-types`, `jcode-background-types`.
 
 ### Domain behavior modules own root runtime behavior
 

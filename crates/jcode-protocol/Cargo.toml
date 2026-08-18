@@ -10,7 +10,7 @@ jcode-config-types = { path = "../jcode-config-types" }
 jcode-message-types = { path = "../jcode-message-types" }
 jcode-plan = { path = "../jcode-plan" }
 jcode-provider-core = { path = "../jcode-provider-core" }
-jcode-selfdev-types = { path = "../jcode-selfdev-types" }
+jcode-dev-types = { path = "../jcode-dev-types" }
 jcode-session-types = { path = "../jcode-session-types" }
 jcode-side-panel-types = { path = "../jcode-side-panel-types" }
 serde = { version = "1", features = ["derive"] }

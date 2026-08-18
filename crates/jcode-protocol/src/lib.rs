@@ -169,7 +169,7 @@ impl AuthChanged {
     }
 }
 
-pub type ReloadRecoverySnapshot = jcode_selfdev_types::ReloadRecoveryDirective;
+pub type ReloadRecoverySnapshot = jcode_dev_types::ReloadRecoveryDirective;
 
 mod wire;
 pub use wire::TaskGraphNodeSpec;

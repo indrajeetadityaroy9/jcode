@@ -38,7 +38,7 @@ members = [
     "crates/jcode-productivity-core",
     "crates/jcode-swarm-core",
     "crates/jcode-protocol",
-    "crates/jcode-selfdev-types",
+    "crates/jcode-dev-types",
     "crates/jcode-session-types",
     "crates/jcode-setup-hints",
     "crates/jcode-storage",
@@ -198,7 +198,7 @@ jcode-provider-openrouter-runtime = { path = "crates/jcode-provider-openrouter-r
 jcode-provider-anthropic-runtime = { path = "crates/jcode-provider-anthropic-runtime" }
 jcode-provider-openai-runtime = { path = "crates/jcode-provider-openai-runtime" }
 jcode-provider-grok-build-runtime = { path = "crates/jcode-provider-grok-build-runtime" }
-jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
+jcode-dev-types = { path = "crates/jcode-dev-types" }
 
 # Archive extraction (for auto-update)
 tempfile = "3"

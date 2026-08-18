@@ -16,7 +16,7 @@ pub fn hot_rebuild(session_id: &str) -> Result<()> {
     run_release_tests(&repo_dir)?;
     install_local_release_with_warning(&repo_dir);
 
-    let is_selfdev = jcode_selfdev_types::client_selfdev_requested();
+    let is_selfdev = jcode_dev_types::client_selfdev_requested();
     let exe = rebuild_reload_candidate(&repo_dir, is_selfdev);
     if !exe.exists() {
         anyhow::bail!("Binary not found at {:?}", exe);
@@ -214,7 +214,7 @@ fn background_install_local_release(publisher: &BackgroundRebuildPublisher, repo
 }
 
 fn publish_rebuild_ready_or_error(publisher: BackgroundRebuildPublisher, repo_dir: &Path) {
-    let is_selfdev = jcode_selfdev_types::client_selfdev_requested();
+    let is_selfdev = jcode_dev_types::client_selfdev_requested();
     let exe = build::preferred_reload_candidate(is_selfdev)
         .map(|(path, _)| path)
         .unwrap_or_else(|| build::release_binary_path(repo_dir));

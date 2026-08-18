@@ -16,7 +16,7 @@ use crate::storage;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-pub use jcode_selfdev_types::ReloadRecoveryDirective;
+pub use jcode_dev_types::ReloadRecoveryDirective;
 
 /// Context saved before reload, restored after restart
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

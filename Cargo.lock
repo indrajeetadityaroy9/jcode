@@ -3369,6 +3369,7 @@ dependencies = [
  "global-hotkey",
  "hex",
  "jcode-build-meta",
+ "jcode-dev-types",
  "jcode-harness-api-server",
  "jcode-provider-anthropic-runtime",
  "jcode-provider-antigravity-runtime",
@@ -3381,7 +3382,6 @@ dependencies = [
  "jcode-provider-grok-build-runtime",
  "jcode-provider-openai-runtime",
  "jcode-provider-openrouter-runtime",
- "jcode-selfdev-types",
  "jcode-tui",
  "jcode-tui-session-picker",
  "jcode-tui-style",
@@ -3445,6 +3445,7 @@ dependencies = [
  "jcode-build-support",
  "jcode-command-risk",
  "jcode-core",
+ "jcode-dev-types",
  "jcode-import-core",
  "jcode-message-types",
  "jcode-notify-email",
@@ -3453,7 +3454,6 @@ dependencies = [
  "jcode-plan",
  "jcode-provider-core",
  "jcode-schema-dialect",
- "jcode-selfdev-types",
  "jcode-session-types",
  "jcode-setup-hints",
  "jcode-swarm-core",
@@ -3599,7 +3599,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "jcode-core",
- "jcode-selfdev-types",
+ "jcode-dev-types",
  "jcode-storage",
  "serde",
  "serde_json",
@@ -3663,6 +3663,15 @@ dependencies = [
  "unicode-width",
  "vello",
  "winit",
+]
+
+[[package]]
+name = "jcode-dev-types"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
 ]
 
 [[package]]
@@ -3812,10 +3821,10 @@ dependencies = [
  "anyhow",
  "jcode-batch-types",
  "jcode-config-types",
+ "jcode-dev-types",
  "jcode-message-types",
  "jcode-plan",
  "jcode-provider-core",
- "jcode-selfdev-types",
  "jcode-session-types",
  "jcode-side-panel-types",
  "rand 0.9.3",
@@ -4213,15 +4222,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jcode-selfdev-types"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "serde",
-]
-
-[[package]]
 name = "jcode-session-types"
 version = "0.1.0"
 dependencies = [
@@ -4350,11 +4350,11 @@ dependencies = [
  "jcode-build-meta",
  "jcode-config-types",
  "jcode-core",
+ "jcode-dev-types",
  "jcode-fuzzy",
  "jcode-logging",
  "jcode-productivity-core",
  "jcode-provider-core",
- "jcode-selfdev-types",
  "jcode-session-types",
  "jcode-terminal-image",
  "jcode-tui-account-picker",

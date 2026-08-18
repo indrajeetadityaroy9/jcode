@@ -61,13 +61,13 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::SetupLauncher) => "jcode setup-launcher".to_string(),
         None => {
             if let Some(resume) = args.resume.as_deref().filter(|resume| !resume.is_empty()) {
-                let prefix = if jcode_selfdev_types::client_selfdev_requested() {
+                let prefix = if jcode_dev_types::client_selfdev_requested() {
                     "jcode:d:"
                 } else {
                     "jcode:c:"
                 };
                 compact_process_title(prefix, Some(&session_name(resume)))
-            } else if jcode_selfdev_types::client_selfdev_requested() {
+            } else if jcode_dev_types::client_selfdev_requested() {
                 "jcode:selfdev".to_string()
             } else {
                 "jcode:client".to_string()
@@ -86,7 +86,7 @@ mod tests {
     use crate::storage::lock_test_env;
     use clap::Parser;
 
-    const SELFDEV_ENV: &str = jcode_selfdev_types::CLIENT_SELFDEV_ENV;
+    const SELFDEV_ENV: &str = jcode_dev_types::CLIENT_SELFDEV_ENV;
 
     fn with_selfdev_env_removed<T>(f: impl FnOnce() -> T) -> T {
         let _guard = lock_test_env();

@@ -38,7 +38,7 @@ crates/jcode-app-core/src/agent/turn_execution.rs
 
 Deleting the module breaks reconnect for every session, not just self-dev ones.
 
-`ReloadRecoveryDirective` is worse: it lives in `crates/jcode-selfdev-types/src/lib.rs:20`, is
+`ReloadRecoveryDirective` is worse: it lives in `crates/jcode-dev-types/src/lib.rs:20`, is
 re-exported through `selfdev/reload.rs:2`, and is **aliased into the wire protocol** as
 `jcode_protocol::ReloadRecoverySnapshot` (`crates/jcode-protocol/src/lib.rs:172`). It is part of
 the client/server contract.
@@ -54,11 +54,11 @@ Measured, not estimated: **1,658 `selfdev`/`self_dev` references workspace-wide.
 | `ReloadContext` struct | `tool/selfdev/mod.rs:72` | 5 plain serde fields |
 | `ReloadContext` impl, 12 methods | `tool/selfdev/reload.rs` (427 ln) | `save`/`load`/`peek_for_session`/`recovery_directive*`/`continuation_message*`/`log_recovery_outcome` |
 | `persisted_background_tasks_note` | `tool/selfdev/reload.rs:173` | called from TUI |
-| `ReloadRecoveryDirective` | `jcode-selfdev-types/src/lib.rs:20` | **in the wire protocol** |
-| `CLIENT_SELFDEV_ENV`, `client_selfdev_requested()` | `jcode-selfdev-types/src/lib.rs:10,15` | used by `src/cli/proctitle.rs`, TUI |
+| `ReloadRecoveryDirective` | `jcode-dev-types/src/lib.rs:20` | **in the wire protocol** |
+| `CLIENT_SELFDEV_ENV`, `client_selfdev_requested()` | `jcode-dev-types/src/lib.rs:10,15` | used by `src/cli/proctitle.rs`, TUI |
 | `selfdev: Option<bool>` | `jcode-protocol/src/wire.rs:126` | wire field; removing it is a protocol break |
 
-`reload.rs` imports only `super::*` plus `jcode_selfdev_types::ReloadRecoveryDirective`, so it
+`reload.rs` imports only `super::*` plus `jcode_dev_types::ReloadRecoveryDirective`, so it
 carries no dependency on `build_queue`/`setup`/`status`/`launch`. **The extraction is clean.**
 
 ### Tier B — the actual tool (delete in step 2)
@@ -92,7 +92,7 @@ Plus registrations: `SelfDevTool` (`tool/mod.rs:270`, `:1136`), `Command::SelfDe
 |---|---|
 | `[profile.selfdev]` + its `[profile.selfdev.package.*]` blocks in `Cargo.toml` | A **cargo build profile** for fast rebuilds. `scripts/dev_cargo.sh` uses it. Unrelated to the tool. |
 | `crates/jcode-build-support` (3,401 ln) | **Not** selfdev-only. `read_build_progress`, `stable_binary_path`, `is_jcode_repo`, `preferred_reload_candidate`, `resolve_binary_payload`, `read_stable_version` are used across `jcode-tui` (status line, redraw scheduling, reload candidate choice). Only its `run_selfdev_build` / `selfdev_binary_path` / `selfdev_build_command*` / `SELFDEV_CARGO_PROFILE` / canary helpers are Tier-B candidates. |
-| `crates/jcode-selfdev-types` as a crate | Consumed by `jcode-protocol`, `jcode-tui`, `jcode-build-support`. Rename it, do not delete it. |
+| `crates/jcode-dev-types` as a crate | Consumed by `jcode-protocol`, `jcode-tui`, `jcode-build-support`. Rename it, do not delete it. |
 
 ## Step 1 — extract the reload machinery
 
@@ -105,7 +105,7 @@ Goal: nothing named `selfdev` remains on the reconnect path. **No behavior chang
    stop resolving.
 2. Re-export from `jcode-app-core` so consumers import
    `crate::server::reload_context::ReloadContext`. Update the 17 external files.
-3. Rename `crates/jcode-selfdev-types` → `crates/jcode-reload-types` (or fold into
+3. Rename `crates/jcode-dev-types` → `crates/jcode-reload-types` (or fold into
    `jcode-protocol`, which already aliases its main type). Decide which; folding removes a crate
    but widens `jcode-protocol`'s surface.
 4. Leave a `pub use` shim at the old path **only if** step 2 is not landing immediately.
@@ -150,7 +150,7 @@ reload as in step 1.
 1. **Wire field.** Is `selfdev: Option<bool>` (`wire.rs:126`) still meaningful with the tool gone?
    It is `Option`, so leaving it costs nothing and keeps the protocol stable against upstream.
    Recommend: **leave it**, remove only its producers.
-2. **`jcode-selfdev-types` fate** — rename vs fold into `jcode-protocol`.
+2. **`jcode-dev-types` fate** — rename vs fold into `jcode-protocol`.
 3. **`is_selfdev` session flag.** Threaded through `server/util.rs` (31 refs), `client_session.rs`
    (24). Some of it drives non-selfdev behavior (repo auto-detection via `is_jcode_repo`). Audit
    before assuming it goes.
@@ -169,7 +169,7 @@ Windows purge (v0.75.3 + v0.76.0 ranges):
   2   crates/jcode-app-core/src/tool/selfdev
   2   crates/jcode-build-support
   3   crates/jcode-desktop2/src/selfdev_reload.rs
-  0   crates/jcode-selfdev-types, src/cli/selfdev.rs, jcode-base/src/prompt
+  0   crates/jcode-dev-types, src/cli/selfdev.rs, jcode-base/src/prompt
  ---
   7   combined            (Windows purge targets, same window: 1)
 ```
