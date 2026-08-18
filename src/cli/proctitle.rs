@@ -39,10 +39,9 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::SetupHotkey {
             listen_macos_hotkey,
             notify_cli_launch,
-            listen_windows_hotkey,
             uninstall,
         }) => {
-            if *listen_macos_hotkey || *listen_windows_hotkey {
+            if *listen_macos_hotkey {
                 "jcode hotkey listener".to_string()
             } else if notify_cli_launch.is_some() {
                 "jcode shortcut reminder".to_string()
@@ -126,8 +125,8 @@ mod tests {
     }
 
     #[test]
-    fn initial_title_labels_windows_hotkey_listener() {
-        let args = Args::parse_from(["jcode", "setup-hotkey", "--listen-windows-hotkey"]);
+    fn initial_title_labels_hotkey_listener() {
+        let args = Args::parse_from(["jcode", "setup-hotkey", "--listen-macos-hotkey"]);
         assert_eq!(initial_title(&args), "jcode hotkey listener");
     }
 

@@ -639,7 +639,6 @@ fn nudge_macos_ghostty(state: &mut SetupHintsState) -> Option<StartupHints> {
 )]
 pub fn run_setup_hotkey(
     _listen_macos_hotkey: bool,
-    _listen_windows_hotkey: bool,
     _uninstall: bool,
     notify_cli_launch: Option<&str>,
 ) -> Result<()> {

@@ -3,7 +3,6 @@ set -euo pipefail
 
 REPO="1jehuang/jcode"
 RELEASE_METADATA_BASE="${JCODE_RELEASE_METADATA_BASE:-https://jcode.sh/releases}"
-IS_WINDOWS=false
 IS_TERMUX=false
 INSTALL_STAGE="startup"
 INSTALL_SUCCEEDED=0
@@ -66,39 +65,12 @@ case "$OS" in
       *)       err "Unsupported macOS architecture: $ARCH" ;;
     esac
     ;;
-  MINGW*|MSYS*|CYGWIN*)
-    IS_WINDOWS=true
-    WINDOWS_ARCH=""
-    # Git for Windows may itself be an emulated x64 process on Windows ARM64,
-    # making `uname -m` report x86_64. Prefer any ARM64 OS environment signal.
-    for candidate in "${PROCESSOR_ARCHITEW6432:-}" "${PROCESSOR_ARCHITECTURE:-}" "$ARCH"; do
-      case "$candidate" in
-        aarch64|AARCH64|arm64|Arm64|ARM64) WINDOWS_ARCH="aarch64"; break ;;
-      esac
-    done
-    if [ -z "$WINDOWS_ARCH" ]; then
-      for candidate in "${PROCESSOR_ARCHITEW6432:-}" "${PROCESSOR_ARCHITECTURE:-}" "$ARCH"; do
-        case "$candidate" in
-          x86_64|X64|AMD64) WINDOWS_ARCH="x86_64"; break ;;
-        esac
-      done
-    fi
-    case "$WINDOWS_ARCH" in
-      x86_64) ARTIFACT="jcode-windows-x86_64" ;;
-      aarch64) ARTIFACT="jcode-windows-aarch64" ;;
-      *) err "Unsupported Windows architecture: $ARCH" ;;
-    esac
-    ;;
   *)
     err "Unsupported OS: $OS (try building from source: https://github.com/$REPO)"
     ;;
 esac
 
-if [ "$IS_WINDOWS" = true ]; then
-  INSTALL_DIR="${JCODE_INSTALL_DIR:-$LOCALAPPDATA/jcode/bin}"
-else
-  INSTALL_DIR="${JCODE_INSTALL_DIR:-$HOME/.local/bin}"
-fi
+INSTALL_DIR="${JCODE_INSTALL_DIR:-$HOME/.local/bin}"
 
 # Prefer GitHub's stable redirect when it is reachable so publication changes
 # are visible immediately. jcode.sh keeps a static copy of the latest published
@@ -127,13 +99,8 @@ INSTALL_VERSION="${VERSION#v}"
 
 GITHUB_RELEASE_BASE="https://github.com/$REPO/releases/download/$VERSION"
 
-if [ "$IS_WINDOWS" = true ]; then
-  EXE=".exe"
-  builds_dir="$LOCALAPPDATA/jcode/builds"
-else
-  EXE=""
-  builds_dir="$HOME/.jcode/builds"
-fi
+EXE=""
+builds_dir="$HOME/.jcode/builds"
 stable_dir="$builds_dir/stable"
 current_dir="$builds_dir/current"
 version_dir="$builds_dir/versions"
@@ -242,7 +209,7 @@ fi
 
 chmod +x "$dest_version_dir/$bin_name" 2>/dev/null || true
 
-if [ "$IS_TERMUX" = true ] && [ "$IS_WINDOWS" = false ]; then
+if [ "$IS_TERMUX" = true ]; then
   termux_glibc_dir="/data/data/com.termux/files/usr/glibc/lib"
   termux_glibc_linker=""
   case "$ARCH" in
@@ -264,24 +231,18 @@ if [ "$IS_TERMUX" = true ] && [ "$IS_WINDOWS" = false ]; then
   fi
 fi
 
-if [ "$IS_WINDOWS" = true ]; then
-  cp -f "$dest_version_dir/$bin_name" "$stable_dir/$bin_name"
-  printf '%s\n' "$version" > "$builds_dir/stable-version"
-  cp -f "$stable_dir/$bin_name" "$launcher_path"
-else
-  ln -sfn "$dest_version_dir/$bin_name" "$stable_dir/$bin_name"
-  printf '%s\n' "$version" > "$builds_dir/stable-version"
-  if [ "$IS_TERMUX" = true ]; then
-    rm -f "$launcher_path"
-    cat > "$launcher_path" <<EOF
+ln -sfn "$dest_version_dir/$bin_name" "$stable_dir/$bin_name"
+printf '%s\n' "$version" > "$builds_dir/stable-version"
+if [ "$IS_TERMUX" = true ]; then
+  rm -f "$launcher_path"
+  cat > "$launcher_path" <<EOF
 #!/usr/bin/env bash
 unset LD_PRELOAD
 exec "$stable_dir/$bin_name" "\$@"
 EOF
-    chmod +x "$launcher_path"
-  else
-    ln -sfn "$stable_dir/$bin_name" "$launcher_path"
-  fi
+  chmod +x "$launcher_path"
+else
+  ln -sfn "$stable_dir/$bin_name" "$launcher_path"
 fi
 
 if [ "$(uname -s)" = "Darwin" ]; then
@@ -321,165 +282,98 @@ if [ "${JCODE_SKIP_SERVER_RELOAD:-}" != "1" ]; then
   fi
 fi
 
-if [ "$IS_WINDOWS" = true ]; then
-  INSTALL_STAGE="path_configuration"
-  win_install_dir=$(cygpath -w "$INSTALL_DIR" 2>/dev/null || echo "$INSTALL_DIR")
+INSTALL_STAGE="path_configuration"
+PATH_LINE="export PATH=\"$INSTALL_DIR:\$PATH\""
+added_to=""
 
-  # Persist the launcher dir on the USER PATH so every future shell (PowerShell,
-  # cmd, Git Bash, Windows Terminal) finds jcode without manual setup. This is
-  # the Git Bash (`curl | sh`) counterpart of install.ps1's Set-JcodeUserPath:
-  # read the user PATH, drop stale jcode launcher entries (case- and trailing-
-  # slash-insensitive), prepend the canonical dir, and broadcast
-  # WM_SETTINGCHANGE so already-open apps can pick up the change.
-  win_path_persisted=false
-  _win_path_key() { printf '%s' "$1" | sed 's|[\\/]*$||' | tr '[:upper:]' '[:lower:]'; }
-  if command -v powershell.exe >/dev/null 2>&1; then
-    current_user_path=$(powershell.exe -NoProfile -NonInteractive -Command \
-      "[Environment]::GetEnvironmentVariable('Path','User')" 2>/dev/null | tr -d '\r' || true)
-    target_key=$(_win_path_key "$win_install_dir")
-    new_user_path="$win_install_dir"
-    set -f
-    IFS=';'
-    for entry in $current_user_path; do
-      [ -n "$entry" ] || continue
-      [ "$(_win_path_key "$entry")" = "$target_key" ] && continue
-      new_user_path="$new_user_path;$entry"
-    done
-    unset IFS
-    set +f
-    if [ "$new_user_path" = "$current_user_path" ]; then
-      win_path_persisted=true
-    elif JCODE_NEW_USER_PATH="$new_user_path" powershell.exe -NoProfile -NonInteractive -Command \
-      '[Environment]::SetEnvironmentVariable("Path", $env:JCODE_NEW_USER_PATH, "User")' >/dev/null 2>&1; then
-      win_path_persisted=true
-      # Broadcast WM_SETTINGCHANGE (0x001A) with the "Environment" lParam to
-      # HWND_BROADCAST so running shells learn about the new PATH. Best-effort.
-      # The script lives in a quoted heredoc so no bash expansion touches it;
-      # setup_friction_eval.sh parse-checks this exact block with real pwsh.
-      win_broadcast_ps=$(cat <<'JCODE_PS_BROADCAST_EOF'
-$sig = '[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'
-$type = Add-Type -MemberDefinition $sig -Name 'JcodeEnvBroadcast' -Namespace Win32 -PassThru
-[UIntPtr]$result = [UIntPtr]::Zero
-$type::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result) | Out-Null
-JCODE_PS_BROADCAST_EOF
-)
-      powershell.exe -NoProfile -NonInteractive -Command "$win_broadcast_ps" >/dev/null 2>&1 || true
-    fi
-  fi
+_have() { command -v "$1" >/dev/null 2>&1; }
 
-  echo ""
-  info "✅ jcode $VERSION installed successfully!"
-  echo ""
-  if [ "$win_path_persisted" = true ]; then
-    info "Added $win_install_dir to your user PATH. New terminals will find jcode automatically."
+# Append the POSIX (bash/zsh/sh) PATH line to an rc file, idempotently.
+#   ensure_posix_rc <rc-file> <create:yes|no>
+# With create=yes the file (and parent dir) is created if missing; with
+# create=no we only touch files that already exist, so we never change how a
+# login shell resolves its startup files (e.g. creating ~/.bash_profile would
+# stop bash from reading ~/.profile).
+ensure_posix_rc() {
+  rc="$1"; create="$2"
+  if [ ! -f "$rc" ]; then
+    [ "$create" = "yes" ] || return 0
+    mkdir -p "$(dirname "$rc")"
   fi
-  if command -v jcode >/dev/null 2>&1; then
-    info "Run 'jcode' to get started."
+  if ! grep -qF "$INSTALL_DIR" "$rc" 2>/dev/null; then
+    printf '\n# Added by jcode installer\n%s\n' "$PATH_LINE" >> "$rc"
+    added_to="$added_to $rc"
+  fi
+}
+
+# fish uses its own syntax and does not read POSIX rc files.
+ensure_fish_rc() {
+  create="$1"
+  rc="${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"
+  if [ ! -f "$rc" ]; then
+    [ "$create" = "yes" ] || return 0
+    mkdir -p "$(dirname "$rc")"
+  fi
+  if ! grep -qF "$INSTALL_DIR" "$rc" 2>/dev/null; then
+    {
+      printf '\n# Added by jcode installer\n'
+      printf 'if not contains "%s" $PATH\n' "$INSTALL_DIR"
+      printf '    set -gx PATH "%s" $PATH\n' "$INSTALL_DIR"
+      printf 'end\n'
+    } >> "$rc"
+    added_to="$added_to $rc"
+  fi
+}
+
+# zsh: ~/.zshenv is read for every zsh invocation (login, interactive and
+# scripts), so it is the most reliable single place to export PATH.
+if _have zsh || [ "$(uname -s)" = "Darwin" ] || [ -f "$HOME/.zshenv" ] || [ -f "$HOME/.zshrc" ]; then
+  ensure_posix_rc "$HOME/.zshenv" yes
+fi
+
+# bash: ~/.bashrc for interactive shells, ~/.profile for login shells (macOS
+# Terminal, ssh, etc.). We only create ~/.profile, never ~/.bash_profile, so
+# we don't override an existing login-file lookup order.
+if _have bash || [ -f "$HOME/.bashrc" ] || [ -f "$HOME/.bash_profile" ]; then
+  ensure_posix_rc "$HOME/.bashrc" yes
+fi
+ensure_posix_rc "$HOME/.profile" yes
+
+# fish: only set it up when fish is installed or already configured.
+if _have fish || [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish" ]; then
+  ensure_fish_rc yes
+fi
+
+# Also patch other common startup files when they already exist, so we cover
+# users with custom login-shell setups without creating new files.
+for rc in "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.bash_profile"; do
+  ensure_posix_rc "$rc" no
+done
+
+if [ -n "$added_to" ]; then
+  info "Added $INSTALL_DIR to PATH in:$added_to"
+fi
+
+echo ""
+info "✅ jcode $VERSION installed successfully!"
+echo ""
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  if [ "$hotkey_setup_ready" = true ]; then
+    info "Global hotkey ready: Cmd+; launches a new jcode from anywhere, system-wide"
   else
-    echo "  To start using jcode in THIS terminal right now, run:"
-    echo ""
-    printf '    \033[1;32mexport PATH="%s:$PATH" && jcode\033[0m\n' "$INSTALL_DIR"
-    if [ "$win_path_persisted" != true ]; then
-      echo ""
-      echo "  To add jcode to PATH permanently (PowerShell):"
-      echo ""
-      printf '    \033[1;32m[Environment]::SetEnvironmentVariable("Path", "%s;" + [Environment]::GetEnvironmentVariable("Path", "User"), "User")\033[0m\n' "$win_install_dir"
-    fi
+    info "Tip: run 'jcode setup-hotkey' so Cmd+; launches jcode system-wide on macOS"
   fi
+fi
+
+if command -v jcode >/dev/null 2>&1; then
+  info "Run 'jcode' to get started."
 else
-  INSTALL_STAGE="path_configuration"
-  PATH_LINE="export PATH=\"$INSTALL_DIR:\$PATH\""
-  added_to=""
-
-  _have() { command -v "$1" >/dev/null 2>&1; }
-
-  # Append the POSIX (bash/zsh/sh) PATH line to an rc file, idempotently.
-  #   ensure_posix_rc <rc-file> <create:yes|no>
-  # With create=yes the file (and parent dir) is created if missing; with
-  # create=no we only touch files that already exist, so we never change how a
-  # login shell resolves its startup files (e.g. creating ~/.bash_profile would
-  # stop bash from reading ~/.profile).
-  ensure_posix_rc() {
-    rc="$1"; create="$2"
-    if [ ! -f "$rc" ]; then
-      [ "$create" = "yes" ] || return 0
-      mkdir -p "$(dirname "$rc")"
-    fi
-    if ! grep -qF "$INSTALL_DIR" "$rc" 2>/dev/null; then
-      printf '\n# Added by jcode installer\n%s\n' "$PATH_LINE" >> "$rc"
-      added_to="$added_to $rc"
-    fi
-  }
-
-  # fish uses its own syntax and does not read POSIX rc files.
-  ensure_fish_rc() {
-    create="$1"
-    rc="${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"
-    if [ ! -f "$rc" ]; then
-      [ "$create" = "yes" ] || return 0
-      mkdir -p "$(dirname "$rc")"
-    fi
-    if ! grep -qF "$INSTALL_DIR" "$rc" 2>/dev/null; then
-      {
-        printf '\n# Added by jcode installer\n'
-        printf 'if not contains "%s" $PATH\n' "$INSTALL_DIR"
-        printf '    set -gx PATH "%s" $PATH\n' "$INSTALL_DIR"
-        printf 'end\n'
-      } >> "$rc"
-      added_to="$added_to $rc"
-    fi
-  }
-
-  # zsh: ~/.zshenv is read for every zsh invocation (login, interactive and
-  # scripts), so it is the most reliable single place to export PATH.
-  if _have zsh || [ "$(uname -s)" = "Darwin" ] || [ -f "$HOME/.zshenv" ] || [ -f "$HOME/.zshrc" ]; then
-    ensure_posix_rc "$HOME/.zshenv" yes
-  fi
-
-  # bash: ~/.bashrc for interactive shells, ~/.profile for login shells (macOS
-  # Terminal, ssh, etc.). We only create ~/.profile, never ~/.bash_profile, so
-  # we don't override an existing login-file lookup order.
-  if _have bash || [ -f "$HOME/.bashrc" ] || [ -f "$HOME/.bash_profile" ]; then
-    ensure_posix_rc "$HOME/.bashrc" yes
-  fi
-  ensure_posix_rc "$HOME/.profile" yes
-
-  # fish: only set it up when fish is installed or already configured.
-  if _have fish || [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish" ]; then
-    ensure_fish_rc yes
-  fi
-
-  # Also patch other common startup files when they already exist, so we cover
-  # users with custom login-shell setups without creating new files.
-  for rc in "$HOME/.zshrc" "$HOME/.zprofile" "$HOME/.bash_profile"; do
-    ensure_posix_rc "$rc" no
-  done
-
-  if [ -n "$added_to" ]; then
-    info "Added $INSTALL_DIR to PATH in:$added_to"
-  fi
-
+  echo "  To start using jcode right now, run:"
   echo ""
-  info "✅ jcode $VERSION installed successfully!"
+  printf '    \033[1;32mexport PATH="%s:\$PATH" && jcode\033[0m\n' "$INSTALL_DIR"
   echo ""
-
-  if [ "$(uname -s)" = "Darwin" ]; then
-    if [ "$hotkey_setup_ready" = true ]; then
-      info "Global hotkey ready: Cmd+; launches a new jcode from anywhere, system-wide"
-    else
-      info "Tip: run 'jcode setup-hotkey' so Cmd+; launches jcode system-wide on macOS"
-    fi
-  fi
-
-  if command -v jcode >/dev/null 2>&1; then
-    info "Run 'jcode' to get started."
-  else
-    echo "  To start using jcode right now, run:"
-    echo ""
-    printf '    \033[1;32mexport PATH="%s:\$PATH" && jcode\033[0m\n' "$INSTALL_DIR"
-    echo ""
-    echo "  Future terminal sessions will have jcode on PATH automatically."
-  fi
+  echo "  Future terminal sessions will have jcode on PATH automatically."
 fi
 
 INSTALL_STAGE="complete"

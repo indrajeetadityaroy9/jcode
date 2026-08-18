@@ -340,10 +340,6 @@ pub(crate) enum Command {
         #[arg(long, hide = true, value_name = "CLI")]
         notify_cli_launch: Option<String>,
 
-        /// Internal: run as the Windows hotkey listener process.
-        #[arg(long, hide = true)]
-        listen_windows_hotkey: bool,
-
         /// Remove the installed platform global hotkey listener.
         #[arg(long)]
         uninstall: bool,

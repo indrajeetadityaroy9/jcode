@@ -19,12 +19,6 @@
 #   Section C  retention - an upgrade must preserve ~/.jcode config and auth,
 #              keep both immutable version binaries (rollback stays possible),
 #              and the launcher must serve the new version.
-#   Section D  Windows parity - static audit that the Git Bash installer path
-#              (install.sh) and the PowerShell installer (install.ps1) both
-#              persist the user PATH, dedupe stale entries, and broadcast
-#              WM_SETTINGCHANGE. Runtime Windows behavior is covered by
-#              scripts/test_windows_setup_evaluation.ps1 in CI; this section
-#              stops the two installers drifting apart on POSIX dev machines.
 #
 # Every case prints PASS/FAIL/SKIP with expected-vs-actual on failure. The
 # composite is passed/(passed+failed); SKIPs (shell not installed) don't count
@@ -33,7 +27,6 @@ set -u
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 install_sh="$repo_dir/scripts/install.sh"
-install_ps1="$repo_dir/scripts/install.ps1"
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -280,113 +273,6 @@ check "uninstall removes launcher and build channels" \
   && [ "$(cat "$home_c/.jcode/auth.json" 2>/dev/null)" = '{"kept":true}' ]
 check "uninstall keeps config/auth for a cheap return" \
   "config.toml and auth.json intact" "user data lost" "$?"
-
-# ---------------------------------------------------------------------------
-# Section D: Windows parity (static audit of both installers).
-# ---------------------------------------------------------------------------
-echo ""
-echo "-- Section D: Windows PATH parity (static audit) --"
-sh_text=$(cat "$install_sh")
-ps1_text=$(cat "$install_ps1")
-
-printf '%s' "$sh_text" | grep -q 'SetEnvironmentVariable.*"User"'
-check "install.sh (Git Bash) persists the Windows user PATH" \
-  "SetEnvironmentVariable(...,'User') present" "no user-PATH persistence found" "$?"
-
-printf '%s' "$sh_text" | grep -q 'SendMessageTimeout(\[IntPtr\]0xffff' || printf '%s' "$sh_text" | grep -q '0x001A'
-check "install.sh broadcasts WM_SETTINGCHANGE after PATH change" \
-  "0x001A broadcast present" "no WM_SETTINGCHANGE broadcast" "$?"
-
-printf '%s' "$sh_text" | grep -q '_win_path_key'
-check "install.sh dedupes stale Windows PATH entries" \
-  "case/slash-insensitive dedupe helper present" "no dedupe logic" "$?"
-
-# The WM_SETTINGCHANGE broadcast is PowerShell source embedded in bash. Parse
-# that exact block with a REAL PowerShell parser so a quoting/escaping bug
-# (bash-escaped quotes are not PowerShell-escaped quotes) fails here instead
-# of silently no-oping on end-user machines.
-if command -v pwsh >/dev/null 2>&1; then
-  broadcast_block=$(awk "/<<'JCODE_PS_BROADCAST_EOF'/{inblock=1; next} /^JCODE_PS_BROADCAST_EOF\$/{inblock=0} inblock" "$install_sh")
-  printf '%s' "$broadcast_block" > "$work/broadcast.ps1"
-  parse_errors=$(JCODE_EVAL_PS_FILE="$work/broadcast.ps1" pwsh -NoProfile -NonInteractive -Command '
-    $errors = $null
-    [System.Management.Automation.Language.Parser]::ParseFile($env:JCODE_EVAL_PS_FILE, [ref]$null, [ref]$errors) | Out-Null
-    $errors.Count
-  ' 2>/dev/null | tr -d '[:space:]')
-  [ -n "$broadcast_block" ] && [ "$parse_errors" = "0" ]
-  check "embedded WM_SETTINGCHANGE PowerShell parses cleanly (real pwsh)" \
-    "0 parse errors" "${parse_errors:-<block not found>} parse errors" "$?"
-else
-  skip "embedded WM_SETTINGCHANGE PowerShell parses cleanly (real pwsh)" "pwsh not installed"
-fi
-
-# Runtime: drive the REAL install.sh Windows (Git Bash) branch with a mocked
-# powershell.exe and confirm it PERSISTS the user PATH (deduping a stale
-# uppercase duplicate) and broadcasts WM_SETTINGCHANGE. This is the regression
-# that shipped: the Git Bash installer printed manual PATH instructions but
-# never wrote the user PATH itself.
-home_w="$work/home-w"
-mkdir -p "$home_w" "$work/localappdata"
-win_state="$work/win-env"
-mkdir -p "$win_state"
-# Seed a user PATH that already contains a stale (case/slash variant) entry.
-printf 'C:\\Tools;%s\\' "$(printf '%s' "$work/localappdata/jcode/bin" | tr '[:lower:]' '[:upper:]')" > "$win_state/user-path"
-cat > "$work/bin/powershell.exe" <<'EOF'
-#!/usr/bin/env bash
-# Minimal mock of the two PowerShell invocations install.sh makes on Windows:
-#   1. read the user PATH   -> print the stored value
-#   2. write the user PATH  -> persist $JCODE_NEW_USER_PATH
-#   3. broadcast            -> record that a broadcast happened
-args="$*"
-case "$args" in
-  *GetEnvironmentVariable*) cat "$EVAL_WIN_STATE/user-path" ;;
-  *SetEnvironmentVariable*) printf '%s' "$JCODE_NEW_USER_PATH" > "$EVAL_WIN_STATE/user-path" ;;
-  *SendMessageTimeout*) touch "$EVAL_WIN_STATE/broadcasted" ;;
-  *) exit 1 ;;
-esac
-EOF
-chmod +x "$work/bin/powershell.exe"
-
-EVAL_VERSION="1.2.3" \
-EVAL_UNAME_S="MINGW64_NT-10.0" \
-EVAL_ARCHIVE_ARTIFACT="jcode-windows-x86_64.exe" \
-EVAL_CHECKSUM_ASSET="jcode-windows-x86_64.tar.gz" \
-EVAL_WIN_STATE="$win_state" \
-PATH="$work/bin:/usr/bin:/bin" \
-HOME="$home_w" \
-LOCALAPPDATA="$work/localappdata" \
-JCODE_HOME="$home_w/.jcode" \
-JCODE_SKIP_SERVER_RELOAD=1 \
-bash "$install_sh" >/dev/null 2>&1
-win_install_status=$?
-check "Git Bash Windows install completes" "exit 0" "exit $win_install_status" "$win_install_status"
-
-win_path_now=$(cat "$win_state/user-path" 2>/dev/null || true)
-case "$win_path_now" in
-  "$work/localappdata/jcode/bin;C:\\Tools") win_ok=0 ;;
-  *) win_ok=1 ;;
-esac
-check "Git Bash install persists + dedupes the Windows user PATH" \
-  "$work/localappdata/jcode/bin;C:\\Tools" "${win_path_now:-<unset>}" "$win_ok"
-
-[ -f "$win_state/broadcasted" ]
-check "Git Bash install broadcasts WM_SETTINGCHANGE" \
-  "broadcast recorded" "no broadcast" "$?"
-
-printf '%s' "$ps1_text" | grep -q 'Resolve-JcodePathUpdate'
-check "install.ps1 persists + dedupes the user PATH" \
-  "Resolve-JcodePathUpdate present" "helper missing" "$?"
-
-printf '%s' "$ps1_text" | grep -q 'SendMessageTimeout(\[IntPtr\]0xffff'
-check "install.ps1 broadcasts WM_SETTINGCHANGE to HWND_BROADCAST" \
-  "SendMessageTimeout(HWND_BROADCAST, ...) present" "broadcast missing" "$?"
-
-# Both installers must maintain the same channel layout so retention behaves
-# identically across platforms. The `stable-version` marker file is the shared
-# contract written by both.
-printf '%s' "$sh_text" | grep -q 'stable-version' && printf '%s' "$ps1_text" | grep -q 'stable-version'
-check "both installers maintain the stable/versions build channels" \
-  "stable-version channel marker written by both" "channel marker missing from one installer" "$?"
 
 # ---------------------------------------------------------------------------
 # Scorecard.
