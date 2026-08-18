@@ -26,7 +26,14 @@ use update_metadata::{record_release_update_duration, record_source_update_durat
 pub use update_rate_limit::{RATE_LIMIT_ERROR_PREFIX, is_rate_limit_error};
 use update_rate_limit::{clear_rate_limit_backoff, rate_limit_error};
 
-const GITHUB_REPO: &str = "1jehuang/jcode";
+/// Release/source origin for `jcode update`.
+///
+/// This fork, not upstream. Pointing it at `1jehuang/jcode` meant the
+/// background check compared *upstream's* releases against this build, and on
+/// a `JCODE_RELEASE_BUILD` binary the auto-install path would have downloaded
+/// upstream's asset straight over the purged one — restoring Windows,
+/// telemetry, and the gateway in a single step.
+const GITHUB_REPO: &str = "indrajeetadityaroy9/jcode";
 /// Minimum gap between *automatic* update checks.
 ///
 /// Every automatic check costs one or two unauthenticated `api.github.com`

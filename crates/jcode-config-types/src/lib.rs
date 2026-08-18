@@ -1077,7 +1077,7 @@ pub struct FeatureConfig {
 impl Default for FeatureConfig {
     fn default() -> Self {
         Self {
-            check_updates: true,
+            check_updates: false,
             memory: true,
             swarm: true,
             mermaid: true,
