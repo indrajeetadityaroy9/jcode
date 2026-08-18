@@ -32,7 +32,12 @@ REF="${3:?usage: upstream-features.sh <inventory|verify> <base-ref> <upstream-re
 # Deliberately TIGHT. Bare `subscription` would match subscription_api.rs and
 # `jcode login --provider jcode`, which §1 explicitly KEEPS as provider auth;
 # only the onboarding pill is excluded.
-PURGED_DESC='telemetry|sponsor|gateway|discovery|integration tools|request_permission|ambient permission|iOS|pair your phone'
+#
+# The same discipline governs the Windows entries. A bare `windows` would match
+# Windows Terminal detection, `wt.exe` launching, and cmd.exe shell selection --
+# all of which §1 KEEPS -- and a false PURGED label hides real upstream work,
+# which is the exact failure this script exists to prevent.
+PURGED_DESC='telemetry|sponsor|gateway|discovery|integration tools|request_permission|ambient permission|iOS|pair your phone|powershell|install\.ps1|windows hotkey|windows launcher|authenticode|smartscreen'
 EXCLUDED_DESC='subscription onboarding|onboarding[^.]*subscription|defaults to the [Jj]code subscription|subscription[^.]*onboarding'
 
 # Prose patterns do NOT match bare identifiers: a changelog line says "pair your
@@ -42,7 +47,7 @@ EXCLUDED_DESC='subscription onboarding|onboarding[^.]*subscription|defaults to t
 # Each subsystem needs a BARE stem, not just its crate name. `jcode-gateway-types`
 # matches the crate but not `GatewayConfig`, which is how three purged config
 # fields were first misreported as dropped upstream work.
-PURGED_IDENT='telemetry|sponsors|gateway|discover|integration_tools|request_permission|jcode-tui-permissions|phone-server|scripts/remote/|jcode-pair|^[[:space:]]*(Pair|Permissions|Telemetry)\b'
+PURGED_IDENT='telemetry|sponsors|gateway|discover|integration_tools|request_permission|jcode-tui-permissions|phone-server|scripts/remote/|jcode-pair|windows_setup|windows_hotkeys|\.ps1|listen_windows_hotkey|^[[:space:]]*(Pair|Permissions|Telemetry)\b'
 
 hdr() { printf '\n\033[1m== %s ==\033[0m\n' "$1"; }
 mark() {

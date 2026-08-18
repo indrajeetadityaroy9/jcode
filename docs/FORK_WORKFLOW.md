@@ -61,6 +61,7 @@ file we kept.
 | **Telemetry** | `crates/jcode-telemetry-core`, `telemetry-worker/`, `TELEMETRY.md`, all `record_*` call sites, `/telemetry`, the onboarding consent screen, **and the independent shell telemetry in `scripts/install.sh`** |
 | **Ambient permissions** | `crates/jcode-tui-permissions`, `jcode permissions`, `request_permission` tool, permission half of `safety.rs`, remote approve/deny over Telegram/Discord/email/Jade |
 | **CI** | `.github/` |
+| **Windows launcher port** | `jcode-setup-hints/src/windows_{setup,hotkeys}.rs`, `jcode-transport/src/windows.rs` (named-pipe IPC), all six `scripts/*.ps1`, `docs/WINDOWS.md`, `--listen-windows-hotkey`, the Windows branch of `scripts/install.sh`, and Section D of `setup_friction_eval.sh` |
 
 **Deliberately *not* removed** (easy to delete by mistake):
 
@@ -73,6 +74,26 @@ file we kept.
 
 **Also excluded by choice** (not purged, just not merged from upstream):
 subscription onboarding pill · discovery reframing · upstream's other onboarding changes.
+
+**Why the Windows purge was judged safe, and where it deliberately stops.** Measured before
+deleting: across the 236 upstream commits of the v0.75.3 and v0.76.0 syncs, every deleted file
+saw **zero** changes except `install.ps1`, which saw one — and all ten existed at both range
+starts, so that is a real figure rather than an artifact of recently-added files. The structural
+argument is stronger still: `#[cfg(windows)]` code is never compiled on macOS, so deleting it
+cannot change the macOS binary. Only four things could: removing a helper that is *not*
+Windows-gated, removing a file still named by a `mod` macOS evaluates, changing a predicate
+macOS evaluates, or breaking a shell script macOS runs.
+
+The second of those is the live hazard and is worth remembering: `mod windows_hotkeys;` was
+gated `cfg(any(test, windows))`, and that `test` term makes it **active under `cargo test` on
+macOS**. A `cfg(windows)`-only module is invisible here, but a `cfg(any(test, …))` sibling is
+not. `cargo test -p jcode-setup-hints` is the detector.
+
+Left alone on purpose: the root `Cargo.toml`/`Cargo.lock` `windows-sys` entries (13 and 15
+commits of churn — the worst conflict-to-benefit ratio in the repo, and target-gated deps are
+never built here anyway), `src/main.rs`'s `cfg(windows)` 8 MB-stack shim, and all Linux code.
+The two manifests that *were* edited — `jcode-setup-hints` and `jcode-transport` — both have
+zero churn over the same 236 commits and their tables were entirely dead.
 
 ### The guard
 
@@ -93,6 +114,14 @@ matches an unrelated Grok provider method; the quoted tool name and the type nam
 | `purge-guard.sh` | defensive | is purged code present in the tree? |
 | `classify-upstream.sh` | defensive | which incoming commits *risk* reintroducing it? |
 | `upstream-features.sh` | **offensive** | what did upstream add, and did it actually land? |
+
+The Windows purge extended all three together: a `find scripts -name '*.ps1'` section plus
+`mod windows_{setup,hotkeys}` / `listen_windows_hotkey` identifiers in the guard, the same paths
+in `PURGED_PATHS` so future upstream commits bucket as `PURE_PURGED`, and a **tight**
+`PURGED_DESC` in the feature script. Tight matters here more than usual: a bare `windows` would
+match Windows Terminal detection, `wt.exe` launching, and `cmd.exe` shell selection — all of
+which §1 keeps — and a false `PURGED` label hides real upstream work, which is exactly the
+failure that script exists to prevent.
 
 All three encode the same §1 invariant in three different vocabularies — a tree scan, a commit
 walk, and a changelog/structural read. **Change one, change all three.** A classifier that lags
@@ -520,7 +549,7 @@ running them in this table's position instead makes them vacuous. The "When" col
 | 5 | Merge recorded | **§3.5, post-commit** | `git log -1 --pretty=%p` | **two** hashes |
 | 6 | Build | §4, `$MAIN` | `cargo build --profile release-lto; echo $?` | 0 |
 | 7 | Smoke, isolated | §4, `$MAIN` | `./target/release-lto/jcode --no-update --socket /tmp/verify.sock run 'hi'` | see below |
-| 8 | Removed CLI absent | §5, post-install | `jcode --help \| grep -E '^\s+(pair\|permissions)\b'` | no match |
+| 8 | Removed CLI absent | §5, post-install | `jcode --help \| grep -E '^\s+(pair\|permissions)\b'` and `jcode setup-hotkey --help \| grep -i listen-windows-hotkey` | no match |
 | 9 | Version reproducible | §5, post-install | `jcode --version` | matches HEAD, no `-dirty` |
 | 10 | **No upstream work dropped** | §3.5, post-transfer | `./scripts/upstream-features.sh verify "$BASE" upstream/master` | exit 0 |
 
@@ -693,3 +722,24 @@ Each of these cost real time. The symptom is what made it visible.
     *after* the symlink flip and launchd immediately restarts it from `~/.local/bin/jcode`,
     which now resolves to the new build. Killing it *before* the flip just reloads old code.
     `jcode menubar` has no KeepAlive and stays down until launched again.
+
+27. **A `cfg(windows)`-only module is invisible to macOS `cargo test`; a `cfg(any(test, …))`
+    sibling is not.** Planning the Windows purge, `windows_hotkeys.rs` looked orphaned once
+    `windows_setup.rs` (its only caller) was deleted — so the plan claimed the deletion would
+    surface as `dead_code`. Wrong twice over. `windows_setup.rs` is `cfg(windows)` with no `test`
+    term, so it never compiled here to begin with; and `windows_hotkeys.rs` carries its own
+    `#[cfg(test)] mod tests` with 8 tests, four of its functions existing purely to be exercised
+    off-Windows. *Symptom:* a plan that reasons about dead code on a platform where the code in
+    question is not compiled at all. *The real hazard runs the other way:* `mod windows_hotkeys;`
+    was gated `cfg(any(test, windows))`, which **is** active under `cargo test` on macOS, so
+    deleting the file without its declaration breaks the test build while `cargo check` stays
+    green. Check the `mod` line's predicate, not the file's, and run `cargo test -p <crate>`.
+
+28. **`scripts/warning_budget.txt` was a dead gate, and the purge is what proved it.** The
+    baseline read `0` while `cargo check -q` reported 10, all of it pre-existing fork-purge
+    fallout (an import whose enum variants were purged, a `cfg(unix)` const whose only user is
+    `cfg(target_os = "linux")`, and Linux/macOS dead code upstream never trips). A gate that can
+    only fail tells you nothing. Measured at pre-purge `f6038aae2`: **10**; after the Windows
+    purge plus two in-scope fixes: **8** — so the purge added none. The baseline is now 8, an
+    honest ratchet that will actually catch the next regression. Do not "fix" it back to 0 by
+    lowering the number; lower it by removing warnings.

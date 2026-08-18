@@ -36,7 +36,10 @@ verdict "$(for p in \
     crates/jcode-base/src/sponsors.rs crates/jcode-base/src/sponsors \
     crates/jcode-app-core/src/tool/discover.rs \
     crates/jcode-app-core/src/tool/discover_secrets.rs \
-    TELEMETRY.md docs/SAFETY_SYSTEM.md docs/IOS_APP.md
+    crates/jcode-setup-hints/src/windows_setup.rs \
+    crates/jcode-setup-hints/src/windows_hotkeys.rs \
+    crates/jcode-transport/src/windows.rs \
+    TELEMETRY.md docs/SAFETY_SYSTEM.md docs/IOS_APP.md docs/WINDOWS.md
   do [ -e "$p" ] && echo "  RESURRECTED: $p"; done)"
 
 section "deleted crates must not reappear in any manifest"
@@ -57,6 +60,15 @@ section "removed tool / CLI registrations"
 verdict "$(grep -rnE \
     '"integration_tools"|"request_permission"|Command::(Pair|Permissions)|handle_telemetry_command|commands_remote|SummaryPill::(Subscription|Telemetry)|TelemetryChoice|TelemetryLevel' \
     --include='*.rs' crates/ src/ 2>/dev/null | filter_tests | sed 's/^/  /')"
+
+# The Windows launcher/hotkey port and the PowerShell installer are purged: this
+# fork is macOS-only. Upstream never touched these files across the 236 commits
+# of the v0.75.3 and v0.76.0 syncs, so a hit here means a sync reintroduced them
+# rather than that they drifted back in gradually.
+section "Windows launcher port must stay deleted"
+verdict "$( { find scripts -name '*.ps1' 2>/dev/null | sed 's/^/  RESURRECTED: /'
+    grep -rnE 'mod windows_(setup|hotkeys)|windows_(setup|hotkeys)::|listen_windows_hotkey' \
+      --include='*.rs' crates/ src/ 2>/dev/null | filter_tests | sed 's/^/  /'; } )"
 
 section "network egress endpoints"
 verdict "$(grep -rn 'telemetry\.jcode\.sh\|api\.jcode\.sh/v1/discovery' \
