@@ -33,8 +33,6 @@ pub(super) fn dispatch_local_command(app: &mut App, trimmed: &str) -> bool {
         || super::model_context::handle_model_command(app, trimmed)
         || super::commands::handle_usage_command(app, trimmed)
         || super::productivity::handle_productivity_command(app, trimmed)
-        || super::commands::handle_feedback_command(app, trimmed)
-        || super::support::handle_support_command(app, trimmed)
         || super::state_ui::handle_info_command(app, trimmed)
         || super::auth::handle_auth_command(app, trimmed)
         || super::tui_lifecycle_runtime::handle_dev_command(app, trimmed)

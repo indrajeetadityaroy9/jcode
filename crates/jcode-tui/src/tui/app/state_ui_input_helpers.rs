@@ -154,8 +154,6 @@ const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
         "Generate a shareable usage report + dashboard image",
     ),
     RegisteredCommand::public("/wrapped", "Alias for /productivity"),
-    RegisteredCommand::public("/feedback", "Send feedback about jcode"),
-    RegisteredCommand::public("/support", "Email support with diagnostics prefilled"),
     RegisteredCommand::public("/subscription", "Show jcode subscription status"),
     RegisteredCommand::public("/subscribe", "Why and how to subscribe to jcode"),
     RegisteredCommand::public("/config", "Show or edit configuration"),

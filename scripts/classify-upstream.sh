@@ -32,7 +32,7 @@ LIST_MIXED=false
 PURGED_PATHS='^(ios/|telemetry-worker/|\.github/|scripts/(remote|phone-server)/|scripts/[^/]*\.ps1$|crates/jcode-(telemetry-core|tui-permissions|gateway-types)/|crates/jcode-base/src/(gateway|sponsors)|crates/jcode-app-core/src/tool/discover|crates/jcode-setup-hints/src/windows_(setup|hotkeys)\.rs|crates/jcode-transport/src/windows\.rs|src/cli/telemetry\.rs|TELEMETRY\.md|docs/(SAFETY_SYSTEM|IOS_APP|WINDOWS)\.md)'
 
 # Identifiers that must never enter a file we keep.
-PURGED_IDENT='crate::telemetry::|jcode_telemetry_core|crate::gateway::|jcode_gateway_types|jcode_tui_permissions|crate::sponsors|DiscoverToolsTool|RequestPermissionTool|"integration_tools"|"request_permission"|Command::(Pair|Permissions)|handle_telemetry_command|SummaryPill::(Subscription|Telemetry)|TelemetryChoice|TelemetryLevel|record_[a-z_]+\(|windows_setup::|windows_hotkeys::|listen_windows_hotkey'
+PURGED_IDENT='crate::telemetry::|jcode_telemetry_core|crate::gateway::|jcode_gateway_types|jcode_tui_permissions|crate::sponsors|DiscoverToolsTool|RequestPermissionTool|"integration_tools"|"request_permission"|Command::(Pair|Permissions)|handle_telemetry_command|SummaryPill::(Subscription|Telemetry)|TelemetryChoice|TelemetryLevel|record_[a-z_]+\(|windows_setup::|windows_hotkeys::|listen_windows_hotkey|handle_support_command|handle_feedback_command'
 
 n_kept=0; n_purged=0; n_mixed=0; n_empty=0
 mixed_shas=()

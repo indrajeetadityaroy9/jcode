@@ -53,12 +53,12 @@ verdict "$(grep -rn 'jcode-telemetry-core\|jcode-tui-permissions\|jcode-gateway-
 # surfaced it.
 section "deleted Rust APIs must have no call sites"
 verdict "$(grep -rnE \
-    'crate::telemetry::|jcode_telemetry_core|crate::gateway::|jcode_gateway_types|jcode_tui_permissions|crate::sponsors|DiscoverToolsTool|record_permission_via_file|register_permission_notifier|RequestPermissionTool|safety::(PermissionRequest|PermissionResult|ActionTier|Urgency)|\.record_decision\(|\.pending_requests\(\)|transcript_telemetry|upload_transcript' \
+    'crate::telemetry::|jcode_telemetry_core|crate::gateway::|jcode_gateway_types|jcode_tui_permissions|crate::sponsors|DiscoverToolsTool|record_permission_via_file|register_permission_notifier|RequestPermissionTool|safety::(PermissionRequest|PermissionResult|ActionTier|Urgency)|\.record_decision\(|\.pending_requests\(\)|transcript_telemetry|upload_transcript|handle_support_command|handle_feedback_command|SUPPORT_EMAIL' \
     --include='*.rs' crates/ src/ tests/ 2>/dev/null | filter_tests | sed 's/^/  /')"
 
 section "removed tool / CLI registrations"
 verdict "$(grep -rnE \
-    '"integration_tools"|"request_permission"|Command::(Pair|Permissions)|handle_telemetry_command|commands_remote|SummaryPill::(Subscription|Telemetry)|TelemetryChoice|TelemetryLevel' \
+    '"integration_tools"|"request_permission"|Command::(Pair|Permissions)|handle_telemetry_command|commands_remote|SummaryPill::(Subscription|Telemetry)|TelemetryChoice|TelemetryLevel|"/support"|"/feedback"' \
     --include='*.rs' crates/ src/ 2>/dev/null | filter_tests | sed 's/^/  /')"
 
 # The Windows launcher/hotkey port and the PowerShell installer are purged: this

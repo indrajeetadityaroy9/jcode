@@ -3575,26 +3575,6 @@ pub(super) fn handle_usage_command(app: &mut App, trimmed: &str) -> bool {
     true
 }
 
-pub(super) fn handle_feedback_command(app: &mut App, trimmed: &str) -> bool {
-    let Some(rest) = trimmed.strip_prefix("/feedback") else {
-        return false;
-    };
-
-    let feedback = rest.trim();
-    if feedback.is_empty() {
-        app.push_display_message(DisplayMessage::error(
-            "Usage: /feedback <your feedback>".to_string(),
-        ));
-        return true;
-    }
-
-    app.push_display_message(DisplayMessage::system(
-        "Thanks, recorded your feedback.".to_string(),
-    ));
-    app.set_status_notice("Feedback recorded");
-    true
-}
-
 #[cfg(test)]
 #[path = "commands_tests.rs"]
 mod tests;

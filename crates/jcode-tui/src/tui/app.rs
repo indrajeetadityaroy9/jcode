@@ -99,7 +99,6 @@ mod state_ui_messages;
 mod state_ui_runtime;
 mod state_ui_storage;
 mod subscribe_nudge;
-mod support;
 mod swarm_hint;
 mod terminal_liveness;
 mod terminal_setup_command;
