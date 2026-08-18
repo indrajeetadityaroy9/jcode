@@ -254,14 +254,6 @@ pub(crate) enum Command {
         json: bool,
     },
 
-    /// Self-development mode: run as a canary session on the shared server
-    #[command(alias = "selfdev")]
-    SelfDev {
-        /// Build and test a new canary version before launching
-        #[arg(long)]
-        build: bool,
-    },
-
     /// Debug socket CLI - interact with running jcode server
     Debug {
         /// Debug command to run (list, start, sessions, create_session, message, tool, state, history, etc.)

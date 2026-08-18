@@ -30,7 +30,6 @@ impl App {
         let (mut split, context_info) = crate::prompt::build_system_prompt_split(
             skill_prompt.as_deref(),
             &available_skills,
-            self.session.is_canary,
             memory_prompt,
             None,
         );

@@ -106,7 +106,7 @@ pub async fn run_tui_client(
         let session_name = id::extract_session_name(session_id)
             .map(|s| s.to_string())
             .unwrap_or_else(|| session_id.clone());
-        let is_selfdev = super::selfdev::client_selfdev_requested();
+        let is_selfdev = jcode_selfdev_types::client_selfdev_requested();
         if let Some(server_info) =
             crate::registry::find_server_by_socket_sync(&server::socket_path())
         {
@@ -123,7 +123,7 @@ pub async fn run_tui_client(
             crossterm::terminal::SetTitle(resumed_window_title(session_id))
         );
     } else {
-        crate::process_title::set_client_generic_title(super::selfdev::client_selfdev_requested());
+        crate::process_title::set_client_generic_title(jcode_selfdev_types::client_selfdev_requested());
         let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::SetTitle("jcode"));
     }
     startup_profile::mark("terminal_title");

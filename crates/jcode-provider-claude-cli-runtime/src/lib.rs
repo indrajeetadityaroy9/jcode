@@ -52,7 +52,7 @@ const AVAILABLE_MODELS: &[&str] = &[
 ];
 
 /// Native tools that jcode handles locally (not Claude Code built-ins)
-const NATIVE_TOOL_NAMES: &[&str] = &["selfdev", "communicate", "memory", "session_search", "bg"];
+const NATIVE_TOOL_NAMES: &[&str] = &["communicate", "memory", "session_search", "bg"];
 
 #[derive(Clone)]
 pub struct ClaudeProvider {

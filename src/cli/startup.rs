@@ -472,9 +472,9 @@ mod tests {
 
     #[test]
     fn hidden_spawn_hotkey_argument_is_global_and_preserves_canonical_text() {
-        let args = parse_args(&["jcode", "--spawn-hotkey", "shift+cmd+'", "self-dev"]);
+        let args = parse_args(&["jcode", "--spawn-hotkey", "shift+cmd+'", "connect"]);
         assert_eq!(args.spawn_hotkey.as_deref(), Some("shift+cmd+'"));
-        assert!(matches!(args.command, Some(Command::SelfDev { .. })));
+        assert!(matches!(args.command, Some(Command::Connect)));
     }
     #[test]
     fn external_provider_runtimes_register_and_instantiate() {

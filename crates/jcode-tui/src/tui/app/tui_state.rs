@@ -1208,7 +1208,6 @@ impl crate::tui::TuiState for App {
             + info.project_agents_md_chars
             + info.global_agents_md_chars
             + info.skills_chars
-            + info.selfdev_chars
             + info.memory_chars
             + info.prompt_overlay_chars
             + info.preferred_tools_chars

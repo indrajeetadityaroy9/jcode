@@ -810,7 +810,6 @@ impl App {
         let (_, context_info) = crate::prompt::build_system_prompt_with_context(
             None,
             &available_skills,
-            session.is_canary,
         );
         let t_prompt = t0.elapsed();
         crate::logging::info(&format!(

@@ -12,7 +12,6 @@ pub mod output;
 pub mod proctitle;
 pub mod provider_doctor;
 pub mod provider_init;
-pub mod selfdev;
 pub mod startup;
 pub mod terminal;
 pub mod tui_launch;

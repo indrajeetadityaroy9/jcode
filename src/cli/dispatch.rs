@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::{
-    account, acp, commands, debug, hot_exec, login, output, provider_init, selfdev, terminal,
+    account, acp, commands, debug, hot_exec, login, output, provider_init, terminal,
     tui_launch,
 };
 use provider_init::ProviderChoice;
@@ -301,9 +301,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         }
         Some(Command::Usage { json }) => {
             commands::run_usage_command(json).await?;
-        }
-        Some(Command::SelfDev { build }) => {
-            selfdev::run_self_dev(build, args.resume).await?;
         }
         Some(Command::Debug {
             command,
@@ -894,7 +891,7 @@ async fn run_default_command(args: Args) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let in_jcode_repo = build::is_jcode_repo(&cwd);
     startup_profile::mark("is_jcode_repo");
-    let already_in_selfdev = crate::cli::selfdev::client_selfdev_requested();
+    let already_in_selfdev = jcode_selfdev_types::client_selfdev_requested();
 
     // Record where this interactive launch happened so the system-wide launch
     // hotkeys can reopen jcode in the last project directory (Cmd+') and the
@@ -911,7 +908,7 @@ async fn run_default_command(args: Args) -> Result<()> {
         output::stderr_info("   (use --no-selfdev to disable auto-detection)");
         output::stderr_blank_line();
 
-        crate::env::set_var(selfdev::CLIENT_SELFDEV_ENV, "1");
+        crate::env::set_var(jcode_selfdev_types::CLIENT_SELFDEV_ENV, "1");
         crate::cli::proctitle::set_initial_title(&args);
     }
 
@@ -1285,13 +1282,13 @@ pub(crate) async fn spawn_server(
 
     startup_profile::mark("server_spawn_start");
     output::stderr_info("Starting server...");
-    let client_requested_selfdev = selfdev::client_selfdev_requested();
+    let client_requested_selfdev = jcode_selfdev_types::client_selfdev_requested();
     let exe = build::shared_server_update_candidate(client_requested_selfdev)
         .map(|(path, _)| path)
         .or_else(|| std::env::current_exe().ok())
         .ok_or_else(|| anyhow::anyhow!("Could not determine executable path for server spawn"))?;
     let mut cmd = ProcessCommand::new(&exe);
-    cmd.env_remove(selfdev::CLIENT_SELFDEV_ENV);
+    cmd.env_remove(jcode_selfdev_types::CLIENT_SELFDEV_ENV);
     if client_requested_selfdev {
         cmd.env("JCODE_DEBUG_CONTROL", "1");
     }

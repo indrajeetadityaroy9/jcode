@@ -803,7 +803,7 @@ pub(super) async fn handle_subscribe(
     if should_selfdev {
         *client_selfdev = true;
         apply_or_defer_subscribe_selfdev(agent, client_session_id);
-        registry.register_selfdev_tools().await;
+        registry.register_dev_tools().await;
     }
 
     let mcp_register_ms = if register_mcp_tools {
@@ -1369,7 +1369,7 @@ pub(super) async fn handle_resume_session(
             .unwrap_or(false);
         if is_canary {
             *client_selfdev = true;
-            registry.register_selfdev_tools().await;
+            registry.register_dev_tools().await;
         }
 
         *client_session_id = session_id.clone();
@@ -1580,7 +1580,7 @@ pub(super) async fn handle_resume_session(
 
     if result.is_ok() && is_canary {
         *client_selfdev = true;
-        registry.register_selfdev_tools().await;
+        registry.register_dev_tools().await;
     }
 
     match result {

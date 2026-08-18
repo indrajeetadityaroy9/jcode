@@ -110,7 +110,6 @@ impl Agent {
         let (mut split, _context_info) = crate::prompt::build_system_prompt_split(
             skill_prompt.as_deref(),
             &available_skills,
-            self.session.is_canary,
             memory_prompt,
             working_dir.as_deref(),
         );

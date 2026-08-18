@@ -379,7 +379,7 @@ impl Agent {
 
     pub(super) async fn tool_definitions(&mut self) -> Vec<ToolDefinition> {
         if self.session.is_canary {
-            self.registry.register_selfdev_tools().await;
+            self.registry.register_dev_tools().await;
         }
 
         // Return locked tools if available (prevents cache invalidation from
@@ -447,7 +447,6 @@ impl Agent {
                 !crate::tool::tool_name_is_disabled(&self.disabled_tools, &tool.name)
             });
         }
-        Self::apply_selfdev_tool_surface(&mut tools, self.session.is_canary);
         tools
     }
 
@@ -456,20 +455,6 @@ impl Agent {
     /// The registry keeps the implementation available for self-dev sessions,
     /// but regular agents should not spend tool-list context on an internal
     /// development surface.
-    fn apply_selfdev_tool_surface(tools: &mut Vec<ToolDefinition>, is_canary: bool) {
-        if !is_canary {
-            tools.retain(|tool| tool.name != "selfdev");
-            return;
-        }
-        for tool in tools.iter_mut() {
-            if tool.name == "selfdev" {
-                tool.description =
-                    crate::tool::selfdev::SelfDevTool::description_for(true).to_string();
-                tool.input_schema = crate::tool::selfdev::SelfDevTool::schema_for(true);
-            }
-        }
-    }
-
     /// Returns true if the registry contains `mcp__*` tools (subject to the
     /// session's `allowed_tools` filter) that are not present in the currently
     /// locked snapshot. Used to detect the async MCP-registration race (#206).
@@ -497,7 +482,7 @@ impl Agent {
     /// Get full tool definitions for debug introspection (bypasses lock)
     pub async fn tool_definitions_for_debug(&self) -> Vec<crate::message::ToolDefinition> {
         if self.session.is_canary {
-            self.registry.register_selfdev_tools().await;
+            self.registry.register_dev_tools().await;
         }
         let mut tools = self.registry.definitions(self.allowed_tools.as_ref()).await;
         if !self.disabled_tools.is_empty() {
@@ -505,7 +490,6 @@ impl Agent {
                 !crate::tool::tool_name_is_disabled(&self.disabled_tools, &tool.name)
             });
         }
-        Self::apply_selfdev_tool_surface(&mut tools, self.session.is_canary);
         tools
     }
 

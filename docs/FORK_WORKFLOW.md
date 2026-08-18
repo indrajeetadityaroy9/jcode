@@ -61,6 +61,8 @@ file we kept.
 | **Telemetry** | `crates/jcode-telemetry-core`, `telemetry-worker/`, `TELEMETRY.md`, all `record_*` call sites, `/telemetry`, the onboarding consent screen, **and the independent shell telemetry in `scripts/install.sh`** |
 | **Ambient permissions** | `crates/jcode-tui-permissions`, `jcode permissions`, `request_permission` tool, permission half of `safety.rs`, remote approve/deny over Telegram/Discord/email/Jade |
 | **CI** | `.github/` |
+| **Self-development tool** | `jcode-app-core/src/tool/selfdev/` (canary build queue, clone/setup/status/launch), `src/cli/selfdev.rs`, `jcode self-dev`, `/selfdev`, the `selfdev` agent tool, and its prompt files. **Kept:** `[profile.selfdev]` (a cargo build profile `dev_cargo.sh` uses), `jcode-build-support`, `jcode-desktop2/src/selfdev_reload.rs` (desktop2's own hot reload), and the `selfdev` wire field. `ReloadContext` was extracted to `server/reload_context.rs` first — it is the reconnect path, not self-dev. See `docs/plans/SELFDEV_EXTRACTION.md`. |
+| **Support / feedback commands** | `/support` (mailto to upstream carrying account id, email, tier) and `/feedback` (a no-op since the telemetry purge removed `record_feedback`) |
 | **Windows launcher port** | `jcode-setup-hints/src/windows_{setup,hotkeys}.rs`, `jcode-transport/src/windows.rs` (named-pipe IPC), all six `scripts/*.ps1`, `docs/WINDOWS.md`, `--listen-windows-hotkey`, the Windows branch of `scripts/install.sh`, and Section D of `setup_friction_eval.sh` |
 
 **Deliberately *not* removed** (easy to delete by mistake):

@@ -39,6 +39,7 @@ verdict "$(for p in \
     crates/jcode-setup-hints/src/windows_setup.rs \
     crates/jcode-setup-hints/src/windows_hotkeys.rs \
     crates/jcode-transport/src/windows.rs \
+    crates/jcode-app-core/src/tool/selfdev src/cli/selfdev.rs \
     TELEMETRY.md docs/SAFETY_SYSTEM.md docs/IOS_APP.md docs/WINDOWS.md
   do [ -e "$p" ] && echo "  RESURRECTED: $p"; done)"
 
@@ -53,7 +54,7 @@ verdict "$(grep -rn 'jcode-telemetry-core\|jcode-tui-permissions\|jcode-gateway-
 # surfaced it.
 section "deleted Rust APIs must have no call sites"
 verdict "$(grep -rnE \
-    'crate::telemetry::|jcode_telemetry_core|crate::gateway::|jcode_gateway_types|jcode_tui_permissions|crate::sponsors|DiscoverToolsTool|record_permission_via_file|register_permission_notifier|RequestPermissionTool|safety::(PermissionRequest|PermissionResult|ActionTier|Urgency)|\.record_decision\(|\.pending_requests\(\)|transcript_telemetry|upload_transcript|handle_support_command|handle_feedback_command|SUPPORT_EMAIL' \
+    'crate::telemetry::|jcode_telemetry_core|crate::gateway::|jcode_gateway_types|jcode_tui_permissions|crate::sponsors|DiscoverToolsTool|record_permission_via_file|register_permission_notifier|RequestPermissionTool|safety::(PermissionRequest|PermissionResult|ActionTier|Urgency)|\.record_decision\(|\.pending_requests\(\)|transcript_telemetry|upload_transcript|handle_support_command|handle_feedback_command|SUPPORT_EMAIL|tool::selfdev|SelfDevTool|run_self_dev' \
     --include='*.rs' crates/ src/ tests/ 2>/dev/null | filter_tests | sed 's/^/  /')"
 
 section "removed tool / CLI registrations"

@@ -24,7 +24,6 @@ mod multiedit;
 mod open;
 mod patch;
 mod read;
-pub mod selfdev;
 pub(crate) mod serde_coerce;
 mod session_search;
 pub(crate) mod session_search_index;
@@ -267,7 +266,6 @@ impl Registry {
             );
             Self::insert_tool_timed(&mut m, &mut timings, "gmail", gmail::GmailTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "schedule", ambient::ScheduleTool::new);
-            Self::insert_tool_timed(&mut m, &mut timings, "selfdev", selfdev::SelfDevTool::new);
             let nonzero: Vec<String> = timings
                 .iter()
                 .filter(|(_, ms)| *ms > 0)
@@ -1130,16 +1128,8 @@ impl Registry {
         }
     }
 
-    /// Register self-dev tools (only for canary/self-dev sessions)
-    pub async fn register_selfdev_tools(&self) {
-        // Self-dev management tool
-        let selfdev_tool = selfdev::SelfDevTool::new();
-        self.register(
-            "selfdev".to_string(),
-            Arc::new(selfdev_tool) as Arc<dyn Tool>,
-        )
-        .await;
-
+    /// Register developer-only tools (canary/debug sessions).
+    pub async fn register_dev_tools(&self) {
         // Debug socket tool for direct debug socket access
         let debug_socket_tool = debug_socket::DebugSocketTool::new();
         self.register(

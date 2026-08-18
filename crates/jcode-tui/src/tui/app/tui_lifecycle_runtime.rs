@@ -290,7 +290,7 @@ impl App {
 
         // Register self-dev tools if this is a canary session
         if self.session.is_canary {
-            self.registry.register_selfdev_tools().await;
+            self.registry.register_dev_tools().await;
         }
     }
 

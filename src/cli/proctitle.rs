@@ -23,7 +23,6 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Update) => "jcode update".to_string(),
         Some(Command::Version { .. }) => "jcode version".to_string(),
         Some(Command::Usage { .. }) => "jcode usage".to_string(),
-        Some(Command::SelfDev { .. }) => "jcode:selfdev".to_string(),
         Some(Command::Debug { .. }) => "jcode debug".to_string(),
         Some(Command::Auth(_)) => "jcode auth".to_string(),
         Some(Command::Provider(_)) => "jcode provider".to_string(),
@@ -62,13 +61,13 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::SetupLauncher) => "jcode setup-launcher".to_string(),
         None => {
             if let Some(resume) = args.resume.as_deref().filter(|resume| !resume.is_empty()) {
-                let prefix = if crate::cli::selfdev::client_selfdev_requested() {
+                let prefix = if jcode_selfdev_types::client_selfdev_requested() {
                     "jcode:d:"
                 } else {
                     "jcode:c:"
                 };
                 compact_process_title(prefix, Some(&session_name(resume)))
-            } else if crate::cli::selfdev::client_selfdev_requested() {
+            } else if jcode_selfdev_types::client_selfdev_requested() {
                 "jcode:selfdev".to_string()
             } else {
                 "jcode:client".to_string()

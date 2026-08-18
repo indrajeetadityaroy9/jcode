@@ -715,7 +715,7 @@ mod tests {
 
         let provider: Arc<dyn Provider> = Arc::new(TestProvider);
         let registry = Registry::new(provider.clone()).await;
-        registry.register_selfdev_tools().await;
+        registry.register_dev_tools().await;
 
         let mut agent = Agent::new(provider, registry);
         agent.set_canary("self-dev");

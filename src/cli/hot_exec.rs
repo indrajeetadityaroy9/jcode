@@ -35,7 +35,7 @@ pub fn execute_requested_action(run_result: &RunResult) -> Result<()> {
 pub fn hot_restart(session_id: &str) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let exe = std::env::current_exe()?;
-    let is_selfdev = crate::cli::selfdev::client_selfdev_requested();
+    let is_selfdev = jcode_selfdev_types::client_selfdev_requested();
 
     crate::logging::info(&format!("Restarting with current binary: {:?}", exe));
 
@@ -76,7 +76,7 @@ pub fn hot_reload(session_id: &str) -> Result<()> {
         }
     }
 
-    let is_selfdev = crate::cli::selfdev::client_selfdev_requested();
+    let is_selfdev = jcode_selfdev_types::client_selfdev_requested();
     let (exe, _label) = build::preferred_reload_candidate(is_selfdev)
         .ok_or_else(|| anyhow::anyhow!("No reloadable binary found"))?;
 
@@ -161,7 +161,7 @@ pub fn hot_update(session_id: &str) -> Result<()> {
                     update::print_centered(&format!("✓ Installed {}", release.tag_name));
                     reload_server_after_update("installed update");
 
-                    let is_selfdev = crate::cli::selfdev::client_selfdev_requested();
+                    let is_selfdev = jcode_selfdev_types::client_selfdev_requested();
                     let exe = build::client_update_candidate(is_selfdev)
                         .map(|(p, _)| p)
                         .unwrap_or(path);
@@ -208,7 +208,7 @@ pub fn hot_update(session_id: &str) -> Result<()> {
 
     crate::env::set_var("JCODE_RESUMING", "1");
     let exe = std::env::current_exe()?;
-    let is_selfdev = crate::cli::selfdev::client_selfdev_requested();
+    let is_selfdev = jcode_selfdev_types::client_selfdev_requested();
     let mut cmd = ProcessCommand::new(&exe);
     if is_selfdev {
         cmd.arg("self-dev");
