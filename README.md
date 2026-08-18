@@ -2,27 +2,17 @@
 
 # jcode
 
-[![Latest Release](https://badgen.net/github/release/1jehuang/jcode?icon=github)](https://github.com/1jehuang/jcode/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS-blue?style=flat-square)](https://github.com/1jehuang/jcode/releases)
-[![Last Commit](https://badgen.net/github/last-commit/1jehuang/jcode/master?icon=github)](https://github.com/1jehuang/jcode/commits/master)
-[![GitHub Stars](https://badgen.net/github/stars/1jehuang/jcode?icon=github)](https://github.com/1jehuang/jcode/stargazers)
-[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/nBe9vGyK9a)
+[![Platforms](https://img.shields.io/badge/platforms-macOS-blue?style=flat-square)](#installation)
 
 The most RAM efficient harness <br>
 The most intelligent harness
 
-<a href="https://trendshift.io/repositories/25042?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-25042" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/25042" alt="1jehuang/jcode | Trendshift" width="250" height="55"></a>
+A personal macOS-only fork of [jcode](https://github.com/1jehuang/jcode). See
+[docs/FORK_WORKFLOW.md](docs/FORK_WORKFLOW.md) for what this fork removes and how it
+tracks upstream.
 
-<a href="https://github.com/1jehuang/jcode/stargazers"><img src="docs/images/star-history.svg" alt="jcode GitHub stars over time" width="600"></a>
-
-<a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-yc-launch.mp4">
-  <img src="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-yc-launch.webp" alt="jcode YC launch video" width="800">
-</a>
-
-<br>
-
-[Website](https://jcode.sh) · [Docs](https://jcode.sh/docs) · [SDK](https://jcode.sh/sdk) · [Benchmarks](https://jcode.sh/bench) · [Features](#features) · [Install](#installation) · [Quick Start](#quick-start) · [Further Reading](#further-reading) · [Contributing](CONTRIBUTING.md)
+[Features](#features) · [Install](#installation) · [Quick Start](#quick-start) · [Further Reading](#further-reading)
 
 </div>
 
@@ -35,12 +25,15 @@ The most intelligent harness
 </div>
 
 ```bash
-# macOS & Linux
-curl -fsSL https://jcode.sh/install | bash
+git clone https://github.com/indrajeetadityaroy9/jcode.git
+cd jcode
+cargo build --release
+scripts/install_release.sh
 ```
 
-Need Homebrew, source builds, provider setup, or want an agent to set it up for you?
-[Jump to detailed installation](#detailed-installation).
+This fork builds from source; there are no prebuilt releases. See
+[docs/FORK_WORKFLOW.md](docs/FORK_WORKFLOW.md) §4-§5 for the build and install
+procedure used to produce the installed binary.
 
 ---
 
@@ -249,16 +242,6 @@ versions tested for this corrected memory rerun:
 - `Claude Code 2.1.86 (Claude Code)`
 - `Antigravity CLI 1.0.0`
 
-<div align="center">
-
-  <a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-performance-demo.mp4">
-    <img src="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-performance-demo.webp" alt="jcode performance demonstration" width="900">
-  </a>
-
-  <p><em>jcode performance demonstration</em></p>
-
-</div>
-
 
 ---
 
@@ -272,17 +255,6 @@ The harness also provides explicit memory tools to allow the agent to actively s
 
 Memories are automatically consolidated every so often via the ambient mode. This reorganizes, checks for staleness and conflicts, etc
 
-<div align="center">
-
-  <a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-memory-demo.mp4">
-    <img src="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-memory-demo.webp" alt="jcode memory demonstration" width="900">
-  </a>
-
-  <p><em>jcode memory demonstration</em></p>
-
-</div>
-
-<!-- Memory demo media is hosted in the readme-assets release. -->
 
 ---
 
@@ -291,13 +263,13 @@ Memories are automatically consolidated every so often via the ambient mode. Thi
 The side panel is a place for auxiliary information. Tell your jcode agent to load a file into the side panel and see it update in real time, or tell your agent to write directly to the side panel, or use it as a diff viewer. The side panel (and chat) is able to render mermaid diagrams inline. 
 <img width="2877" height="1762" alt="image" src="https://github.com/user-attachments/assets/6c7bec81-ef3f-434d-8a7b-d55f8a54e5cf" />
 
-To make this possible, I created a new mermaid rendering library to render diagrams 1800x faster. It has no browser or Typescript dependency. See https://github.com/1jehuang/mermaid-rs-renderer
+This is backed by a dedicated mermaid rendering library that renders diagrams 1800x faster, with no browser or TypeScript dependency: https://github.com/1jehuang/mermaid-rs-renderer
 
-To show you important information without taking space away from the screen that could be used for responses, I developed info widgets. Info widgets will only ever take up the negative space on the screen to show you information, and will get out of the way if there isn't any. 
+Info widgets show important information without taking space away from responses. They only ever occupy the negative space on the screen, and get out of the way when there isn't any. 
 
 Jcode can render at over a thousand fps. Your monitor will not have the refresh rate to show you, but this means you will not have silly flicker problems. 
 
-The custom scrollback implementation of jcode allows it to do much more than a native scrollback. However, it is a terminal-level limitation that I cannot have smooth, partial line scrolling with a custom scrollback. To fix this, I made my own terminal. Handterm https://github.com/1jehuang/handterm implements a native scroll api, and also happens to be very efficient. This is a work in progress. Scrolling is still well implemented for normal terminals.
+The custom scrollback implementation allows jcode to do much more than a native scrollback. Smooth, partial-line scrolling is a terminal-level limitation of any custom scrollback, so a companion terminal exists to address it: Handterm https://github.com/1jehuang/handterm implements a native scroll API and is very efficient. That work is ongoing; scrolling is still well implemented for normal terminals.
 
 Jcode is left-aligned by default. You can switch to centered mode with the `Alt+C` hotkey, with the `/alignment` command, or in the config.
 
@@ -308,16 +280,6 @@ To disable emoji globally in TUI and CLI output, set `emoji = false` under `[dis
 ## Swarm
 
 Spawn two or more agents in the same repo, and they will automatically be managed by the server to allow native collaboration. When agent A edits a file that agent B has read (code shifting under its feet), the server notifies agent B. Agent B can ignore it if it is not relevant, or it can check the diff to make sure that it doesn't conflict. Each agent has messaging abilities, capable of DMing just one agent, broadcasting to all other agents hosted by the server, or just agents working in that repo. This allows you to spawn multiple sessions in the same repo, and have all conflicts automatically resolved.
-
-<div align="center">
-
-  <a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/swarm-demo.mp4">
-    <img src="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-swarm-demonstration.webp" alt="jcode swarm demonstration" width="900">
-  </a>
-
-  <p><em>jcode swarm demonstration</em></p>
-
-</div>
 
 Agents are also able to spawn their own swarms autonomously. They have a swarm tool which allows them to spawn in their own teamates to accomplish tasks in parallel. Doing so turns the main agent into a coordinator and the spawned agents into workers. Groups of agents, their messaging channels, their completion statuses, etc are all automatically managed. This can be done headlessly or headed.
 
@@ -677,16 +639,6 @@ jcode dictate
 jcode supports interactive TUI use, non-interactive runs, persistent server/client workflows,
 and hotkey-friendly dictation without requiring a bundled speech-to-text stack.
 
-<div align="center">
-
-  <a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/workflow.mp4">
-    <img src="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-workflow-demonstration.webp" alt="jcode workflow demonstration" width="900">
-  </a>
-
-  <p><em>jcode workflow demonstration</em></p>
-
-</div>
-
 ---
 
 ## Browser Automation
@@ -732,10 +684,6 @@ Notes:
 
 ## Further Reading
 
-- [jcode.sh/docs](https://jcode.sh/docs) — install, providers, configuration, keybindings
-- [jcode.sh/swarm](https://jcode.sh/swarm) — many coding agents in one repository
-- [jcode.sh/sdk](https://jcode.sh/sdk) — TypeScript SDK: drive jcode sessions from your own program
-- [jcode.sh/bench](https://jcode.sh/bench) — benchmark methodology and results
 - [Ambient Mode / OpenClaw](docs/AMBIENT_MODE.md)
 - [Browser Provider Protocol](docs/BROWSER_PROVIDER_PROTOCOL.md)
 - [Memory Architecture](docs/MEMORY_ARCHITECTURE.md)
@@ -757,15 +705,8 @@ Set up jcode on this machine for me.
 
 1. Detect the operating system, available package managers, and shell environment, then install jcode using the best matching command below instead of referring me somewhere else:
 
-   - macOS with Homebrew available:
-     brew tap 1jehuang/jcode
-     brew install jcode
-
-   - macOS or Linux via install script:
-     curl -fsSL https://jcode.sh/install | bash
-
-   - From source if the above paths are not appropriate:
-     git clone https://github.com/1jehuang/jcode.git
+   - From source (this fork has no prebuilt releases or package-manager channel):
+     git clone https://github.com/indrajeetadityaroy9/jcode.git
      cd jcode
      cargo build --release
      scripts/install_release.sh
@@ -808,35 +749,16 @@ Set up jcode on this machine for me.
 
 This is intended to be a copy-paste bootstrap prompt for jcode itself or any other coding agent.
 
-### Quick Install
+### From Source
+
+This fork publishes no release binaries and is not in any package-manager
+channel, so building from source is the only install path:
 
 ```bash
-# macOS & Linux
-curl -fsSL https://jcode.sh/install | bash
-```
-
-On Termux, install the glibc runtime and `patchelf` first so the installer can
-patch the downloaded Linux binary to Termux's glibc dynamic linker and create a
-launcher that avoids Termux's `LD_PRELOAD` shim:
-
-```bash
-pkg install glibc patchelf
-curl -fsSL https://jcode.sh/install | bash
-```
-
-### macOS via Homebrew
-
-```bash
-brew tap 1jehuang/jcode
-brew install jcode
-```
-
-### From Source (all platforms)
-
-```bash
-git clone https://github.com/1jehuang/jcode.git
+git clone https://github.com/indrajeetadityaroy9/jcode.git
 cd jcode
 cargo build --release
+scripts/install_release.sh
 ```
 
 For local self-dev / refactor work on Linux x86_64, prefer:
@@ -863,14 +785,14 @@ Removes installed binaries and the launcher but keeps your config, auth, and
 sessions so a clean reinstall picks up where you left off:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/uninstall.sh | bash -s -- --yes
+scripts/uninstall.sh --yes
 ```
 
 For a full wipe of everything including config, auth, sessions, logs, and
 memory (useful for recovering from a broken install):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/uninstall.sh | bash -s -- --purge --yes
+scripts/uninstall.sh --purge --yes
 ```
 
 Add `--dry-run` to preview what would be removed without deleting anything.

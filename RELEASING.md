@@ -60,9 +60,7 @@ Tag push (v*)
           ├─► Collect every successful architecture independently
           ├─► Keep failed architectures unavailable without blocking others
           ├─► Generate and upload SHA256SUMS
-          ├─► Publish the available release assets
-          ├─► Update Homebrew formula (1jehuang/homebrew-jcode)
-          └─► Update AUR package (jcode-bin)
+          └─► Publish the available release assets
 ```
 
 Key design decisions:
@@ -74,24 +72,14 @@ Key design decisions:
 - **sccache + rust-cache** for dependency caching across runs.
 - **mold linker** on Linux for faster linking.
 
-### Package manager updates
-
-CI handles Homebrew and AUR updates automatically:
-
-- **Homebrew**: Updates `Formula/jcode.rb` in `1jehuang/homebrew-jcode` with new SHA256 hashes
-- **AUR**: Updates `PKGBUILD` and `.SRCINFO` in the `jcode-bin` AUR repo
-
-Both are triggered conditionally by the final `release` job. Homebrew updates only when all four Linux/macOS formula assets exist; AUR updates whenever Linux x86_64 exists.
-
 ## Which to use
 
 | Scenario | Method | Time to Linux+macOS |
 |----------|--------|-------------------|
 | Hotfix / urgent bug | `scripts/quick-release.sh` | ~16 min |
 | Regular release | Push `v*` tag | ~11 min |
-| Need Homebrew/AUR | Push `v*` tag | ~11 min |
 
-The quick-release script reduces local build latency, but it deliberately leaves the release as a draft. The tag-triggered workflow publishes every successful architecture after checksum generation. Package managers update only when their own required assets exist.
+The quick-release script reduces local build latency, but it deliberately leaves the release as a draft. The tag-triggered workflow publishes every successful architecture after checksum generation.
 
 ## Cross-Compilation Setup
 
