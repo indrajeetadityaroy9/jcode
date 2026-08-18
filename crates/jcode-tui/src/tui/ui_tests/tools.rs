@@ -1200,7 +1200,7 @@ fn test_render_tool_message_keeps_bash_command_visible_when_row_is_narrow() {
     );
 }
 
-/// Regression for https://github.com/1jehuang/jcode/issues/284:
+/// Regression:
 /// While a tool call is still streaming, its arguments arrive separately and
 /// `input` is `null` (or an empty object) for many render frames. The summary
 /// must not show "action missing" / "command missing" placeholders in that

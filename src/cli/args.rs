@@ -506,10 +506,9 @@ pub(crate) enum Command {
 
     /// Serve the stable harness API on a Unix socket, for SDK clients.
     ///
-    /// This is the endpoint the TypeScript SDK (`@1jehuang/jcode-sdk`) connects to. It
-    /// ships in the released binary on purpose: the API is only "generally
-    /// available" if reaching it does not require a Rust toolchain and a
-    /// source checkout.
+    /// The Rust client is `crates/jcode-sdk`. The upstream TypeScript SDK was
+    /// removed from this fork, but the socket protocol is unchanged, so any
+    /// client speaking it still works.
     #[cfg(unix)]
     #[command(name = "api-bridge", alias = "api")]
     ApiBridge {
