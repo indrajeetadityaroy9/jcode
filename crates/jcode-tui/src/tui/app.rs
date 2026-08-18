@@ -16,7 +16,7 @@ use crate::provider::Provider;
 use crate::runtime_memory_log::RuntimeMemoryLogController;
 use crate::session::{Session, StoredMessage};
 use crate::skill::SkillRegistry;
-use crate::tool::selfdev::ReloadContext;
+use crate::server::reload_context::ReloadContext;
 use crate::tool::{Registry, ToolContext};
 use anyhow::Result;
 use auth::PendingLogin;
@@ -471,7 +471,7 @@ impl RemoteStartupPhase {
 }
 
 pub(super) fn reload_persisted_background_tasks_note(session_id: &str) -> String {
-    crate::tool::selfdev::persisted_background_tasks_note(session_id)
+    crate::server::reload_context::persisted_background_tasks_note(session_id)
 }
 
 #[derive(Clone, Default)]

@@ -736,7 +736,7 @@ fn handle_post_connect_dispatches_reload_followup_even_if_history_snapshot_looks
     crate::env::set_var("JCODE_HOME", temp_home.path());
 
     let session_id = "session_reload_busy_snapshot";
-    crate::tool::selfdev::ReloadContext {
+    crate::server::reload_context::ReloadContext {
         task_context: Some("Validate reload continuation after reconnect".to_string()),
         version_before: "old-build".to_string(),
         version_after: "new-build".to_string(),
@@ -791,7 +791,7 @@ fn handle_post_connect_dispatches_reload_followup_even_if_history_snapshot_looks
     assert!(app.current_message_id.is_some());
     assert!(app.rate_limit_pending_message.is_some());
 
-    if let Ok(path) = crate::tool::selfdev::ReloadContext::path_for_session(session_id) {
+    if let Ok(path) = crate::server::reload_context::ReloadContext::path_for_session(session_id) {
         let _ = std::fs::remove_file(path);
     }
     if let Some(prev_home) = prev_home {

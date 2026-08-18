@@ -9,6 +9,7 @@ use crate::protocol::{ServerEvent, TranscriptMode};
 use crate::server;
 use crate::session;
 use crate::session_launch;
+use crate::server::reload_context::{ReloadContext, persisted_background_tasks_note};
 use crate::storage;
 use crate::tool::{Tool, ToolContext, ToolExecutionMode, ToolOutput};
 use anyhow::Result;
@@ -29,7 +30,6 @@ mod status;
 mod tests;
 
 pub use launch::{enter_selfdev_session, schedule_selfdev_prompt_delivery};
-pub use reload::{ReloadRecoveryDirective, persisted_background_tasks_note};
 pub use status::selfdev_status_output;
 
 /// Public GitHub source used when cloning the jcode repository for self-dev.
@@ -65,21 +65,6 @@ struct SelfDevInput {
     /// Background task id for actions like cancel-build.
     #[serde(default)]
     task_id: Option<String>,
-}
-
-/// Context saved before reload, restored after restart
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ReloadContext {
-    /// What the agent was working on (user-provided or auto-detected)
-    pub task_context: Option<String>,
-    /// Version before reload
-    pub version_before: String,
-    /// New version (target)
-    pub version_after: String,
-    /// Session ID
-    pub session_id: String,
-    /// Timestamp
-    pub timestamp: String,
 }
 
 #[derive(Debug, Clone)]
