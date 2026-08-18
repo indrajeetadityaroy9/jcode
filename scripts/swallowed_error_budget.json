@@ -1666,11 +1666,6 @@
       "let_underscore": 0,
       "unwrap_or_default": 2
     },
-    "crates/jcode-setup-hints/src/windows_setup.rs": {
-      "dot_ok": 2,
-      "let_underscore": 11,
-      "unwrap_or_default": 4
-    },
     "crates/jcode-storage/src/active_pids.rs": {
       "dot_ok": 15,
       "let_underscore": 9,
@@ -1712,11 +1707,6 @@
       "unwrap_or_default": 0
     },
     "crates/jcode-transport/src/unix.rs": {
-      "dot_ok": 0,
-      "let_underscore": 1,
-      "unwrap_or_default": 0
-    },
-    "crates/jcode-transport/src/windows.rs": {
       "dot_ok": 0,
       "let_underscore": 1,
       "unwrap_or_default": 0

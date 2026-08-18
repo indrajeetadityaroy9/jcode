@@ -255,7 +255,6 @@ Generated from `docs/CODE_QUALITY_AUDIT_2026-04-18.md`. This section enumerates 
 - [ ] Break down >100 LOC functions in `src/tool/conversation_search.rs` (1 oversized functions)
 - [ ] Break down >100 LOC functions in `src/tool/bg.rs` (1 oversized functions)
 - [ ] Break down >100 LOC functions in `src/tool/batch.rs` (1 oversized functions)
-- [ ] Break down >100 LOC functions in `src/setup_hints/windows_setup.rs` (1 oversized functions)
 - [ ] Break down >100 LOC functions in `src/server/swarm_persistence.rs` (1 oversized functions)
 - [ ] Break down >100 LOC functions in `src/server/reload_state.rs` (1 oversized functions)
 - [ ] Break down >100 LOC functions in `src/server/headless.rs` (1 oversized functions)
