@@ -40,7 +40,7 @@ Already set up on the dev laptop (xps13):
          ✅ Every successful platform becomes public independently
 ```
 
-## CI Release (automated, ~11 min Linux+macOS, ~16 min Windows)
+## CI Release (automated, ~11 min Linux+macOS)
 
 Triggered automatically when a `v*` tag is pushed to GitHub.
 
@@ -56,15 +56,6 @@ Tag push (v*)
     │     ├─► Linux x86_64   (ubuntu-latest)     ~8 min
     │     └─► macOS aarch64  (macos-latest)       ~11 min
     │
-    ├─► build-windows (parallel)
-    │     ├─► Windows x86_64 (windows-latest)     ~16 min
-    │     └─► Windows ARM64 (windows-11-arm)      ~16 min
-    │
-    ├─► publish-windows (after both Windows builds)
-    │     ├─► Sign x86_64 + ARM64 with Azure Artifact Signing
-    │     ├─► Verify Authenticode signatures
-    │     └─► Package and upload final Windows assets
-    │
     └─► release (after platform jobs finish)
           ├─► Collect every successful architecture independently
           ├─► Keep failed architectures unavailable without blocking others
@@ -77,7 +68,6 @@ Tag push (v*)
 Key design decisions:
 - **Every platform and architecture is independent.** A failure remains visible in CI and release notes but cannot suppress another target's successful asset.
 - **At least one platform asset must succeed.** If every build fails, the release remains a draft.
-- **Windows executables must be signed before public upload.** Signing is required for Windows assets. `WINDOWS_SIGNING_REQUIRED=false` remains an explicit emergency override and is not suitable for an official Windows build.
 - **Checksums describe exactly the assets published in that release.** Late or failed optional platforms are omitted instead of blocking unrelated platforms.
 - **Shallow clones** (`fetch-depth: 1`) to minimize checkout time.
 - **`CARGO_INCREMENTAL=0`** for CI (incremental adds overhead on clean CI builds).
@@ -93,23 +83,13 @@ CI handles Homebrew and AUR updates automatically:
 
 Both are triggered conditionally by the final `release` job. Homebrew updates only when all four Linux/macOS formula assets exist; AUR updates whenever Linux x86_64 exists.
 
-### Windows signing prerequisites
-
-The full one-time setup is documented in [docs/WINDOWS.md](docs/WINDOWS.md#enable-authenticode-signing). The release repository needs:
-
-- Secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
-- Variables: `WINDOWS_SIGNING_ENDPOINT`, `WINDOWS_SIGNING_ACCOUNT`, `WINDOWS_SIGNING_CERTIFICATE_PROFILE`
-- Optional emergency override only: `WINDOWS_SIGNING_REQUIRED=false`
-
-Before announcing Defender or SmartScreen remediation, download both Windows executables from the public release and confirm `Get-AuthenticodeSignature` reports `Valid`.
-
 ## Which to use
 
-| Scenario | Method | Time to Linux+macOS | Time to Windows |
-|----------|--------|-------------------|-----------------|
-| Hotfix / urgent bug | `scripts/quick-release.sh` | ~16 min | ~16 min when Windows succeeds |
-| Regular release | Push `v*` tag | ~11 min | ~16 min |
-| Need Homebrew/AUR | Push `v*` tag | ~11 min | ~16 min |
+| Scenario | Method | Time to Linux+macOS |
+|----------|--------|-------------------|
+| Hotfix / urgent bug | `scripts/quick-release.sh` | ~16 min |
+| Regular release | Push `v*` tag | ~11 min |
+| Need Homebrew/AUR | Push `v*` tag | ~11 min |
 
 The quick-release script reduces local build latency, but it deliberately leaves the release as a draft. The tag-triggered workflow publishes every successful architecture after checksum generation. Package managers update only when their own required assets exist.
 

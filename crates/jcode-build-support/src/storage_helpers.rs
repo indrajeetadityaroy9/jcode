@@ -7,29 +7,15 @@ use std::path::PathBuf;
 pub fn builds_dir() -> Result<PathBuf> {
     let dir = resolve_builds_dir(
         std::env::var_os("JCODE_HOME").map(PathBuf::from),
-        std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
         storage::jcode_dir()?,
-        cfg!(windows),
     );
     storage::ensure_dir(&dir)?;
     Ok(dir)
 }
 
-fn resolve_builds_dir(
-    jcode_home: Option<PathBuf>,
-    local_app_data: Option<PathBuf>,
-    default_jcode_dir: PathBuf,
-    is_windows: bool,
-) -> PathBuf {
+fn resolve_builds_dir(jcode_home: Option<PathBuf>, default_jcode_dir: PathBuf) -> PathBuf {
     if let Some(jcode_home) = jcode_home {
         return jcode_home.join("builds");
-    }
-
-    if is_windows && let Some(local_app_data) = local_app_data {
-        // Keep runtime channel discovery aligned with scripts/install.ps1 and
-        // the supported Windows layout under %LOCALAPPDATA%\jcode\builds.
-        // Durable user state and logs still live under ~/.jcode.
-        return local_app_data.join("jcode").join("builds");
     }
 
     default_jcode_dir.join("builds")
@@ -69,37 +55,18 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn windows_builds_use_local_app_data() {
-        let resolved = resolve_builds_dir(
-            None,
-            Some(PathBuf::from("/local-app-data")),
-            PathBuf::from("/home/test/.jcode"),
-            true,
-        );
-
-        assert_eq!(resolved, PathBuf::from("/local-app-data/jcode/builds"));
-    }
-
-    #[test]
-    fn jcode_home_override_wins_on_windows() {
+    fn jcode_home_override_wins() {
         let resolved = resolve_builds_dir(
             Some(PathBuf::from("/isolated-jcode")),
-            Some(PathBuf::from("/local-app-data")),
             PathBuf::from("/home/test/.jcode"),
-            true,
         );
 
         assert_eq!(resolved, PathBuf::from("/isolated-jcode/builds"));
     }
 
     #[test]
-    fn non_windows_builds_stay_under_jcode_home() {
-        let resolved = resolve_builds_dir(
-            None,
-            Some(PathBuf::from("/ignored/local-app-data")),
-            PathBuf::from("/home/test/.jcode"),
-            false,
-        );
+    fn builds_stay_under_jcode_home() {
+        let resolved = resolve_builds_dir(None, PathBuf::from("/home/test/.jcode"));
 
         assert_eq!(resolved, PathBuf::from("/home/test/.jcode/builds"));
     }
