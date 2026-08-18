@@ -32,6 +32,10 @@ fn first_three_launches_can_include_hotkey_notice_too() {
     let state = SetupHintsState {
         launch_count: 2,
         hotkey_configured: true,
+        // `Default` suppresses this notice (`startup_spawn_hint_dismissed: true`,
+        // "opt-in noise"), so a spread of the default can never produce a hint.
+        // This test is about the notice's wording, so opt in explicitly.
+        startup_spawn_hint_dismissed: false,
         ..SetupHintsState::default()
     };
 
