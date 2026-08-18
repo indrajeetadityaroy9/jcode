@@ -1,20 +1,14 @@
-//! Local IPC transport, one API across platforms.
+//! Local IPC transport over Unix domain sockets.
 //!
-//! A Unix socket on Unix, a named pipe on Windows, both exposed as `Listener`
-//! and `Stream` with the same shape as `tokio::net::Unix*`. Callers write one
-//! code path and get the platform's native mechanism.
+//! `Listener` and `Stream` wrap `tokio::net::Unix*`. This fork targets macOS
+//! only, so there is no second backend behind the abstraction — see
+//! `docs/FORK_WORKFLOW.md` §1 for the purge that removed the named-pipe one.
 //!
-//! This lives in its own crate so the harness API bridge can use it without
-//! depending on `jcode-base`. The bridge is deliberately free of the
-//! application foundation, and the alternative was duplicating 450 lines of
-//! named pipe handling into it.
+//! It lives in its own crate so the harness API bridge can use it without
+//! depending on `jcode-base`, which the bridge is deliberately free of.
 
-#[cfg(unix)]
+#[cfg(not(unix))]
+compile_error!("jcode-transport is Unix-only in this fork; see docs/FORK_WORKFLOW.md §1");
+
 mod unix;
-#[cfg(unix)]
 pub use unix::*;
-
-#[cfg(windows)]
-mod windows;
-#[cfg(windows)]
-pub use windows::*;

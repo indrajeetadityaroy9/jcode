@@ -4248,7 +4248,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4329,10 +4328,7 @@ dependencies = [
 name = "jcode-transport"
 version = "0.1.0"
 dependencies = [
- "hex",
- "sha2 0.10.9",
  "tokio",
- "windows-sys 0.59.0",
 ]
 
 [[package]]

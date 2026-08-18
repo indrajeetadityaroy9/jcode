@@ -29,7 +29,7 @@ pub mod keymap;
 
 mod cli_launch_hints;
 
-#[cfg(any(test, target_os = "macos", target_os = "linux", windows))]
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 mod launch_hotkeys;
 #[cfg(any(test, target_os = "linux"))]
 mod linux_env;
@@ -39,10 +39,6 @@ mod linux_niri;
 mod macos_launcher;
 #[cfg(any(test, target_os = "macos"))]
 mod macos_terminal;
-#[cfg(any(test, windows))]
-mod windows_hotkeys;
-#[cfg(windows)]
-mod windows_setup;
 #[cfg(any(test, target_os = "macos"))]
 use macos_launcher::{install_macos_app_launcher, should_refresh_macos_app_launcher};
 #[cfg(target_os = "macos")]
@@ -53,11 +49,6 @@ use macos_terminal::load_preferred_macos_terminal;
 use macos_terminal::{
     MacTerminalKind, effective_macos_terminal, escape_applescript_text, escape_shell_single_quotes,
     launch_command_for_macos_terminal, paused_jcode_shell_command, save_preferred_macos_terminal,
-};
-#[cfg(windows)]
-use windows_setup::{
-    create_windows_desktop_shortcut, maybe_show_windows_setup_hints, run_setup_hotkey_windows,
-    run_windows_hotkey_listener, uninstall_windows_hotkey_listener,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,7 +179,7 @@ const LAUNCH_HOTKEY_TRACKING_VERSION: u32 = 1;
 /// asking, even if the user never explicitly picked "Don't ask again".
 pub const MAX_TERMINAL_NUDGES: u64 = 5;
 const LAUNCH_HOTKEY_LEARNED_USES: u64 = 3;
-#[cfg(any(test, target_os = "macos", target_os = "linux", windows))]
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 const LAUNCH_HOTKEY_NOTICE_MIN_LAUNCHES_TO_STOP: u64 = 10;
 
 #[derive(Debug, Clone, Default)]
@@ -260,18 +251,18 @@ impl SetupHintsState {
 
     /// Whether we are still allowed to show a terminal/setup nudge. Once we have
     /// shown the prompt `MAX_TERMINAL_NUDGES` times we stop asking entirely.
-    #[cfg(any(test, windows, target_os = "macos"))]
+    #[cfg(any(test, target_os = "macos"))]
     fn nudge_budget_remaining(&self) -> bool {
         self.terminal_nudge_count < MAX_TERMINAL_NUDGES
     }
 
     /// Record that a nudge prompt was shown to the user and persist the count.
-    /// Only invoked on Windows/macOS nudge paths; under `cfg(test)` on other
+    /// Only invoked on the macOS nudge path; under `cfg(test)` on other
     /// platforms it compiles but has no caller.
-    #[cfg(any(test, windows, target_os = "macos"))]
+    #[cfg(any(test, target_os = "macos"))]
     #[cfg_attr(
-        not(any(windows, target_os = "macos")),
-        allow(dead_code, reason = "only called on Windows/macOS nudge paths")
+        not(target_os = "macos"),
+        allow(dead_code, reason = "only called on the macOS nudge path")
     )]
     fn record_nudge_shown(&mut self) {
         self.terminal_nudge_count = self.terminal_nudge_count.saturating_add(1);
@@ -279,21 +270,21 @@ impl SetupHintsState {
     }
 }
 
-#[cfg(any(test, target_os = "macos", target_os = "linux", windows))]
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 fn mac_hotkey_support_dir() -> Result<PathBuf> {
     Ok(storage::jcode_dir()?.join("hotkey"))
 }
 
 /// File holding the last project directory jcode was launched from. The `Cmd+'`
 /// global hotkey reads this at fire time to reopen jcode there.
-#[cfg(any(test, target_os = "macos", target_os = "linux", windows))]
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 fn mac_hotkey_last_dir_file() -> Result<PathBuf> {
     Ok(mac_hotkey_support_dir()?.join("last_dir"))
 }
 
 /// File holding the last jcode *repository* directory the user worked in. The
 /// `Cmd+Shift+'` global hotkey reads this to open a self-dev session there.
-#[cfg(any(test, target_os = "macos", target_os = "linux", windows))]
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 fn mac_hotkey_last_repo_file() -> Result<PathBuf> {
     Ok(mac_hotkey_support_dir()?.join("last_repo"))
 }
@@ -340,19 +331,19 @@ fn load_launch_hotkeys_config() -> jcode_config_types::LaunchHotkeysConfig {
 /// Best-effort and side-effect-only: failures are logged, never propagated, so
 /// this can be dropped onto the startup path without risk.
 pub fn record_launch_dirs(dir: &std::path::Path, repo_dir: Option<&std::path::Path>) {
-    #[cfg(any(target_os = "macos", target_os = "linux", windows))]
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         if let Err(err) = record_launch_dirs_inner(dir, repo_dir) {
             jcode_logging::warn(&format!("failed to record launch dirs for hotkeys: {err}"));
         }
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         let _ = (dir, repo_dir);
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "linux", windows))]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn record_launch_dirs_inner(
     dir: &std::path::Path,
     repo_dir: Option<&std::path::Path>,
@@ -377,7 +368,7 @@ fn record_launch_dirs_inner(
 /// Whether `dir` should be recorded as the "last project" directory for the
 /// `Cmd+'` hotkey. Home is skipped because it already has its own `Cmd+;`
 /// hotkey, so recording it would make `Cmd+'` redundant with `Cmd+;`.
-#[cfg(any(test, target_os = "macos", target_os = "linux", windows))]
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 fn should_record_last_dir(dir: &std::path::Path, home: Option<&std::path::Path>) -> bool {
     home != Some(dir)
 }
@@ -597,14 +588,6 @@ fn startup_hints_for_launch(_state: &SetupHintsState) -> Option<StartupHints> {
     spawn_notice.map(StartupHints::with_spawn_notice)
 }
 
-/// Read a single-character choice from the user.
-#[cfg(windows)]
-fn read_choice() -> String {
-    let mut input = String::new();
-    let _ = io::stdin().read_line(&mut input);
-    input.trim().to_lowercase()
-}
-
 /// Pure decision for the macOS terminal notice, given the detected terminal.
 ///
 /// We deliberately only nudge for the default built-in Terminal.app: other
@@ -774,9 +757,9 @@ pub fn run_setup_hotkey(
         return Ok(());
     }
 
-    #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
-        eprintln!("Global hotkey setup is currently only supported on Windows.");
+        eprintln!("Global hotkey setup is not supported on this platform.");
         eprintln!();
         eprintln!("On Linux/macOS, add a keybinding in your desktop environment:");
         eprintln!("  - niri: bindings in ~/.config/niri/config.kdl");
@@ -784,17 +767,6 @@ pub fn run_setup_hotkey(
         eprintln!("  - KDE: System Settings > Shortcuts > Custom Shortcuts");
         eprintln!("  - macOS: Shortcuts.app or System Settings > Keyboard > Shortcuts");
         Ok(())
-    }
-
-    #[cfg(windows)]
-    {
-        if _listen_windows_hotkey {
-            return run_windows_hotkey_listener();
-        }
-        if _uninstall {
-            return uninstall_windows_hotkey_listener();
-        }
-        run_setup_hotkey_windows()
     }
 }
 
@@ -869,14 +841,6 @@ pub(crate) fn active_primary_launch_hotkey() -> Option<(String, String)> {
             .into_iter()
             .find(|entry| !entry.self_dev && linux_chord_expressible(comp, &entry.chord))
             .map(|entry| (entry.chord.canonical(), entry.chord.display_super()));
-    }
-
-    #[cfg(windows)]
-    {
-        if !SetupHintsState::load().hotkey_configured {
-            return None;
-        }
-        return windows_setup::primary_hotkey_display();
     }
 
     #[allow(unreachable_code)]
@@ -1295,25 +1259,7 @@ pub fn maybe_show_setup_hints() -> Option<StartupHints> {
         }
     }
 
-    #[cfg(windows)]
-    {
-        if state.hotkey_configured
-            && state.launch_hotkey_tracking_version < LAUNCH_HOTKEY_TRACKING_VERSION
-        {
-            match windows_setup::refresh_windows_launch_hotkeys() {
-                Ok(()) => {
-                    state.launch_hotkey_tracking_version = LAUNCH_HOTKEY_TRACKING_VERSION;
-                    let _ = state.save();
-                    jcode_logging::info("Migrated Windows launch hotkeys to usage tracking");
-                }
-                Err(err) => jcode_logging::warn(&format!(
-                    "failed to migrate Windows launch hotkeys to usage tracking: {err}"
-                )),
-            }
-        }
-    }
-
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         if !state.desktop_shortcut_created {
             let _ = create_desktop_shortcut(&mut state);
@@ -1354,14 +1300,7 @@ pub fn maybe_show_setup_hints() -> Option<StartupHints> {
         return startup_hints;
     }
 
-    #[cfg(windows)]
-    {
-        let startup_hints =
-            startup_hints.or_else(|| windows_setup::windows_launch_hotkeys_notice(&state));
-        return maybe_show_windows_setup_hints(&mut state, startup_hints);
-    }
-
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(target_os = "macos"))]
     {
         startup_hints.or_else(|| {
             #[cfg(target_os = "linux")]
@@ -2265,7 +2204,7 @@ pub(crate) struct LaunchHotkeyRow {
 ///   least `LAUNCH_HOTKEY_NOTICE_MIN_LAUNCHES_TO_STOP` times, drop the whole
 ///   notice so it never lingers for an experienced user.
 /// - Returns `None` when nothing should be shown.
-#[cfg(any(test, target_os = "macos", target_os = "linux", windows))]
+#[cfg(any(test, target_os = "macos", target_os = "linux"))]
 pub(crate) fn launch_hotkey_notice_lines(
     rows: &[LaunchHotkeyRow],
     usage: &HashMap<String, u64>,
@@ -2481,26 +2420,9 @@ pub fn run_setup_launcher() -> Result<()> {
         }
     }
 
-    #[cfg(windows)]
+    #[cfg(not(target_os = "macos"))]
     {
-        let mut state = SetupHintsState::load();
-        eprintln!("\x1b[1mjcode setup-launcher\x1b[0m");
-        eprintln!();
-        match create_windows_desktop_shortcut(&mut state) {
-            Ok(()) => {
-                eprintln!("  \x1b[32m✓\x1b[0m Created desktop shortcut: jcode.lnk");
-                return Ok(());
-            }
-            Err(e) => {
-                eprintln!("  \x1b[31m✗\x1b[0m Failed: {}", e);
-                anyhow::bail!("Windows launcher setup failed: {}", e);
-            }
-        }
-    }
-
-    #[cfg(not(any(windows, target_os = "macos")))]
-    {
-        eprintln!("Launcher setup is currently only supported on macOS and Windows.");
+        eprintln!("Launcher setup is currently only supported on macOS.");
         Ok(())
     }
 }
@@ -2508,10 +2430,6 @@ pub fn run_setup_launcher() -> Result<()> {
 /// Create a desktop shortcut/launcher for jcode.
 ///
 /// - macOS: creates a jcode.app bundle in ~/Applications/
-/// - Windows uses [`windows_setup::create_windows_desktop_shortcut`] via
-///   `jcode setup-launcher` instead (PowerShell/COM is too slow for the
-///   startup path).
-#[cfg(any(test, not(windows)))]
 fn create_desktop_shortcut(state: &mut SetupHintsState) -> Result<()> {
     #[cfg(any(test, target_os = "macos"))]
     {
@@ -2618,11 +2536,6 @@ pub fn reinstall_launch_hotkeys_after_config_change() {
             )),
             Err(err) => jcode_logging::warn(&format!("failed to reinstall launch hotkeys: {err}")),
         }
-    }
-
-    #[cfg(windows)]
-    {
-        windows_setup::reinstall_windows_launch_hotkeys();
     }
 
     #[cfg(target_os = "linux")]
