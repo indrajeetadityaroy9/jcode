@@ -21,8 +21,6 @@ pub struct RestartSnapshotSession {
     pub display_name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_dir: Option<String>,
-    #[serde(default)]
-    pub is_selfdev: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -107,7 +105,6 @@ pub fn arm_auto_restore_from_recent_crashes() -> Result<Option<RestartSnapshot>>
                 session_id: session.id.clone(),
                 display_name: session.display_name().to_string(),
                 working_dir: session.working_dir.clone(),
-                is_selfdev: session.is_canary,
             },
         ));
     }
@@ -162,7 +159,6 @@ pub fn capture_current_snapshot() -> Result<RestartSnapshot> {
                 session_id: session.id.clone(),
                 display_name: session.display_name().to_string(),
                 working_dir: session.working_dir.clone(),
-                is_selfdev: session.is_canary,
             },
         ));
     }
@@ -188,15 +184,7 @@ pub fn restore_snapshot(exe: &Path) -> Result<RestoreSnapshotResult> {
     for session in &snapshot.sessions {
         let cwd = resolve_session_cwd(session.working_dir.as_deref());
         let context = crate::session_launch::SessionSpawnContext::kind("restart");
-        let launched = if session.is_selfdev {
-            crate::session_launch::spawn_selfdev_in_new_terminal_with_context(
-                exe,
-                &session.session_id,
-                &cwd,
-                None,
-                &context,
-            )?
-        } else {
+        let launched = {
             crate::session_launch::spawn_resume_in_new_terminal_with_context(
                 exe,
                 &session.session_id,
@@ -229,11 +217,7 @@ fn shell_escape(text: &str) -> String {
 
 pub fn restore_command_display(exe: &Path, session: &RestartSnapshotSession) -> String {
     let exe = shell_escape(exe.to_string_lossy().as_ref());
-    if session.is_selfdev {
-        format!("{} --resume {} self-dev", exe, session.session_id)
-    } else {
-        format!("{} --resume {}", exe, session.session_id)
-    }
+    format!("{} --resume {}", exe, session.session_id)
 }
 
 #[cfg(test)]

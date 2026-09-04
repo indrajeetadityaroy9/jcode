@@ -23,8 +23,6 @@ pub(super) struct SessionJournalMeta {
     pub(super) improve_mode: Option<SessionImproveMode>,
     pub(super) autoreview_enabled: Option<bool>,
     pub(super) autojudge_enabled: Option<bool>,
-    pub(super) is_canary: bool,
-    pub(super) testing_build: Option<String>,
     pub(super) working_dir: Option<String>,
     pub(super) short_name: Option<String>,
     pub(super) status: SessionStatus,
@@ -83,8 +81,6 @@ pub(super) fn metadata_requires_snapshot(
         || prev.improve_mode != current.improve_mode
         || prev.autoreview_enabled != current.autoreview_enabled
         || prev.autojudge_enabled != current.autojudge_enabled
-        || prev.is_canary != current.is_canary
-        || prev.testing_build != current.testing_build
         || prev.working_dir != current.working_dir
         || prev.short_name != current.short_name
         || prev.status != current.status

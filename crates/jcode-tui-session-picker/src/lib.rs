@@ -126,7 +126,6 @@ pub struct SessionInfo {
     pub working_dir: Option<String>,
     pub model: Option<String>,
     pub provider_key: Option<String>,
-    pub is_canary: bool,
     pub is_debug: bool,
     pub saved: bool,
     pub save_label: Option<String>,

@@ -455,7 +455,6 @@ fn model_picker_provider_hint_from_model_spec(model_spec: &str) -> Option<(&str,
             | "copilot"
             | "cursor"
             | "antigravity"
-            | "bedrock"
             | "openrouter"
             | "gemini"
     ) || crate::provider_catalog::openai_compatible_profile_by_id(provider_hint).is_some()
@@ -754,8 +753,6 @@ impl App {
                 .insert(route.api_method.as_str());
         }
         let auth = crate::auth::AuthStatus::check_fast();
-        let bedrock_available = auth.bedrock != crate::auth::AuthState::NotConfigured
-            || crate::provider::bedrock::BedrockProvider::has_credentials();
         let missing: Vec<String> = remote_available_entries
             .iter()
             .filter(|model| match methods_by_model.get(model.as_str()) {
@@ -770,10 +767,7 @@ impl App {
                         && !model.contains('/')
                         && ((auth.anthropic.has_api_key && !methods.contains("claude-api"))
                             || (auth.anthropic.has_oauth && !methods.contains("claude-oauth")));
-                    let missing_bedrock_method = bedrock_available
-                        && crate::provider::bedrock::BedrockProvider::is_bedrock_model_id(model)
-                        && !methods.contains("bedrock");
-                    placeholder_only || missing_anthropic_method || missing_bedrock_method
+                    placeholder_only || missing_anthropic_method
                 }
             })
             .cloned()
@@ -1173,7 +1167,7 @@ impl App {
                 return;
             }
             // Names-only remote catalog: synthesize properly classified
-            // provider routes (Comtegra/Copilot/Bedrock/Gemini/OpenRouter/…)
+            // provider routes (Comtegra/Copilot/Gemini/OpenRouter/…)
             // rather than a generic "remote-catalog" placeholder. The full
             // fallback reads per-model disk caches and auth state, which can
             // take seconds on a large catalog, so for big catalogs open
@@ -3935,10 +3929,6 @@ mod tests {
             "GitHub Copilot",
             "Copilot"
         ));
-        assert!(jcode_provider_core::model_route_provider_labels_match(
-            "AWS Bedrock",
-            "Bedrock"
-        ));
     }
 
     #[test]
@@ -4219,14 +4209,10 @@ mod tests {
     #[test]
     fn remote_model_catalog_cache_rejects_forged_or_oversized_routes() {
         let safe_snapshot = jcode_provider_core::ModelCatalogSnapshot::new(
-            Some("AWS Bedrock".to_string()),
-            Some("us.anthropic.claude-sonnet-4-6".to_string()),
-            vec!["us.anthropic.claude-sonnet-4-6".to_string()],
-            vec![model_route(
-                "us.anthropic.claude-sonnet-4-6",
-                "AWS Bedrock",
-                "bedrock",
-            )],
+            Some("OpenAI".to_string()),
+            Some("gpt-5.5".to_string()),
+            vec!["gpt-5.5".to_string()],
+            vec![model_route("gpt-5.5", "OpenAI", "openai")],
         );
         assert!(remote_model_catalog_snapshot_is_safe(&safe_snapshot));
 
@@ -4235,7 +4221,7 @@ mod tests {
         assert!(!remote_model_catalog_snapshot_is_safe(&forged));
 
         let mut control = safe_snapshot.clone();
-        control.model_routes[0].provider = "AWS Bedrock\nOpenAI".to_string();
+        control.model_routes[0].provider = "OpenAI\nAnthropic".to_string();
         assert!(!remote_model_catalog_snapshot_is_safe(&control));
 
         let mut oversized = safe_snapshot;
@@ -4266,7 +4252,6 @@ mod tests {
         ));
         assert!(!route_supports_reasoning_effort("openai-compatible:zai"));
         assert!(!route_supports_reasoning_effort("copilot"));
-        assert!(!route_supports_reasoning_effort("bedrock"));
         assert!(!route_supports_reasoning_effort("https"));
         assert!(!route_supports_reasoning_effort("openai-compatible"));
         assert!(!route_supports_reasoning_effort("remote-catalog"));

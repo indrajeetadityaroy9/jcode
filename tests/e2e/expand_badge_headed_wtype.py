@@ -106,7 +106,7 @@ def main():
     window_id = None
     previous_focused_niri = focused_niri_window_id()
     try:
-        res = send_cmd(sock, f"create_session:selfdev:{REPO}")
+        res = send_cmd(sock, f"create_session:{REPO}")
         if not res.get("ok"):
             raise AssertionError(res)
         session_id = json.loads(res["output"])["session_id"]
@@ -115,7 +115,7 @@ def main():
         window_id = sh([
             "kitty", "@", "--to", f"unix:{kitty_sock}", "launch",
             "--type", "os-window", "--title", title,
-            binary, "self-dev", "--resume", session_id,
+            binary, "--resume", session_id,
         ])
         print(f"window={window_id}")
 

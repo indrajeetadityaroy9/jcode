@@ -113,7 +113,7 @@ fn select_candidate_prefers_title_match() {
         },
     ];
 
-    let selected = select_candidate(&candidates, Some("🦀 jcode/sleeping Crab [self-dev]"))
+    let selected = select_candidate(&candidates, Some("🦀 jcode/sleeping Crab"))
         .expect("should select matching candidate");
     assert_eq!(selected.short_name, "crab");
 }
@@ -126,7 +126,7 @@ fn read_resumed_session_id_from_cmdline_for_current_process() {
 #[test]
 fn extract_session_short_name_from_jcode_window_title() {
     assert_eq!(
-        extract_session_short_name_from_window_title("🦢 jcode/cliff Swan [self-dev]"),
+        extract_session_short_name_from_window_title("🦢 jcode/cliff Swan"),
         Some("swan".to_string())
     );
     assert_eq!(
@@ -187,7 +187,7 @@ fn focused_jcode_session_uses_niri_window_title_when_process_name_is_generic() {
     install_fake_niri(
         &bin_dir,
         focused_process.pid(),
-        "🦢 jcode/cliff Swan [self-dev]",
+        "🦢 jcode/cliff Swan",
     );
 
     let prev_path = std::env::var_os("PATH").unwrap_or_default();

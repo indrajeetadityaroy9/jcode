@@ -1051,11 +1051,6 @@ impl App {
 
         self.last_version_check = Some(Instant::now());
 
-        // Don't migrate if we're a canary session (we test changes, not receive them)
-        if self.session.is_canary {
-            return false;
-        }
-
         // Read current stable version
         let current_stable = match crate::build::read_stable_version() {
             Ok(Some(v)) => v,

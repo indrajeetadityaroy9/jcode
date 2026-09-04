@@ -371,8 +371,6 @@ pub(super) fn create_transfer_session_from_parent(
     child.improve_mode = parent.improve_mode;
     child.autoreview_enabled = parent.autoreview_enabled;
     child.autojudge_enabled = parent.autojudge_enabled;
-    child.is_canary = parent.is_canary;
-    child.testing_build = parent.testing_build.clone();
     child.status = crate::session::SessionStatus::Closed;
     child.provider_session_id = None;
     child.save()?;

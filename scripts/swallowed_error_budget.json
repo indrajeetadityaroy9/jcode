@@ -1266,11 +1266,6 @@
       "let_underscore": 0,
       "unwrap_or_default": 0
     },
-    "crates/jcode-provider-bedrock/src/lib.rs": {
-      "dot_ok": 18,
-      "let_underscore": 9,
-      "unwrap_or_default": 5
-    },
     "crates/jcode-provider-claude-cli-runtime/src/lib.rs": {
       "dot_ok": 8,
       "let_underscore": 5,

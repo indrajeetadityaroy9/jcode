@@ -2,7 +2,7 @@
 
 Jcode has built-in terminal routing for Herdr. When a headed session launch is requested from a client with `HERDR_ENV=1` and `HERDR_PANE_ID`, Jcode splits the calling pane to the right, focuses the new pane, and starts the resumed Jcode session there. `HERDR_BIN_PATH` is honored when present.
 
-This covers visible swarm spawns, resume-in-new-terminal, self-development launches, and restart restores because they all use the shared terminal launcher. A configured `[terminal].spawn_hook` still takes precedence.
+This covers visible swarm spawns, resume-in-new-terminal, and restart restores because they all use the shared terminal launcher. A configured `[terminal].spawn_hook` still takes precedence.
 
 ## Current compatibility
 

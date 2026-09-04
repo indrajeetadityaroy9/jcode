@@ -114,7 +114,6 @@ fn cached_grouped_sessions_round_trip_from_disk() {
         working_dir: Some("/tmp/cache-test".to_string()),
         model: None,
         provider_key: None,
-        is_canary: false,
         is_debug: false,
         saved: false,
         save_label: None,
@@ -1253,12 +1252,11 @@ fn hidden_debug_sessions_do_not_consume_default_resume_budget() {
             Some(format!("Regular {idx:03}")),
         );
         session.is_debug = false;
-        session.is_canary = false;
         push_message(&mut session, &format!("regular content {idx:03}"));
         session.save().expect("save regular session");
     }
 
-    // These newer self-dev/worker sessions are hidden by default. Previously the
+    // These newer worker sessions are hidden by default. Previously the
     // loader stopped after the first 50, leaving no ordinary Jcode sessions for
     // the picker even though older resumable sessions existed.
     for idx in 0..75 {

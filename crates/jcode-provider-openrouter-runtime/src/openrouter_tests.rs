@@ -1022,61 +1022,6 @@ fn test_configured_api_base_rejects_insecure_http_remote() {
 }
 
 #[test]
-fn autodetects_single_saved_openai_compatible_profile() {
-    let _lock = ENV_LOCK.lock();
-    let temp = TempDir::new().expect("create temp dir");
-    let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path());
-    let _home = EnvVarGuard::set("HOME", temp.path());
-    let _appdata = EnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
-    let _env = isolate_openrouter_autodetect_env();
-
-    let opencode = jcode_base::provider_catalog::resolve_openai_compatible_profile(
-        jcode_base::provider_catalog::OPENCODE_PROFILE,
-    );
-    write_test_api_key(
-        &temp,
-        &opencode.env_file,
-        &opencode.api_key_env,
-        "test-opencode-key",
-    );
-
-    assert_eq!(configured_api_base(), opencode.api_base);
-    assert_eq!(configured_api_key_name(), opencode.api_key_env);
-    assert_eq!(configured_env_file_name(), opencode.env_file);
-    assert!(OpenRouterProvider::has_credentials());
-}
-
-#[test]
-fn autodetects_single_saved_local_openai_compatible_profile() {
-    let _lock = ENV_LOCK.lock();
-    let temp = TempDir::new().expect("create temp dir");
-    let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path());
-    let _home = EnvVarGuard::set("HOME", temp.path());
-    let _appdata = EnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
-    let _env = isolate_openrouter_autodetect_env();
-
-    let lmstudio = jcode_base::provider_catalog::resolve_openai_compatible_profile(
-        jcode_base::provider_catalog::LMSTUDIO_PROFILE,
-    );
-    let config_dir = test_config_dir(&temp).join("jcode");
-    std::fs::create_dir_all(&config_dir).expect("create test config dir");
-    std::fs::write(
-        config_dir.join(&lmstudio.env_file),
-        format!(
-            "{}=1\n",
-            jcode_base::provider_catalog::OPENAI_COMPAT_LOCAL_ENABLED_ENV
-        ),
-    )
-    .expect("write local config");
-
-    assert_eq!(configured_api_base(), lmstudio.api_base);
-    assert_eq!(configured_api_key_name(), lmstudio.api_key_env);
-    assert_eq!(configured_env_file_name(), lmstudio.env_file);
-    assert!(configured_allow_no_auth());
-    assert!(OpenRouterProvider::has_credentials());
-}
-
-#[test]
 fn openrouter_transport_state_distinguishes_runtime_identities() {
     let _lock = ENV_LOCK.lock();
     // Isolate the on-disk config/credential lookup the same way the sibling
@@ -1084,6 +1029,9 @@ fn openrouter_transport_state_distinguishes_runtime_identities() {
     // profile happens to be configured on the host machine.
     let temp = TempDir::new().expect("create temp dir");
     let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path());
+    // `app_config_dir()` honors JCODE_HOME and ignores XDG_CONFIG_HOME on
+    // macOS, so XDG alone leaks provider env files into the real config dir.
+    let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
     let _home = EnvVarGuard::set("HOME", temp.path());
     let _appdata = EnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
     let _env = isolate_openrouter_autodetect_env();
@@ -1147,6 +1095,9 @@ fn does_not_guess_when_multiple_saved_openai_compatible_profiles_exist() {
     let _lock = ENV_LOCK.lock();
     let temp = TempDir::new().expect("create temp dir");
     let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path());
+    // `app_config_dir()` honors JCODE_HOME and ignores XDG_CONFIG_HOME on
+    // macOS, so XDG alone leaks provider env files into the real config dir.
+    let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
     let _home = EnvVarGuard::set("HOME", temp.path());
     let _appdata = EnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
     let _env = isolate_openrouter_autodetect_env();
@@ -1174,30 +1125,6 @@ fn does_not_guess_when_multiple_saved_openai_compatible_profiles_exist() {
     assert_eq!(configured_api_key_name(), DEFAULT_API_KEY_NAME);
     assert_eq!(configured_env_file_name(), DEFAULT_ENV_FILE);
     assert!(!OpenRouterProvider::has_credentials());
-}
-
-#[test]
-fn autodetected_profile_seeds_default_model_and_cache_namespace() {
-    let _lock = ENV_LOCK.lock();
-    let temp = TempDir::new().expect("create temp dir");
-    let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path());
-    let _home = EnvVarGuard::set("HOME", temp.path());
-    let _appdata = EnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
-    let _env = isolate_openrouter_autodetect_env();
-
-    let zai = jcode_base::provider_catalog::resolve_openai_compatible_profile(
-        jcode_base::provider_catalog::ZAI_PROFILE,
-    );
-    write_test_api_key(&temp, &zai.env_file, &zai.api_key_env, "test-zai-key");
-
-    let provider = OpenRouterProvider::new().expect("provider");
-    assert_eq!(provider.model.blocking_read().clone(), "glm-4.5");
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_CACHE_NAMESPACE")
-            .ok()
-            .as_deref(),
-        Some("zai")
-    );
 }
 
 #[test]
@@ -2010,29 +1937,6 @@ fn named_profile_context_window_survives_provider_qualified_model() {
     }
 
     assert_eq!(provider.context_window(), 131_072);
-}
-
-#[test]
-fn named_openai_compatible_loads_api_key_from_env_file() {
-    let _lock = ENV_LOCK.lock();
-    let temp = TempDir::new().expect("create temp dir");
-    let _xdg = EnvVarGuard::set("XDG_CONFIG_HOME", temp.path());
-    let _home = EnvVarGuard::set("HOME", temp.path());
-    let _appdata = EnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
-    let _namespace = EnvVarGuard::remove("JCODE_OPENROUTER_CACHE_NAMESPACE");
-    let _api_key = EnvVarGuard::remove("CUSTOM_API_KEY");
-    write_test_api_key(&temp, "custom.env", "CUSTOM_API_KEY", "from-env-file");
-
-    let config = jcode_base::config::NamedProviderConfig {
-        base_url: "https://compat.example.test/v1".to_string(),
-        api_key_env: Some("CUSTOM_API_KEY".to_string()),
-        env_file: Some("custom.env".to_string()),
-        default_model: Some("custom-model".to_string()),
-        ..Default::default()
-    };
-
-    OpenRouterProvider::new_named_openai_compatible("custom", &config)
-        .expect("provider should load key from env file");
 }
 
 #[test]

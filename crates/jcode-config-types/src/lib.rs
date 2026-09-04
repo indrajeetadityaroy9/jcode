@@ -723,7 +723,7 @@ impl SwarmStripLayout {
 #[serde(default)]
 pub struct TerminalConfig {
     /// External command that takes over headed session spawns (new terminal
-    /// windows for swarm agents, resume-in-new-terminal, self-dev, restarts).
+    /// windows for swarm agents, resume-in-new-terminal, restarts).
     ///
     /// When set, jcode runs `<spawn_hook> <jcode-binary> <args...>` instead of
     /// opening a terminal emulator itself, with `JCODE_SPAWN_*` metadata env
@@ -748,13 +748,12 @@ pub struct TerminalConfig {
     ///
     /// Env override: `JCODE_FOCUS_HOOK` (set empty to disable a config hook).
     pub focus_hook: Option<String>,
-    /// Terminal used by the macOS Cmd+; launch hotkey and in-app session spawns.
+    /// Terminal used when jcode spawns a new session in its own window.
     ///
     /// One of: `ghostty`, `iterm2`, `wezterm`, `warp`, `alacritty`, `vscode`,
     /// `terminal` (Apple Terminal). When set, this is the source of truth for
     /// which terminal jcode launches into and is preferred over the legacy
-    /// `~/.jcode/preferred_terminal.json` file. Re-run `jcode setup-hotkey`
-    /// after changing it so the generated launcher script picks up the change.
+    /// `~/.jcode/preferred_terminal.json` file.
     ///
     /// macOS only; ignored on other platforms.
     pub preferred: Option<String>,
@@ -1237,24 +1236,14 @@ impl Default for ProviderConfig {
 pub struct AmbientConfig {
     /// Enable ambient mode (default: false)
     pub enabled: bool,
-    /// Provider override (default: auto-select)
-    pub provider: Option<String>,
     /// Model override (default: provider's strongest)
     pub model: Option<String>,
-    /// Allow API key usage (default: false, only OAuth)
-    pub allow_api_keys: bool,
-    /// Daily token budget when using API keys
-    pub api_daily_budget: Option<u64>,
     /// Minimum interval between cycles in minutes (default: 5)
     pub min_interval_minutes: u32,
     /// Maximum interval between cycles in minutes (default: 120)
     pub max_interval_minutes: u32,
     /// Pause ambient when user has active session (default: true)
     pub pause_on_active_session: bool,
-    /// Enable proactive work vs garden-only (default: true)
-    pub proactive_work: bool,
-    /// Proactive work branch prefix (default: "ambient/")
-    pub work_branch_prefix: String,
     /// Show ambient cycle in a terminal window (default: true)
     pub visible: bool,
 }
@@ -1263,15 +1252,10 @@ impl Default for AmbientConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            provider: None,
             model: None,
-            allow_api_keys: false,
-            api_daily_budget: None,
             min_interval_minutes: 5,
             max_interval_minutes: 120,
             pause_on_active_session: true,
-            proactive_work: true,
-            work_branch_prefix: "ambient/".to_string(),
             visible: true,
         }
     }
@@ -1440,52 +1424,6 @@ impl Default for PowerConfig {
             prevent_sleep_while_streaming: true,
         }
     }
-}
-
-/// A single global launch hotkey: a chord plus the directory it opens jcode in.
-///
-/// `dir` is usually an absolute path, but a few sentinels keep dynamic targets
-/// working without rewriting config on every launch:
-/// - `$HOME` -> the user's home directory.
-/// - `$LAST_DIR` -> the most recent non-home project directory jcode ran in.
-/// - `$LAST_REPO` -> the most recent jcode repo (for self-dev).
-///
-/// `self_dev = true` opens the directory as a self-dev session (passes the
-/// `self-dev` subcommand). `label` is an optional human name used in notices.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct LaunchHotkeyEntry {
-    /// jcode-style chord string, e.g. `cmd+;`, `cmd+[`, `cmd+shift+'`.
-    pub chord: String,
-    /// Directory to open (absolute path or a `$HOME`/`$LAST_DIR`/`$LAST_REPO`
-    /// sentinel).
-    pub dir: String,
-    /// Optional short label (e.g. the repo's directory name) for notices.
-    #[serde(default)]
-    pub label: String,
-    /// Open as a self-dev session instead of a normal session.
-    #[serde(default)]
-    pub self_dev: bool,
-}
-
-/// Configuration for the global "launch a new jcode" hotkeys (macOS).
-///
-/// When `entries` is empty, jcode uses its built-in defaults (`Cmd+;` -> home,
-/// `Cmd+'` -> last project, `Cmd+Shift+'` -> self-dev). Auto-import can bake a
-/// richer, per-repo mapping here once: the top repo on `Cmd+;`, home on
-/// `Cmd+'`, and the next repos on `Cmd+[` / `Cmd+]` / `Cmd+\`. Once baked the
-/// mapping is static and does not move around as the user's activity changes.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct LaunchHotkeysConfig {
-    /// Whether the global launch hotkeys are installed at all. `None` means
-    /// "not decided yet" (fall back to the legacy auto-install gating); `Some`
-    /// is an explicit user/import choice.
-    pub enabled: Option<bool>,
-    /// Explicit chord -> directory mapping. Empty = use built-in defaults.
-    pub entries: Vec<LaunchHotkeyEntry>,
-    /// Set true once auto-import has populated `entries`, so we only bake the
-    /// per-repo mapping a single time and never clobber later user edits.
-    pub imported: bool,
 }
 
 #[cfg(test)]

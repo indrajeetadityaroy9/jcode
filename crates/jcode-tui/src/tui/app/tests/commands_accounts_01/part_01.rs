@@ -19,7 +19,6 @@ fn session_picker_resume_action_keeps_overlay_open() {
                 working_dir: None,
                 model: None,
                 provider_key: None,
-                is_canary: false,
                 is_debug: false,
                 saved: false,
                 save_label: None,
@@ -70,7 +69,6 @@ fn session_picker_enter_queues_current_terminal_resume_and_closes_overlay() {
                 working_dir: None,
                 model: None,
                 provider_key: None,
-                is_canary: false,
                 is_debug: false,
                 saved: false,
                 save_label: None,
@@ -396,7 +394,6 @@ fn session_picker_preview_wheel_uses_shared_scroll_momentum() {
         working_dir: None,
         model: None,
         provider_key: None,
-        is_canary: false,
         is_debug: false,
         saved: false,
         save_label: None,
@@ -639,7 +636,7 @@ fn test_cut_release_alias_starts_fast_release_turn() {
 }
 
 #[test]
-fn test_fast_release_prompt_uses_selfdev_cache() {
+fn test_fast_release_prompt_uses_warm_cargo_cache() {
     let fast_prompt = super::commands::build_fast_release_prompt();
     assert!(fast_prompt.contains("quick-release.sh --prepare-fast"));
     assert!(fast_prompt.contains("quick-release.sh --fast-local"));

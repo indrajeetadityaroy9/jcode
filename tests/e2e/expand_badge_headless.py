@@ -85,7 +85,7 @@ def main():
     proc = None
     master_fd = None
     try:
-        res = send_cmd(sock, f"create_session:selfdev:{REPO}")
+        res = send_cmd(sock, f"create_session:{REPO}")
         if not res.get("ok"):
             raise AssertionError(f"create_session failed: {res}")
         session_id = json.loads(res["output"])["session_id"]
@@ -94,9 +94,8 @@ def main():
         master_fd, slave_fd = pty.openpty()
         env = os.environ.copy()
         env.setdefault("TERM", "xterm-kitty")
-        env.setdefault("JCODE_CLIENT_SELFDEV_MODE", "1")
         proc = subprocess.Popen(
-            [binary, "self-dev", "--resume", session_id],
+            [binary, "--resume", session_id],
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,

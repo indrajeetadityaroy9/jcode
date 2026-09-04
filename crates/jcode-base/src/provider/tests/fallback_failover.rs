@@ -8,7 +8,6 @@ fn test_fallback_sequence_includes_all_providers() {
             ActiveProvider::Copilot,
             ActiveProvider::Gemini,
             ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
             ActiveProvider::OpenRouter,
         ]
     );
@@ -20,7 +19,6 @@ fn test_fallback_sequence_includes_all_providers() {
             ActiveProvider::Copilot,
             ActiveProvider::Gemini,
             ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
             ActiveProvider::OpenRouter,
         ]
     );
@@ -33,7 +31,6 @@ fn test_fallback_sequence_includes_all_providers() {
             ActiveProvider::Antigravity,
             ActiveProvider::Gemini,
             ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
             ActiveProvider::OpenRouter,
         ]
     );
@@ -46,7 +43,6 @@ fn test_fallback_sequence_includes_all_providers() {
             ActiveProvider::Antigravity,
             ActiveProvider::Copilot,
             ActiveProvider::Cursor,
-            ActiveProvider::Bedrock,
             ActiveProvider::OpenRouter,
         ]
     );
@@ -180,7 +176,6 @@ fn test_initial_provider_allows_cross_provider_switch_and_reports_target_credent
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -212,7 +207,6 @@ fn test_auto_default_prefers_claude_over_openai_when_both_available() {
         antigravity: false,
         gemini: false,
         cursor: false,
-        bedrock: false,
         openrouter: false,
         copilot_premium_zero: false,
     });
@@ -228,7 +222,6 @@ fn test_auto_default_prefers_copilot_when_zero_premium_mode_enabled() {
         antigravity: true,
         gemini: true,
         cursor: true,
-        bedrock: false,
         openrouter: true,
         copilot_premium_zero: true,
     });
@@ -298,7 +291,6 @@ fn test_no_provider_error_mentions_tokens_and_details() {
         antigravity: RwLock::new(None),
         gemini: RwLock::new(None),
         cursor: RwLock::new(None),
-        bedrock: RwLock::new(None),
         openrouter: RwLock::new(None),
         openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
         active_openai_compatible_profile: RwLock::new(None),
@@ -338,7 +330,6 @@ fn test_active_compat_profile_counts_as_configured_openrouter_slot() {
                 antigravity: RwLock::new(None),
                 gemini: RwLock::new(None),
                 cursor: RwLock::new(None),
-                bedrock: RwLock::new(None),
                 openrouter: RwLock::new(None),
                 openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                 active_openai_compatible_profile: RwLock::new(None),

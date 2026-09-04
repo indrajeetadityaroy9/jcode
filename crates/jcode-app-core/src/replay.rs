@@ -849,7 +849,7 @@ pub fn auto_edit_timeline(timeline: &[TimelineEvent], opts: &AutoEditOpts) -> Ve
         let mut new_t = (orig_t as i64 + time_shift).max(0) as u64;
 
         // If the assistant sat idle for a long time after a tool completed
-        // (for example during a selfdev reload), compress that post-tool gap
+        // (for example during a server reload), compress that post-tool gap
         // before the next later event.
         if let Some(tool_done_t) = last_tool_done_t
             && orig_t > tool_done_t

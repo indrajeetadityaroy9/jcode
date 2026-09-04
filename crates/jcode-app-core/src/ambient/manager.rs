@@ -58,11 +58,6 @@ impl AmbientManager {
         Ok(())
     }
 
-    /// Remove and return all ready scheduled items.
-    pub fn take_ready_items(&mut self) -> Vec<ScheduledItem> {
-        self.queue.pop_ready()
-    }
-
     /// Remove and return only ready items targeted at direct delivery into a
     /// specific resumed or spawned session.
     pub fn take_ready_direct_items(&mut self) -> Vec<ScheduledItem> {

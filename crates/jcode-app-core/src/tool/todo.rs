@@ -707,17 +707,17 @@ impl Tool for TodoTool {
                             "feedback_loop_relevance": {
                                 "type": "string",
                                 "enum": ["indirect", "synthetic", "representative", "acceptance_blocked", "acceptance_aligned"],
-                                "description": "How directly checks represent observable acceptance behavior. indirect = inspection or an internal proxy; synthetic = custom harnesses, stubs, mocks, copied sources, or synthetic fixtures; representative = real public interfaces but not the complete acceptance workflow; acceptance_blocked = the real acceptance workflow was attempted but an external constraint prevented a result; acceptance_aligned = the real project build, integration test, or end-user workflow passed. Substitute-only validation is never acceptance_aligned."
+                                "description": "How directly checks exercise real public interfaces; substitutes are never acceptance_aligned."
                             },
                             "feedback_loop_coverage": {
                                 "type": "string",
                                 "enum": ["narrow", "main_paths", "edge_and_integration_paths"],
-                                "description": "How broadly the checks exercise main workflows, integration boundaries, edge cases, packaging, and likely failure modes."
+                                "description": "Breadth: main paths, integration boundaries, edge cases, packaging, likely failure modes."
                             },
                             "feedback_loop_traceability": {
                                 "type": "string",
                                 "enum": ["unmapped", "partial", "complete"],
-                                "description": "How completely requirements map to evidence. unmapped = requirements are not tied to checks; partial = only some explicit requirements or changed public outputs have concrete checks and observed results; complete = every explicit requirement and changed public output has a concrete check and observed result. Aggregate test counts alone do not establish complete traceability."
+                                "description": "How completely explicit requirements and changed public outputs map to observed results."
                             },
                             "delivery_state": {
                                 "type": "string",
@@ -919,17 +919,16 @@ mod tests {
                 "acceptance_aligned"
             ])
         );
+        // The full calibration rubric is deliberately NOT in the schema: it is
+        // always-on prompt cost, so it is capped by
+        // `tool::tests::tool_parameter_descriptions_stay_under_token_cap` and
+        // the detailed wording lives in the gate continuation messages in
+        // `jcode_base::todo`. The `enum` above is what advertises the full
+        // vocabulary; the description only has to carry the decisive rule.
         let relevance_description = goal_props["feedback_loop_relevance"]["description"]
             .as_str()
-            .expect("feedback-loop relevance should explain every state");
-        for required_concept in [
-            "custom harnesses",
-            "real public interfaces",
-            "external constraint",
-            "Substitute-only validation is never acceptance_aligned",
-        ] {
-            assert!(relevance_description.contains(required_concept));
-        }
+            .expect("feedback-loop relevance should carry the decisive rule");
+        assert!(relevance_description.contains("acceptance_aligned"));
 
         let goal_required = props["goals"]["items"]["required"]
             .as_array()
@@ -1286,89 +1285,6 @@ mod tests {
             group: group.map(str::to_string),
             ..Default::default()
         }
-    }
-
-    #[test]
-    fn todo_telemetry_derives_lifecycle_groups_and_score_summaries() {
-        let mut pending = todo_in_group(Some("build"), "pending");
-        pending.confidence = Some(crate::todo::ConfidenceState::Plausible);
-        let mut removed = todo_in_group(Some("build"), "removed");
-        removed.status = "in_progress".to_string();
-        removed.confidence = Some(crate::todo::ConfidenceState::Plausible);
-        let previous = vec![pending.clone(), removed];
-
-        pending.status = "completed".to_string();
-        pending.completion_confidence = Some(crate::todo::ConfidenceState::Validated);
-        let mut created = todo_in_group(Some("verify"), "created");
-        created.confidence = Some(crate::todo::ConfidenceState::Plausible);
-        let current = vec![pending, created];
-        let goals = vec![
-            TodoGoal {
-                group: Some("build".to_string()),
-                closed_feedback_loop: Some(crate::todo::FeedbackLoopState::Strong),
-                feedback_loop_relevance: Some(crate::todo::FeedbackLoopRelevance::Representative),
-                feedback_loop_coverage: Some(crate::todo::FeedbackLoopCoverage::MainPaths),
-                delivery_state: Some(crate::todo::DeliveryState::OutcomeDelivered),
-                ..Default::default()
-            },
-            TodoGoal {
-                group: Some("verify".to_string()),
-                closed_feedback_loop: Some(crate::todo::FeedbackLoopState::Strong),
-                feedback_loop_relevance: Some(
-                    crate::todo::FeedbackLoopRelevance::AcceptanceAligned,
-                ),
-                feedback_loop_coverage: Some(
-                    crate::todo::FeedbackLoopCoverage::EdgeAndIntegrationPaths,
-                ),
-                delivery_state: Some(crate::todo::DeliveryState::OutcomeDelivered),
-                ..Default::default()
-            },
-        ];
-        let plan = TodoPlan {
-            understands_user_intent: Some(crate::todo::IntentUnderstanding::Partial),
-            ..Default::default()
-        };
-
-        assert_eq!(update.todos_created, 1);
-        assert_eq!(update.todos_completed, 1);
-        assert_eq!(update.todos_abandoned, 1);
-        assert_eq!(update.current_incomplete, 1);
-        assert_eq!(update.list_size, 2);
-        assert_eq!(update.groups_completed, 1);
-        assert_eq!(update.groups_total, 2);
-        assert_eq!(update.confidence.min, Some(80));
-        assert_eq!(update.confidence.mean, Some(80.0));
-        assert_eq!(update.confidence.count, 2);
-        assert_eq!(update.completion_confidence.min, Some(96));
-        assert_eq!(update.completion_confidence.count, 1);
-        assert_eq!(update.understands_user_intent.min, Some(80));
-        assert_eq!(update.closed_feedback_loop.min, Some(88));
-        assert_eq!(update.closed_feedback_loop.mean, Some(88.0));
-        assert_eq!(update.feedback_loop_relevance.min, Some(75));
-        assert_eq!(update.feedback_loop_relevance.count, 2);
-        assert_eq!(update.feedback_loop_coverage.min, Some(75));
-        assert_eq!(update.feedback_loop_coverage.count, 2);
-        assert_eq!(update.end_to_end_ownership.min, Some(98));
-        assert_eq!(update.end_to_end_ownership.mean, Some(98.0));
-    }
-
-    #[test]
-    fn todo_telemetry_regrouping_does_not_create_or_abandon_items() {
-        let mut completed = todo_in_group(Some("old"), "a");
-        completed.status = "completed".to_string();
-        let pending = todo_in_group(Some("old"), "b");
-        let previous = vec![completed.clone(), pending.clone()];
-
-        completed.group = Some("done".to_string());
-        let mut pending = pending;
-        pending.group = Some("remaining".to_string());
-        let current = vec![completed, pending];
-
-        assert_eq!(update.todos_created, 0);
-        assert_eq!(update.todos_completed, 0);
-        assert_eq!(update.todos_abandoned, 0);
-        assert_eq!(update.groups_completed, 1);
-        assert_eq!(update.groups_total, 2);
     }
 
     /// Issue #695: after the agent moves to a new task and replaces the todo

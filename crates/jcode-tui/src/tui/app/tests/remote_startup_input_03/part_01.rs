@@ -528,7 +528,7 @@ fn test_restore_session_adds_reload_message() {
 }
 
 #[test]
-fn test_restore_session_with_selfdev_reload_tool_result_queues_continuation() {
+fn test_restore_session_with_reload_tool_result_queues_continuation() {
     use crate::session::Session;
 
     let mut app = create_test_app();
@@ -537,7 +537,7 @@ fn test_restore_session_with_selfdev_reload_tool_result_queues_continuation() {
     session.add_message(
         Role::User,
         vec![ContentBlock::ToolResult {
-            tool_use_id: "tool_selfdev_reload".to_string(),
+            tool_use_id: "tool_reload".to_string(),
             content: "Reload initiated. Process restarting...".to_string(),
             is_error: Some(false),
         }],
@@ -573,11 +573,9 @@ fn test_system_reminder_is_added_to_system_prompt_not_user_messages() {
 }
 
 #[test]
-fn test_recover_session_without_tools_preserves_debug_and_canary_flags() {
+fn test_recover_session_without_tools_preserves_debug_flag_and_working_dir() {
     let mut app = create_test_app();
     app.session.is_debug = true;
-    app.session.is_canary = true;
-    app.session.testing_build = Some("self-dev".to_string());
     app.session.working_dir = Some("/tmp/jcode-test".to_string());
     let old_session_id = app.session.id.clone();
 
@@ -589,8 +587,6 @@ fn test_recover_session_without_tools_preserves_debug_and_canary_flags() {
         Some(old_session_id.as_str())
     );
     assert!(app.session.is_debug);
-    assert!(app.session.is_canary);
-    assert_eq!(app.session.testing_build.as_deref(), Some("self-dev"));
     assert_eq!(app.session.working_dir.as_deref(), Some("/tmp/jcode-test"));
 
     let _ = std::fs::remove_file(crate::session::session_path(&app.session.id).unwrap());
@@ -958,52 +954,6 @@ fn test_startup_update_error_replaces_checking_card() {
     );
     assert!(app.background_client_action.is_none());
     assert!(app.pending_background_client_reload.is_none());
-}
-
-#[test]
-fn test_selfdev_command_spawns_session_in_test_mode() {
-    let _guard = crate::storage::lock_test_env();
-    let temp_home = tempfile::TempDir::new().expect("temp home");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let prev_test = std::env::var_os("JCODE_TEST_SESSION");
-    crate::env::set_var("JCODE_HOME", temp_home.path());
-    crate::env::set_var("JCODE_TEST_SESSION", "1");
-
-    let repo = create_jcode_repo_fixture();
-    let mut app = create_test_app();
-    app.session.working_dir = Some(repo.path().display().to_string());
-
-    app.input = "/selfdev fix the markdown renderer".to_string();
-    app.submit_input();
-
-    let last = app.display_messages().last().expect("selfdev message");
-    assert!(last.content.contains("Created self-dev session"));
-    assert!(
-        last.content
-            .contains("Prompt captured but not delivered in test mode")
-    );
-    assert_eq!(app.status_notice(), Some("Self-dev".to_string()));
-
-    let sessions_dir = crate::storage::jcode_dir().unwrap().join("sessions");
-    let entries: Vec<_> = std::fs::read_dir(&sessions_dir)
-        .expect("sessions dir")
-        .flatten()
-        .collect();
-    assert!(
-        !entries.is_empty(),
-        "expected spawned self-dev session file"
-    );
-
-    if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
-    } else {
-        crate::env::remove_var("JCODE_HOME");
-    }
-    if let Some(prev_test) = prev_test {
-        crate::env::set_var("JCODE_TEST_SESSION", prev_test);
-    } else {
-        crate::env::remove_var("JCODE_TEST_SESSION");
-    }
 }
 
 #[test]

@@ -1359,7 +1359,7 @@ pub async fn run_live_antigravity_native_reasoning_smoke(
 //
 // The native Claude and native Antigravity probes above each build a concrete
 // provider type and then drain its stream. Most other native-runtime providers
-// (OpenAI OAuth, Gemini Code Assist, Cursor, Copilot, Bedrock, ...) need the
+// (OpenAI OAuth, Gemini Code Assist, Cursor, Copilot, ...) need the
 // same three stages with identical assertions; the only thing that varies is
 // which `Provider` runtime is driven. These generic probes accept a pre-built,
 // model-pinned `&dyn Provider` so a single doctor driver can exercise any

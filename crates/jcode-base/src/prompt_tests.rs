@@ -21,7 +21,6 @@ fn mermaid_prompt_module_follows_capability() {
     let (enabled, _) = build_system_prompt_split_with_capabilities(
         None,
         &[],
-        false,
         None,
         None,
         PromptCapabilities { mermaid: true },
@@ -31,7 +30,6 @@ fn mermaid_prompt_module_follows_capability() {
     let (disabled, _) = build_system_prompt_split_with_capabilities(
         None,
         &[],
-        false,
         None,
         None,
         PromptCapabilities { mermaid: false },
@@ -102,8 +100,8 @@ fn full_and_split_prompt_builders_use_the_same_one_line_skill_descriptions() {
     }];
     let expected = build_available_skills_section(&skills).expect("skills section");
 
-    let (full, full_info) = build_system_prompt_full(None, &skills, false, None, None);
-    let (split, split_info) = build_system_prompt_split(None, &skills, false, None, None);
+    let (full, full_info) = build_system_prompt_full(None, &skills, None, None);
+    let (split, split_info) = build_system_prompt_split(None, &skills, None, None);
 
     assert!(full.contains(&expected));
     assert!(split.static_part.contains(&expected));
@@ -248,7 +246,7 @@ fn test_session_context_includes_time_timezone_and_system_info() {
 
 #[test]
 fn test_split_prompt_does_not_inject_session_context_per_turn() {
-    let (split, _info) = build_system_prompt_split(None, &[], false, None, None);
+    let (split, _info) = build_system_prompt_split(None, &[], None, None);
     assert!(!split.dynamic_part.contains("# Session Context"));
     assert!(!split.dynamic_part.contains("Time: "));
     assert!(!split.dynamic_part.contains("Timezone: UTC"));
@@ -288,7 +286,7 @@ fn test_prompt_overlay_files_are_loaded_from_project_and_global_jcode_dirs() {
         "expected global prompt overlay content"
     );
 
-    let (prompt, info) = build_system_prompt_full(None, &[], false, None, Some(project_dir.path()));
+    let (prompt, info) = build_system_prompt_full(None, &[], None, Some(project_dir.path()));
     assert!(prompt.contains("project prompt overlay instructions"));
     assert!(prompt.contains("global prompt overlay instructions"));
     assert!(info.prompt_overlay_chars > 0);
@@ -342,13 +340,13 @@ fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
         "expected global preferred tools content"
     );
 
-    let (prompt, info) = build_system_prompt_full(None, &[], false, None, Some(project_dir.path()));
+    let (prompt, info) = build_system_prompt_full(None, &[], None, Some(project_dir.path()));
     assert!(prompt.contains("project preferred tools instructions"));
     assert!(prompt.contains("global preferred tools instructions"));
     assert!(info.preferred_tools_chars > 0);
 
     let (split, split_info) =
-        build_system_prompt_split(None, &[], false, None, Some(project_dir.path()));
+        build_system_prompt_split(None, &[], None, Some(project_dir.path()));
     assert!(
         split
             .static_part
@@ -419,60 +417,8 @@ fn test_default_swarm_prompt_mentions_model_and_list_models() {
 }
 
 #[test]
-fn test_non_selfdev_prompt_leaves_selfdev_guidance_to_the_tool_schema() {
-    let prompt = build_system_prompt(None, &[]);
-    assert!(!prompt.contains("Self-Development Access"));
-    assert!(!prompt.contains("You have access to the `selfdev` tool in all sessions"));
-    assert!(!prompt.contains("You are working on the jcode codebase itself."));
-}
-
-#[test]
-fn test_selfdev_prompt_uses_full_selfdev_instructions() {
-    let prompt = build_system_prompt_with_selfdev(None, &[], true);
-    assert!(prompt.contains("You are working on the jcode codebase itself."));
-    assert!(prompt.contains("launched from the TUI/root jcode context"));
-    assert!(prompt.contains("selfdev build target=tui"));
-    assert!(!prompt.contains("Self-Development Access"));
-}
-
-#[test]
-fn test_split_selfdev_prompt_defaults_to_tui_focus_for_repo_root() {
-    let repo_dir = std::path::Path::new("/tmp/jcode");
-    let (split, _info) = build_system_prompt_split(None, &[], true, None, Some(repo_dir));
-    assert!(
-        split
-            .static_part
-            .contains("launched from the TUI/root jcode context")
-    );
-    assert!(split.static_part.contains("selfdev build target=tui"));
-}
-
-#[test]
-fn test_selfdev_prompt_prefers_publish_flow_for_active_builds() {
-    let prompt = build_system_prompt_with_selfdev(None, &[], true);
-    assert!(prompt.contains("selfdev build"));
-    assert!(prompt.contains("cancel-build"));
-    assert!(prompt.contains("selfdev reload"));
-    assert!(prompt.contains("fallback when `selfdev build` is not appropriate"));
-    assert!(prompt.contains("scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode"));
-    assert!(prompt.contains("remote build host is configured"));
-    assert!(prompt.contains("Do not wait for user input"));
-}
-
-#[test]
-fn test_selfdev_prompt_template_placeholders_are_resolved() {
-    let static_prompt = build_selfdev_prompt_static();
-    let dynamic_prompt = build_selfdev_prompt();
-    assert!(!static_prompt.contains("__DEBUG_SOCKET_BLOCK__"));
-    assert!(!dynamic_prompt.contains("__DEBUG_SOCKET_BLOCK__"));
-    assert!(!static_prompt.contains("__SELFDEV_PRODUCT_FOCUS__"));
-    assert!(!dynamic_prompt.contains("__SELFDEV_PRODUCT_FOCUS__"));
-    assert_eq!(static_prompt, dynamic_prompt);
-}
-
-#[test]
 fn split_prompt_estimated_tokens_is_positive_when_populated() {
-    let (split, _info) = build_system_prompt_split(None, &[], false, None, None);
+    let (split, _info) = build_system_prompt_split(None, &[], None, None);
     assert!(split.chars() > 0);
     assert!(split.estimated_tokens() > 0);
 }
@@ -561,7 +507,7 @@ fn project_system_prompt_file_replaces_default_base_prompt() {
         "You are a custom agent."
     );
 
-    let (prompt, _info) = build_system_prompt_full(None, &[], false, None, Some(&dir));
+    let (prompt, _info) = build_system_prompt_full(None, &[], None, Some(&dir));
     assert!(prompt.contains("You are a custom agent."));
     assert!(!prompt.contains("Jcode is open source"));
 

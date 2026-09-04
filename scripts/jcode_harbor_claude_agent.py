@@ -242,7 +242,7 @@ class JcodeClaudeHarborAgent(BaseAgent):
             await environment.exec(f"chmod 600 {IN_CONTAINER_HOME}/auth.json", timeout_sec=30)
         await environment.upload_file(CA_BUNDLE, IN_CONTAINER_CA_BUNDLE)
         version_result = await environment.exec(
-            f"{IN_CONTAINER_BINARY} --quiet --no-update --no-selfdev version --json",
+            f"{IN_CONTAINER_BINARY} --quiet --no-update version --json",
             env={
                 "HOME": IN_CONTAINER_HOME,
                 "JCODE_HOME": IN_CONTAINER_HOME,
@@ -286,7 +286,7 @@ class JcodeClaudeHarborAgent(BaseAgent):
                 '  if [ -d /app ]; then workdir=/app; else workdir="$(pwd)"; fi; '
                 'fi; '
                 f'instruction="$(cat {IN_CONTAINER_INPUT}/instruction.txt)"; '
-                f'{IN_CONTAINER_BINARY} --quiet --no-update --no-selfdev '
+                f'{IN_CONTAINER_BINARY} --quiet --no-update '
                 '--provider "$JCODE_PROVIDER" --model "$JCODE_MODEL" '
                 '-C "$workdir" run --ndjson "$instruction" '
                 f'> {IN_CONTAINER_OUTPUT}/events.ndjson 2> {IN_CONTAINER_OUTPUT}/stderr.txt'

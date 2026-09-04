@@ -152,9 +152,6 @@ impl App {
             "rebuild" => {
                 "/rebuild\nRun git pull --ff-only, cargo build --release, and release tests in the background. jcode stays usable and reloads automatically when the build is ready."
             }
-            "selfdev" => {
-                "/selfdev\nSpawn a new self-dev jcode session in a separate terminal.\n\n/selfdev <prompt>\nSpawn a new self-dev session and auto-deliver the prompt to it.\n\n/selfdev status\nShow current self-dev/build status."
-            }
             "fork" | "split" => {
                 "/fork\nFork the current session into a new terminal pane or window. Clones the full conversation history so both sessions continue from the same point. Inside tmux, jcode automatically opens a right-side pane.\n\n/fork <prompt>\nFork the session and start the new pane/window by answering the prompt. The original session keeps working uninterrupted.\n\n/split\nAlias for /fork."
             }

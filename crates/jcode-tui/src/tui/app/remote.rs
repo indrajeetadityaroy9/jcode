@@ -667,7 +667,7 @@ pub(super) async fn handle_bus_event(
 /// `LoginCompleted.provider` is the login descriptor's display label (e.g.
 /// "Anthropic API"), id, or alias - not the canonical server provider id. This
 /// used to only map Azure and OpenAI-compatible logins, so direct logins
-/// (Claude OAuth/API key, OpenAI, OpenRouter, Bedrock, ...) sent no hint. With
+/// (Claude OAuth/API key, OpenAI, OpenRouter, ...) sent no hint. With
 /// no hint the server fell back to the session's currently active provider,
 /// mislabeling the catalog-refresh message ("OpenAI credentials are active"
 /// after an Anthropic API-key login) and skipping the post-login model switch.

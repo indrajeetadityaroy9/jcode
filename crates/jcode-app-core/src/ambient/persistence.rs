@@ -89,30 +89,6 @@ impl ScheduledQueue {
         Ok(Some(item))
     }
 
-    /// Pop items whose `scheduled_for` is in the past, sorted by priority
-    /// (highest first) then by time (earliest first).
-    pub fn pop_ready(&mut self) -> Vec<ScheduledItem> {
-        let now = Utc::now();
-        let (ready, remaining): (Vec<_>, Vec<_>) =
-            self.items.drain(..).partition(|i| i.scheduled_for <= now);
-
-        self.items = remaining;
-
-        let mut ready = ready;
-        // Sort: highest priority first, then earliest scheduled_for
-        ready.sort_by(|a, b| {
-            b.priority
-                .cmp(&a.priority)
-                .then_with(|| a.scheduled_for.cmp(&b.scheduled_for))
-        });
-
-        if !ready.is_empty() {
-            let _ = self.save();
-        }
-
-        ready
-    }
-
     /// Remove and return ready items targeted at a specific direct-delivery session,
     /// leaving ambient-targeted queue items intact for the ambient agent to process.
     pub fn take_ready_direct_items(&mut self) -> Vec<ScheduledItem> {

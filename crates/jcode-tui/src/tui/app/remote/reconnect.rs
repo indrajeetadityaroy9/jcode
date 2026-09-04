@@ -857,7 +857,7 @@ pub(in crate::tui::app) fn finalize_reload_reconnect(
                 "reload context missing for reconnecting initiator session",
             );
             crate::logging::warn(
-                "Reload context missing for initiating session after reconnect; skipping selfdev continuation",
+                "Reload context missing for initiating session after reconnect; skipping reload continuation",
             );
         }
         app.reload_info.clear();

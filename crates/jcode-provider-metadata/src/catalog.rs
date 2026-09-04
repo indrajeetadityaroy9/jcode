@@ -580,19 +580,6 @@ pub const OPENROUTER_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDesc
     order: LoginProviderSurfaceOrder::new(Some(4), Some(3), Some(4), Some(3), Some(3)),
 };
 
-pub const BEDROCK_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
-    id: "bedrock",
-    display_name: "AWS Bedrock",
-    auth_kind: LoginProviderAuthKind::ApiKey,
-    auth_state_key: LoginProviderAuthStateKey::Bedrock,
-    auth_status_method: "API key / AWS credentials",
-    aliases: &["aws-bedrock", "aws_bedrock"],
-    menu_detail: "Bedrock API key or AWS credentials, pay-per-token",
-    recommended: false,
-    target: LoginProviderTarget::Bedrock,
-    order: LoginProviderSurfaceOrder::new(Some(5), Some(4), None, None, Some(4)),
-};
-
 pub const AZURE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "azure",
     display_name: "Azure OpenAI",
@@ -1152,7 +1139,7 @@ pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescript
     order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
 };
 
-pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 50] = [
+pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 49] = [
     AUTO_IMPORT_LOGIN_PROVIDER,
     CLAUDE_LOGIN_PROVIDER,
     ANTHROPIC_API_LOGIN_PROVIDER,
@@ -1160,7 +1147,6 @@ pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 50] = [
     OPENAI_API_LOGIN_PROVIDER,
     JCODE_LOGIN_PROVIDER,
     OPENROUTER_LOGIN_PROVIDER,
-    BEDROCK_LOGIN_PROVIDER,
     AZURE_LOGIN_PROVIDER,
     OPENCODE_LOGIN_PROVIDER,
     OPENCODE_GO_LOGIN_PROVIDER,

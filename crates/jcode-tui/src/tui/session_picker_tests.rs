@@ -23,16 +23,6 @@ fn line_text(line: &Line<'_>) -> String {
 }
 
 fn make_session(id: &str, short_name: &str, is_debug: bool, status: SessionStatus) -> SessionInfo {
-    make_session_with_flags(id, short_name, is_debug, false, status)
-}
-
-fn make_session_with_flags(
-    id: &str,
-    short_name: &str,
-    is_debug: bool,
-    is_canary: bool,
-    status: SessionStatus,
-) -> SessionInfo {
     let now = Utc::now();
     let title = "Test session".to_string();
     let working_dir = Some("/tmp".to_string());
@@ -76,7 +66,6 @@ fn make_session_with_flags(
         working_dir,
         model: None,
         provider_key: None,
-        is_canary,
         is_debug,
         saved: false,
         save_label: None,
@@ -427,13 +416,7 @@ fn test_toggle_test_sessions_rebuilds_visibility() {
 fn test_new_grouped_hides_debug_by_default() {
     let normal = make_session("session_normal", "normal", false, SessionStatus::Closed);
     let debug = make_session("session_debug", "debug", true, SessionStatus::Closed);
-    let canary = make_session_with_flags(
-        "session_canary",
-        "canary",
-        false,
-        true,
-        SessionStatus::Closed,
-    );
+    let second_normal = make_session("session_second", "second", false, SessionStatus::Closed);
     let orphan_normal = make_session(
         "orphan_normal",
         "orphan-normal",
@@ -448,14 +431,13 @@ fn test_new_grouped_hides_debug_by_default() {
         version: "v0.1.0".to_string(),
         git_hash: "abc1234".to_string(),
         is_running: true,
-        sessions: vec![normal.clone(), debug.clone(), canary.clone()],
+        sessions: vec![normal.clone(), debug.clone(), second_normal.clone()],
     }];
 
     let mut picker = SessionPicker::new_grouped(groups, vec![orphan_normal, orphan_debug]);
 
     assert!(!picker.show_test_sessions);
-    // Canary sessions are now visible by default, only debug sessions are hidden
-    assert_eq!(picker.visible_sessions.len(), 3); // normal + canary + orphan_normal
+    assert_eq!(picker.visible_sessions.len(), 3); // normal + second_normal + orphan_normal
     assert!(picker.visible_session_iter().all(|s| !s.is_debug));
     assert_eq!(picker.hidden_test_count, 2); // debug + orphan_debug
 
@@ -464,7 +446,6 @@ fn test_new_grouped_hides_debug_by_default() {
     assert_eq!(picker.visible_sessions.len(), 5);
     assert_eq!(picker.hidden_test_count, 0);
     assert!(picker.visible_session_iter().any(|s| s.is_debug));
-    assert!(picker.visible_session_iter().any(|s| s.is_canary));
 }
 
 #[test]

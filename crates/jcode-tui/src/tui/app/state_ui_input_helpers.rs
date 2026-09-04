@@ -1117,23 +1117,6 @@ impl App {
             );
         }
 
-        if prefix.starts_with("/selfdev ") {
-            return self.rank_suggestions(
-                input,
-                vec![
-                    (
-                        "/selfdev status".into(),
-                        "Show current self-dev/build status",
-                    ),
-                    ("/selfdev enter".into(), "Open a blank self-dev session"),
-                    (
-                        "/selfdev enter ".into(),
-                        "Open a self-dev session with a prompt",
-                    ),
-                ],
-            );
-        }
-
         if prefix.starts_with("/rewind ") {
             let arg = prefix.strip_prefix("/rewind ").unwrap_or_default().trim();
             let visible_count = self.session.rewind_target_count();
@@ -1436,14 +1419,6 @@ impl App {
     /// Returns (label, prompt_text) pairs. Empty once user is experienced or not authenticated.
     pub fn suggestion_prompts(&self) -> Vec<(String, String)> {
         let preview_mode = self.onboarding_preview_mode;
-        let is_canary = if self.is_remote {
-            self.remote_is_canary.unwrap_or(self.session.is_canary)
-        } else {
-            self.session.is_canary
-        };
-        if is_canary && !preview_mode {
-            return Vec::new();
-        }
 
         let auth = crate::auth::AuthStatus::check_fast();
         if !auth.has_any_available() {

@@ -554,7 +554,7 @@ impl AnthropicProvider {
     /// while `claude-api` is the API-key path. The doctor must test the path
     /// implied by the provider id under test, regardless of what
     /// `JCODE_RUNTIME_PROVIDER` happens to be in the current process (e.g. a
-    /// self-dev session may have it set to `claude-api`). This also updates
+    /// another session may have it set to `claude-api`). This also updates
     /// `JCODE_RUNTIME_PROVIDER` so any provider instances the probes build
     /// afterwards inherit the same mode. Errors if the requested credential is
     /// not available, so the doctor can record a clear AUTH failure.

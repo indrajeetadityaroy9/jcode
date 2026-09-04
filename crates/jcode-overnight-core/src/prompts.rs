@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 
 use super::{
-    OvernightManifest, OvernightPreflight, OvernightRunStatus, format_minutes, preflight_summary,
+    OvernightManifest, OvernightRunStatus, format_minutes,
 };
 
 pub(crate) fn overnight_phase(manifest: &OvernightManifest, now: DateTime<Utc>) -> &'static str {
@@ -86,68 +86,6 @@ pub(crate) fn next_prompt_label(manifest: &OvernightManifest, now: DateTime<Utc>
     "final wrap after current turn".to_string()
 }
 
-pub fn build_coordinator_prompt(
-    manifest: &OvernightManifest,
-    preflight: &OvernightPreflight,
-) -> String {
-    let mission = manifest
-        .mission
-        .as_deref()
-        .unwrap_or("Continue the current session's highest-value work, prioritizing verified, low-risk progress.");
-    format!(
-        r#"You are the Overnight Coordinator for Jcode run `{run_id}`.
-
-The user expects to be away until approximately `{target_wake_at}`. This is a target wake/report time, not a hard stop. By that time, the run must be handoff-ready and the review page must explain what happened. You may continue past the target only to finish a bounded, safe, verifiable chunk. The default soft post-wake grace window ends at `{post_wake_grace_until}`.
-
-Mission:
-{mission}
-
-Operating contract:
-- Optimize for verified, low-risk progress.
-- Prefer GH bug issues with objective reproduction, failing tests, static-analysis findings, regression tests, bounded code-quality fixes, and clear crash/panic/wrong-output bugs.
-- Avoid taste-based work, vague product decisions, broad rewrites, risky migrations, payments, sending email, pushing to remotes, deleting data, or other external side effects unless explicitly allowed by the user.
-- If a bug is found, reproduce/prove it before fixing it.
-- Only fix issues that are important, bounded, and verifiable. Otherwise draft a high-quality issue in `{issue_drafts}`.
-- You own the run. Spawn swarm/helper agents only if the expected value exceeds usage/resource cost. Default to one coordinator plus at most one helper. Read-only scouts/verifiers are preferred over multiple editors.
-- Be aware of RAM/load/battery, especially around compiles, browser automation, indexing, and full test suites. Do not run multiple heavy activities at once unless resources are clearly healthy.
-- Do not wait for the user. If you need user judgment/credentials/taste, record it and switch to another useful task.
-- Continue finding useful verified work until the target wake/report time unless usage/resources make that unreasonable.
-
-Review/log requirements:
-- Keep `{review_notes}` updated as you work.
-- For each meaningful task, maintain one structured JSON task card in `{task_cards}` using the schema in `{task_card_schema}`. These cards drive the live TUI progress card and the generated review page.
-- Each task card must include clear Before/After, evidence, validation, files changed, risk, status, and outcome. Keep the current task marked `active`, completed verified work marked `completed`, user/taste/credential stalls marked `blocked`, and considered-but-not-pursued work marked `deferred` or `skipped`.
-- Put reproduction/test/command outputs in `{validation}` when useful.
-- The generated review page is `{review_html}` and will be regenerated from logs plus your review notes.
-
-Preflight summary:
-{preflight_summary}
-
-Initial steps:
-1. Inspect current repo/session state and git status.
-2. Build a ranked queue of verifiable candidate tasks.
-3. Pick the highest-confidence bounded task.
-4. Prove/reproduce before fixing.
-5. Validate and update review notes.
-6. If done early, repeat discovery and continue.
-"#,
-        run_id = manifest.run_id,
-        target_wake_at = manifest.target_wake_at.to_rfc3339(),
-        post_wake_grace_until = manifest.post_wake_grace_until.to_rfc3339(),
-        mission = mission,
-        issue_drafts = manifest.issue_drafts_dir.display(),
-        review_notes = manifest.review_notes_path.display(),
-        task_cards = manifest.task_cards_dir.display(),
-        task_card_schema = manifest
-            .task_cards_dir
-            .join("task-card-schema.md")
-            .display(),
-        validation = manifest.validation_dir.display(),
-        review_html = manifest.review_path.display(),
-        preflight_summary = preflight_summary(preflight),
-    )
-}
-
 pub fn build_visible_current_session_prompt(manifest: &OvernightManifest) -> String {
     let mission = manifest
         .mission
@@ -201,50 +139,6 @@ Initial steps:
         validation = manifest.validation_dir.display(),
         review_html = manifest.review_path.display(),
         manifest_path = manifest.run_dir.join("manifest.json").display(),
-    )
-}
-
-pub fn build_continuation_prompt(manifest: &OvernightManifest) -> String {
-    let remaining = manifest
-        .target_wake_at
-        .signed_duration_since(Utc::now())
-        .num_minutes()
-        .max(0) as u32;
-    format!(
-        "Overnight continuation: there is about {} remaining until the target wake/report time. If your current task is complete, run another discovery/scoring pass and choose another high-confidence, verifiable task. If you are stuck, record why in `{}` and the relevant task-card JSON, then switch to a smaller bounded task. Update review notes and task cards before continuing.",
-        format_minutes(remaining),
-        manifest.review_notes_path.display()
-    )
-}
-
-pub fn build_handoff_ready_prompt(manifest: &OvernightManifest) -> String {
-    format!(
-        "Handoff-ready reminder: target wake/report time is in about 30 minutes. Do not abandon useful work, but make the run easy to understand. Update `{}` and task-card JSON with current task, completed work, validation state, files changed, risks, skipped work, and next steps. Avoid starting large/risky new changes unless they are isolated and clearly verifiable.",
-        manifest.review_notes_path.display()
-    )
-}
-
-pub fn build_morning_report_prompt(manifest: &OvernightManifest) -> String {
-    format!(
-        "Target wake/report time reached. Post a morning report now, even if work is still ongoing. Update `{}` plus task-card JSON and make sure `{}` is useful. Include completed work, current task, before/after evidence, files changed, validation, risks, usage/resource notes if relevant, and whether you plan to continue. You may continue only if the next chunk is bounded, safe, and verifiable.",
-        manifest.review_notes_path.display(),
-        manifest.review_path.display()
-    )
-}
-
-pub fn build_post_wake_continuation_prompt(manifest: &OvernightManifest) -> String {
-    format!(
-        "Post-wake continuation: the target wake/report time has passed and the morning report should already be available. You may continue only with bounded, safe, verifiable work that is already in progress or clearly high-value. Do not start broad/risky new changes. Keep `{}` and task-card JSON current so the user can safely inspect or interrupt at any time. Soft grace window ends at `{}`.",
-        manifest.review_notes_path.display(),
-        manifest.post_wake_grace_until.to_rfc3339()
-    )
-}
-
-pub fn build_final_wrapup_prompt(manifest: &OvernightManifest) -> String {
-    format!(
-        "Final overnight wrap-up: the post-wake grace window has expired. Stop starting new work. Finish only immediate cleanup, update `{}`, task-card JSON, and `{}` with final before/after evidence, validation status, dirty repo state, remaining risks, and next steps, then stop.",
-        manifest.review_notes_path.display(),
-        manifest.review_path.display()
     )
 }
 

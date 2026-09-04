@@ -128,11 +128,8 @@ def classify_process(argv: list[str], cmd: str, main_socket: str) -> tuple[str |
         return None, False
 
     subcommand = first_non_option(argv)
-    if subcommand in {"auth", "login", "logout", "serve", "self-dev"} and "--resume session_" not in cmd:
-        if subcommand == "self-dev" and "--resume session_" in cmd:
-            pass
-        else:
-            return None, False
+    if subcommand in {"auth", "login", "logout", "serve"} and "--resume session_" not in cmd:
+        return None, False
 
     if "--resume session_" in cmd or " --fresh-spawn " in cmd:
         return ("client_session" if is_main else "client_aux"), is_main

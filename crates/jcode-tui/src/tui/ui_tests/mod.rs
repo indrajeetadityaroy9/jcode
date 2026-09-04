@@ -280,9 +280,6 @@ impl crate::tui::TuiState for TestState {
     fn is_remote_mode(&self) -> bool {
         false
     }
-    fn is_canary(&self) -> bool {
-        false
-    }
     fn is_replay(&self) -> bool {
         false
     }

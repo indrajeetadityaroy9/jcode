@@ -1174,7 +1174,6 @@ fn stale_server_history_is_deferred_before_remote_state_is_applied() {
             token_usage_totals: None,
             all_sessions: vec!["session_from_stale_server".to_string()],
             client_count: Some(42),
-            is_canary: Some(false),
             reload_recovery: None,
             server_version: Some("v0.0.1-stale".to_string()),
             server_name: Some("stale-server".to_string()),
@@ -1264,7 +1263,6 @@ fn deferred_stale_server_history_captures_session_id_for_reload_handoff() {
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             reload_recovery: None,
             // Ancient server that predates self-reported staleness; the client's
             // own release-version comparison drives the deferral.
@@ -1346,7 +1344,6 @@ fn ancient_server_history_is_deferred_via_client_side_release_check() {
             token_usage_totals: None,
             all_sessions: vec!["session_from_ancient_server".to_string()],
             client_count: Some(42),
-            is_canary: Some(false),
             reload_recovery: None,
             // Clean older release, and crucially server_has_update is None: the
             // ancient daemon does not know how to self-assess.
@@ -1428,7 +1425,6 @@ fn older_server_reporting_no_update_is_still_deferred_via_client_check() {
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: Some(1),
-            is_canary: Some(false),
             reload_recovery: None,
             // Older clean release than the client, but the daemon insists it has
             // no newer binary to reload into.
@@ -1532,7 +1528,6 @@ fn older_server_history_repairs_stale_shared_server_channel_end_to_end() {
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: Some(1),
-            is_canary: Some(false),
             reload_recovery: None,
             server_version: Some("v0.14.6 (deadbeef)".to_string()),
             server_name: Some("old-server".to_string()),
@@ -1608,7 +1603,6 @@ fn current_release_server_history_is_not_deferred_by_client_check() {
             token_usage_totals: None,
             all_sessions: vec!["session_current".to_string()],
             client_count: Some(1),
-            is_canary: Some(false),
             reload_recovery: None,
             server_version: Some("v0.17.0 (d741696f)".to_string()),
             server_name: Some("current-server".to_string()),

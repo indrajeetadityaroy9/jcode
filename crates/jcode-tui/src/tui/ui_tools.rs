@@ -64,33 +64,6 @@ fn infer_bg_action_from_intent_for_display(intent: Option<&str>) -> Option<&'sta
     }
 }
 
-fn infer_selfdev_action_from_display_text(text: Option<&str>) -> Option<&'static str> {
-    let text = text?.trim().to_ascii_lowercase();
-    if text.is_empty() {
-        return None;
-    }
-
-    if text.contains("build-reload") || text.contains("build_reload") {
-        Some("build-reload")
-    } else if text.contains("reload") || text.contains("restart") {
-        Some("reload")
-    } else if text.contains("build") || text.contains("compile") {
-        Some("build")
-    } else if text.contains("test") || text.contains("check") || text.contains("validate") {
-        Some("test")
-    } else if text.contains("cancel") || text.contains("stop") {
-        Some("cancel-build")
-    } else if text.contains("status") || text.contains("queue") || text.contains("progress") {
-        Some("status")
-    } else if text.contains("socket") {
-        Some("socket-info")
-    } else if text.contains("enter") {
-        Some("enter")
-    } else {
-        None
-    }
-}
-
 #[path = "ui_tools/batch.rs"]
 mod batch;
 
@@ -1359,23 +1332,6 @@ pub(super) fn get_tool_summary_with_budget(
                 _ => action.to_string(),
             }
         }
-        "selfdev" => {
-            let action = tool
-                .input
-                .get("action")
-                .and_then(|v| v.as_str())
-                .or_else(|| {
-                    infer_selfdev_action_from_display_text(
-                        tool.intent
-                            .as_deref()
-                            .or_else(|| tool.input.get("intent").and_then(|value| value.as_str()))
-                            .or_else(|| tool.input.get("reason").and_then(|value| value.as_str()))
-                            .or_else(|| tool.input.get("context").and_then(|value| value.as_str())),
-                    )
-                })
-                .unwrap_or("selfdev");
-            action.to_string()
-        }
         "side_panel" => {
             let action = tool
                 .input
@@ -1486,14 +1442,6 @@ pub(super) fn get_tool_summary_with_budget(
                 .and_then(|v| v.as_str())
                 .unwrap_or("agent");
             format!("{} ({})", desc, agent_type)
-        }
-        "debug_socket" => {
-            let cmd = tool
-                .input
-                .get("command")
-                .and_then(|v| v.as_str())
-                .unwrap_or("debug_socket");
-            truncate_middle_display(cmd, bounded(40))
         }
         name if name.starts_with("mcp__") => tool
             .input

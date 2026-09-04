@@ -238,6 +238,10 @@ async fn enabling_swarm_does_not_auto_elect_coordinator() {
 
     assert!(swarm_enabled);
     assert!(swarm_coordinators.read().await.is_empty());
+    // A root session owns its own swarm: the id is derived from the session,
+    // not the working directory, so unrelated sessions opened in one repo do
+    // not share a plan (`server::util::swarm_id_for_session`). `JCODE_SWARM_ID`
+    // is the explicit opt-in to a shared swarm.
     assert_eq!(
         swarm_members
             .read()
@@ -245,7 +249,7 @@ async fn enabling_swarm_does_not_auto_elect_coordinator() {
             .get(session_id)
             .and_then(|member| member.swarm_id.clone())
             .as_deref(),
-        Some("/tmp/jcode-passive-swarm")
+        Some(format!("session:{session_id}").as_str())
     );
     assert_eq!(
         swarm_members

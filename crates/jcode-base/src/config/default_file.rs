@@ -85,13 +85,7 @@ info_widget_toggle = "alt+i"
 swarm_panel_focus = "alt+n"
 
 # Spawn a fresh jcode session in a new terminal window, reusing the current
-# session's working directory. Companion to the system-wide launch hotkeys.
-# `jcode setup-hotkey` installs these three global launch hotkeys on macOS,
-# Linux niri/Hyprland/sway/i3, and Windows. The Cmd modifier maps to Super on
-# Linux and Alt on Windows. Windows also adds the physical Copilot key:
-#   Cmd+;        new jcode in your home directory
-#   Cmd+'        new jcode in your last project directory
-#   Cmd+Shift+'  new jcode self-dev session (last jcode repo)
+# session's working directory.
 # Default: Cmd+Shift+; on macOS, Alt+Shift+; elsewhere. Set "" to disable.
 # Note: some macOS terminals intercept Cmd combos; if so, pick another binding.
 # new_terminal = "cmd+shift+;"
@@ -473,12 +467,12 @@ swarm_max_concurrent_agents = 32
 # Without a hook, clients inside tmux automatically use a right-side pane.
 # Set JCODE_TERMINAL to force a supported terminal emulator instead.
 # External command that takes over headed session spawns (swarm agents,
-# resume-in-new-terminal, self-dev windows, restart restores).
+# resume-in-new-terminal windows, restart restores).
 #
 # When set, jcode runs `<spawn_hook> <jcode-binary> <args...>` instead of
 # opening a terminal emulator itself. The hook receives JCODE_SPAWN_* env vars
 # describing the spawn so multiplexers/wrappers can decide where it appears:
-#   JCODE_SPAWN_KIND        - "swarm-agent", "resume", "selfdev", "restart", ...
+#   JCODE_SPAWN_KIND        - "swarm-agent", "resume", "restart", ...
 #   JCODE_SPAWN_SESSION_ID  - session the window will run
 #   JCODE_SPAWN_TITLE       - suggested window/tab title
 #   JCODE_SPAWN_CWD         - session working directory (also the hook's cwd)
@@ -504,11 +498,9 @@ swarm_max_concurrent_agents = 32
 #   focus_hook = "~/bin/jcode-focus-router"
 # focus_hook = ""
 #
-# macOS only: terminal that the Cmd+; launch hotkey and in-app session spawns
-# open jcode into. One of: ghostty, iterm2, wezterm, warp, alacritty, vscode,
-# terminal (Apple Terminal). Preferred over the legacy
-# ~/.jcode/preferred_terminal.json file. After changing this, re-run
-# `jcode setup-hotkey` so the generated launcher script (Cmd+;) picks it up.
+# macOS only: terminal that in-app session spawns open jcode into. One of:
+# ghostty, iterm2, wezterm, warp, alacritty, vscode, terminal (Apple Terminal).
+# Preferred over the legacy ~/.jcode/preferred_terminal.json file.
 # preferred = "ghostty"
 
 [notifications]
@@ -585,24 +577,14 @@ swarm_max_concurrent_agents = 32
 # Ambient mode: background agent that maintains your codebase
 # Enable ambient mode (default: false)
 enabled = false
-# Provider override (default: auto-select based on available credentials)
-# provider = "claude"
 # Model override (default: provider's strongest)
 # model = "claude-sonnet-4-20250514"
-# Allow API key usage (default: false, only OAuth to avoid surprise costs)
-allow_api_keys = false
-# Daily token budget when using API keys (optional)
-# api_daily_budget = 100000
 # Minimum interval between cycles in minutes
 min_interval_minutes = 5
 # Maximum interval between cycles in minutes
 max_interval_minutes = 120
 # Pause ambient when user has active session
 pause_on_active_session = true
-# Enable proactive work (new features, refactoring) vs garden-only (lint, format, deps)
-proactive_work = true
-# Branch prefix for proactive work
-work_branch_prefix = "ambient/"
 # Show ambient cycle in a terminal window (default: true)
 # visible = true
 

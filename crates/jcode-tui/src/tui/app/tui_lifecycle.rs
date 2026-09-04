@@ -525,7 +525,6 @@ impl App {
             remote_skills: Vec::new(),
             remote_total_tokens: None,
             remote_token_usage_totals: None,
-            remote_is_canary: None,
             remote_server_version: None,
             remote_server_has_update: None,
             pending_server_reload: false,
@@ -959,7 +958,6 @@ impl App {
             remote_skills: Vec::new(),
             remote_total_tokens: None,
             remote_token_usage_totals: None,
-            remote_is_canary: None,
             remote_server_version: None,
             remote_server_has_update: None,
             pending_server_reload: false,
@@ -1309,7 +1307,6 @@ impl App {
         // must retain the existing eager local-history behavior.
         crate::env::remove_var("JCODE_RELOAD_FAST_START");
 
-        // Load session to get canary status (for "client self-dev" badge)
         if let Some(ref session_id) = resume_session {
             if reload_fast_start {
                 crate::logging::info(&format!(

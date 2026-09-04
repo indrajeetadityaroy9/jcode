@@ -303,8 +303,7 @@ def launch_client(binary: str, env: dict, session_id: str,
     # which prepends garbage to everything typed and would mask the real signal.
     cenv.setdefault("JCODE_THEME", "dark")
     proc = subprocess.Popen(
-        [binary, "--no-update", "--no-selfdev",
-         "--socket", env["JCODE_SOCKET"], "--resume", session_id],
+        [binary, "--no-update",         "--socket", env["JCODE_SOCKET"], "--resume", session_id],
         stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
         env=cenv, preexec_fn=os.setsid,
     )
@@ -521,7 +520,7 @@ def main() -> int:
     if not args.live:
         server = subprocess.Popen(
             [binary, "serve", "--socket", env["JCODE_SOCKET"], "--debug-socket",
-             "--no-update", "--no-selfdev"],
+             "--no-update"],
             env=env, stdout=server_log.open("wb"), stderr=subprocess.STDOUT,
             preexec_fn=os.setsid,
         )

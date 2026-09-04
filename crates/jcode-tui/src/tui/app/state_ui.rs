@@ -1760,12 +1760,7 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed == "/version" {
         let version = jcode_build_meta::version();
-        let is_canary = if app.session.is_canary {
-            " (canary/self-dev)"
-        } else {
-            ""
-        };
-        let mut content = format!("jcode client: {}{}", version, is_canary);
+        let mut content = format!("jcode client: {}", version);
         if app.is_remote {
             content.push_str("\nmode: remote/shared-server");
             let server_label = match (&app.remote_server_icon, &app.remote_server_short_name) {
@@ -1917,13 +1912,6 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
             ));
         }
 
-        if app.session.is_canary {
-            info.push_str("\nSelf-Dev Mode: enabled\n");
-            if let Some(ref build) = app.session.testing_build {
-                info.push_str(&format!("Testing Build: {}\n", build));
-            }
-        }
-
         if app.is_remote {
             info.push_str("\nRemote Mode: connected\n");
             if let Some(count) = app.remote_client_count {
@@ -2069,14 +2057,9 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         context_report.push_str(&format!("- session id: {}\n", active_session_id));
         context_report.push_str(&format!("- session name: {}\n", app.session.display_name()));
         context_report.push_str(&format!(
-            "- mode: {}{}{}\n",
+            "- mode: {}{}\n",
             if app.is_remote { "remote" } else { "local" },
-            if app.is_replay { ", replay" } else { "" },
-            if app.session.is_canary {
-                ", self-dev"
-            } else {
-                ""
-            }
+            if app.is_replay { ", replay" } else { "" }
         ));
         context_report.push_str(&format!("- provider: {}\n", provider_name));
         context_report.push_str(&format!("- model: {}\n", model_name));

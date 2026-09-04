@@ -424,14 +424,14 @@ mod tests {
                 channel: None,
                 tldr: None,
             },
-            "Background task failed · selfdev-build · exit 101",
+            "Background task failed · cargo-build · exit 101",
             false,
         );
 
         assert_eq!(presentation.title, "Background task");
         assert_eq!(
             presentation.message,
-            "Background task failed · selfdev-build · exit 101"
+            "Background task failed · cargo-build · exit 101"
         );
         assert_eq!(presentation.status_notice, "Background task update");
     }

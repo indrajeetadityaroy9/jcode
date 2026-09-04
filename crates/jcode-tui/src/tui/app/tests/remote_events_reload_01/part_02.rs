@@ -373,7 +373,6 @@ fn test_remote_rewind_completion_shows_undo_hint_after_history_refresh() {
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             reload_recovery: None,
             server_version: None,
             server_name: None,

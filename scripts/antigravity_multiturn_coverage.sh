@@ -57,10 +57,10 @@ run_turn() {
   local model=$1 session=$2 prompt=$3 out
   if [[ -z "$session" ]]; then
     out=$(timeout "$TURN_TIMEOUT" "$JC" run --provider antigravity -m "$model" \
-      --no-update --no-selfdev --json "$prompt" 2>&1)
+      --no-update --json "$prompt" 2>&1)
   else
     out=$(timeout "$TURN_TIMEOUT" "$JC" run --provider antigravity -m "$model" \
-      --no-update --no-selfdev --json --resume "$session" "$prompt" 2>&1)
+      --no-update --json --resume "$session" "$prompt" 2>&1)
   fi
   local rc=$?
   TURN_RAW=$out

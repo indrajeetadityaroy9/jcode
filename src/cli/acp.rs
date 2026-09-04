@@ -767,7 +767,6 @@ impl AcpRuntime {
             .send(&Request::Subscribe {
                 id: subscribe_id,
                 working_dir: Some(cwd.display().to_string()),
-                selfdev: None,
                 target_session_id: None,
                 client_instance_id: Some("acp".to_string()),
                 client_has_local_history: false,
@@ -818,7 +817,6 @@ impl AcpRuntime {
             .send(&Request::Subscribe {
                 id: resume_id,
                 working_dir: Some(cwd.display().to_string()),
-                selfdev: None,
                 target_session_id: Some(target_session_id.clone()),
                 client_instance_id: Some("acp".to_string()),
                 client_has_local_history: false,
@@ -1843,7 +1841,7 @@ pub(crate) fn tool_kind(name: &str) -> &'static str {
     match name {
         "read" => "read",
         "write" | "edit" | "multiedit" | "patch" | "apply_patch" => "edit",
-        "bash" | "bg" | "selfdev" => "execute",
+        "bash" | "bg" => "execute",
         "agentgrep" | "grep" | "glob" | "ls" | "session_search" | "conversation_search" => "search",
         "webfetch" | "websearch" | "codesearch" => "fetch",
         _ => "other",

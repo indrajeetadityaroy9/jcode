@@ -190,8 +190,6 @@ impl Agent {
 
     /// Clear conversation history
     pub fn clear(&mut self) {
-        let preserve_canary = self.session.is_canary;
-        let preserve_testing_build = self.session.testing_build.clone();
         let preserve_debug = self.session.is_debug;
         let preserve_working_dir = self.session.working_dir.clone();
 
@@ -202,8 +200,6 @@ impl Agent {
         new_session.mark_active();
         new_session.model = Some(self.provider_model());
         new_session.provider_key = self.provider_key_for_new_session();
-        new_session.is_canary = preserve_canary;
-        new_session.testing_build = preserve_testing_build;
         new_session.is_debug = preserve_debug;
         new_session.working_dir = preserve_working_dir;
         new_session.ensure_initial_session_context_message();
@@ -301,19 +297,8 @@ impl Agent {
         }
     }
 
-    pub fn is_canary(&self) -> bool {
-        self.session.is_canary
-    }
-
     pub fn is_debug(&self) -> bool {
         self.session.is_debug
-    }
-
-    pub fn set_canary(&mut self, build_hash: &str) {
-        self.session.set_canary(build_hash);
-        if let Err(err) = self.session.save() {
-            logging::error(&format!("Failed to persist canary session state: {}", err));
-        }
     }
 
     /// Mark this session as a debug/test session
@@ -378,10 +363,6 @@ impl Agent {
     }
 
     pub(super) async fn tool_definitions(&mut self) -> Vec<ToolDefinition> {
-        if self.session.is_canary {
-            self.registry.register_dev_tools().await;
-        }
-
         // Return locked tools if available (prevents cache invalidation from
         // tools arriving asynchronously after the first API request).
         //
@@ -439,7 +420,7 @@ impl Agent {
     }
 
     /// Build the agent's tool definitions from the registry, applying the
-    /// session's `allowed_tools`, `disabled_tools`, and self-dev filters.
+    /// session's `allowed_tools` and `disabled_tools` filters.
     async fn build_filtered_tool_definitions(&self) -> Vec<ToolDefinition> {
         let mut tools = self.registry.definitions(self.allowed_tools.as_ref()).await;
         if !self.disabled_tools.is_empty() {
@@ -450,11 +431,6 @@ impl Agent {
         tools
     }
 
-    /// Expose the `selfdev` tool only while running in self-development mode.
-    ///
-    /// The registry keeps the implementation available for self-dev sessions,
-    /// but regular agents should not spend tool-list context on an internal
-    /// development surface.
     /// Returns true if the registry contains `mcp__*` tools (subject to the
     /// session's `allowed_tools` filter) that are not present in the currently
     /// locked snapshot. Used to detect the async MCP-registration race (#206).
@@ -481,9 +457,6 @@ impl Agent {
 
     /// Get full tool definitions for debug introspection (bypasses lock)
     pub async fn tool_definitions_for_debug(&self) -> Vec<crate::message::ToolDefinition> {
-        if self.session.is_canary {
-            self.registry.register_dev_tools().await;
-        }
         let mut tools = self.registry.definitions(self.allowed_tools.as_ref()).await;
         if !self.disabled_tools.is_empty() {
             tools.retain(|tool| {

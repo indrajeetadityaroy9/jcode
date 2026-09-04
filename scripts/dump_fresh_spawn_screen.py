@@ -60,7 +60,7 @@ def main() -> int:
     log_fh = (root / "server.log").open("wb")
     server = subprocess.Popen(
         [binary, "serve", "--socket", env["JCODE_SOCKET"], "--debug-socket",
-         "--no-update", "--no-selfdev"],
+         "--no-update"],
         env=env, stdout=log_fh, stderr=subprocess.STDOUT, preexec_fn=os.setsid)
 
     client = None

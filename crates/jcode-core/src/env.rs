@@ -14,7 +14,7 @@ where
 {
     // SAFETY: jcode treats these mutations as process-global configuration.
     // They are a pre-existing design choice used throughout startup, auth,
-    // provider bootstrap, tests, and self-dev flows. Centralizing the unsafe
+    // provider bootstrap, tests, and reload flows. Centralizing the unsafe
     // operation here makes the Rust 2024 requirement explicit without
     // scattering unsafe blocks across hundreds of call sites.
     unsafe {

@@ -2061,7 +2061,7 @@ pub async fn run_server_reload_command(force: bool, emit_json: bool) -> Result<(
     // no-op `/update`), a forced reload would just re-exec the same old binary.
     // Repointing shared-server -> stable when stable is strictly newer gives the
     // reload a newer binary to exec into. Never downgrades; preserves a fresher
-    // self-dev pin. Best-effort: a failure here must not block the reload.
+    // deliberate pin. Best-effort: a failure here must not block the reload.
     match crate::build::repair_stale_shared_server_channel() {
         Ok(crate::build::SharedServerRepair::Repaired {
             repaired_to,

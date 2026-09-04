@@ -200,7 +200,6 @@ impl SessionPicker {
             Style::default().fg(Color::White)
         };
 
-        let canary_marker = if session.is_canary { " 🔬" } else { "" };
         let debug_marker = if session.is_debug { " 🧪" } else { "" };
         let saved_marker = if session.saved { " 📌" } else { "" };
         let selection_marker = if is_marked { "● " } else { "○ " };
@@ -271,7 +270,6 @@ impl SessionPicker {
             name_style,
         ));
         line1_spans.extend([
-            Span::styled(canary_marker, Style::default().fg(rgb(255, 193, 7))),
             Span::styled(debug_marker, Style::default().fg(rgb(180, 180, 180))),
             Span::styled(saved_marker, Style::default().fg(rgb(255, 180, 100))),
             Span::styled(

@@ -2,9 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 use std::process::Command as ProcessCommand;
 
-use crate::{
-    build, logging, perf, server, setup_hints, startup_profile, storage, update,
-};
+use crate::{build, logging, perf, server, startup_profile, storage, update};
 
 use super::{
     args::{Args, Command},
@@ -215,10 +213,6 @@ fn parse_and_prepare_args() -> Result<Args> {
     let args = Args::parse();
     startup_profile::mark("args_parse");
 
-    if let Some(chord) = args.spawn_hotkey.as_deref() {
-        setup_hints::record_launch_hotkey_use(chord);
-    }
-
     output::set_quiet_enabled(args.quiet);
 
     if let Some(cwd) = &args.cwd {
@@ -301,7 +295,7 @@ fn spawn_background_update_check(args: &Args) {
                     logging::info(&format!("Updated to {}. Restarting...", version));
                     std::thread::sleep(std::time::Duration::from_millis(250));
                     let args: Vec<String> = std::env::args().skip(1).collect();
-                    let exec_path = build::client_update_candidate(false)
+                    let exec_path = build::client_update_candidate()
                         .map(|(p, _)| p)
                         .unwrap_or(path);
                     let err = crate::platform::replace_process(
@@ -470,12 +464,6 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn hidden_spawn_hotkey_argument_is_global_and_preserves_canonical_text() {
-        let args = parse_args(&["jcode", "--spawn-hotkey", "shift+cmd+'", "connect"]);
-        assert_eq!(args.spawn_hotkey.as_deref(), Some("shift+cmd+'"));
-        assert!(matches!(args.command, Some(Command::Connect)));
-    }
     #[test]
     fn external_provider_runtimes_register_and_instantiate() {
         register_external_provider_runtimes();

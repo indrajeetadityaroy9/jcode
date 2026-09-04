@@ -35,21 +35,6 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Cloud(_)) => "jcode cloud".to_string(),
         Some(Command::Transcript { .. }) => "jcode transcript".to_string(),
         Some(Command::Dictate { .. }) => "jcode dictate".to_string(),
-        Some(Command::SetupHotkey {
-            listen_macos_hotkey,
-            notify_cli_launch,
-            uninstall,
-        }) => {
-            if *listen_macos_hotkey {
-                "jcode hotkey listener".to_string()
-            } else if notify_cli_launch.is_some() {
-                "jcode shortcut reminder".to_string()
-            } else if *uninstall {
-                "jcode hotkey uninstall".to_string()
-            } else {
-                "jcode hotkey setup".to_string()
-            }
-        }
         Some(Command::Browser { .. }) => "jcode browser".to_string(),
         Some(Command::Replay { .. }) => "jcode replay".to_string(),
         Some(Command::Model(_)) => "jcode model".to_string(),
@@ -61,14 +46,7 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::SetupLauncher) => "jcode setup-launcher".to_string(),
         None => {
             if let Some(resume) = args.resume.as_deref().filter(|resume| !resume.is_empty()) {
-                let prefix = if jcode_dev_types::client_selfdev_requested() {
-                    "jcode:d:"
-                } else {
-                    "jcode:c:"
-                };
-                compact_process_title(prefix, Some(&session_name(resume)))
-            } else if jcode_dev_types::client_selfdev_requested() {
-                "jcode:selfdev".to_string()
+                compact_process_title("jcode:c:", Some(&session_name(resume)))
             } else {
                 "jcode:client".to_string()
             }
@@ -86,22 +64,14 @@ mod tests {
     use crate::storage::lock_test_env;
     use clap::Parser;
 
-    const SELFDEV_ENV: &str = jcode_dev_types::CLIENT_SELFDEV_ENV;
-
-    fn with_selfdev_env_removed<T>(f: impl FnOnce() -> T) -> T {
+    fn with_env_lock<T>(f: impl FnOnce() -> T) -> T {
         let _guard = lock_test_env();
-        let previous = std::env::var_os(SELFDEV_ENV);
-        crate::env::remove_var(SELFDEV_ENV);
-        let result = f();
-        if let Some(value) = previous {
-            crate::env::set_var(SELFDEV_ENV, value);
-        }
-        result
+        f()
     }
 
     #[test]
     fn initial_title_labels_server() {
-        with_selfdev_env_removed(|| {
+        with_env_lock(|| {
             let args = Args::parse_from(["jcode", "serve"]);
             assert_eq!(initial_title(&args), "jcode:server");
         });
@@ -109,29 +79,10 @@ mod tests {
 
     #[test]
     fn initial_title_labels_resume_client_with_short_name() {
-        with_selfdev_env_removed(|| {
+        with_env_lock(|| {
             let args = Args::parse_from(["jcode", "--resume", "session_fox_123"]);
             assert_eq!(initial_title(&args), "jcode:c:fox");
         });
     }
 
-    #[test]
-    fn initial_title_labels_selfdev_command() {
-        with_selfdev_env_removed(|| {
-            let args = Args::parse_from(["jcode", "self-dev"]);
-            assert_eq!(initial_title(&args), "jcode:selfdev");
-        });
-    }
-
-    #[test]
-    fn initial_title_labels_hotkey_listener() {
-        let args = Args::parse_from(["jcode", "setup-hotkey", "--listen-macos-hotkey"]);
-        assert_eq!(initial_title(&args), "jcode hotkey listener");
-    }
-
-    #[test]
-    fn initial_title_labels_hotkey_uninstall() {
-        let args = Args::parse_from(["jcode", "setup-hotkey", "--uninstall"]);
-        assert_eq!(initial_title(&args), "jcode hotkey uninstall");
-    }
 }

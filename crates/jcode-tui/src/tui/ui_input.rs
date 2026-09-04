@@ -2167,7 +2167,6 @@ fn overscroll_provider_display(provider: &str) -> String {
         "gemini" => "Gemini".to_string(),
         "copilot" => "GitHub Copilot".to_string(),
         "cursor" => "Cursor".to_string(),
-        "bedrock" => "AWS Bedrock".to_string(),
         "antigravity" => "Antigravity".to_string(),
         _ => provider.to_string(),
     }

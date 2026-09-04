@@ -775,8 +775,8 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
         "jcode_docs must be model-visible in regular sessions"
     );
     assert!(
-        !tool_names.iter().any(|name| name == "selfdev"),
-        "selfdev must not be model-visible in regular sessions"
+        !tool_names.iter().any(|name| name == "debug_socket"),
+        "developer-only tools must not be model-visible in regular sessions"
     );
 
     assert!(

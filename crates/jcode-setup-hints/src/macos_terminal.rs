@@ -236,17 +236,6 @@ pub(super) fn launch_command_for_macos_terminal(
     }
 }
 
-#[cfg(target_os = "macos")]
-pub(super) fn launch_script_for_macos_terminal(
-    terminal: MacTerminalKind,
-    shell_command: &str,
-) -> String {
-    format!(
-        "#!/bin/bash\nset -e\n{}\n",
-        launch_command_for_macos_terminal(terminal, shell_command)
-    )
-}
-
 /// How to launch a shell command in a new terminal window without Apple
 /// Events automation. Background helpers (the menu bar app, launchd agents)
 /// cannot reliably get the "control Terminal" TCC permission that the

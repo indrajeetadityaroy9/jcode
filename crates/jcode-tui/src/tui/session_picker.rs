@@ -242,7 +242,7 @@ pub struct SessionPicker {
     crashed_session_ids: HashSet<String>,
     last_list_area: Option<Rect>,
     last_preview_area: Option<Rect>,
-    /// Whether to show debug/test/canary sessions
+    /// Whether to show debug/test sessions
     show_test_sessions: bool,
     /// Current list filter mode
     filter_mode: SessionFilterMode,
@@ -250,7 +250,7 @@ pub struct SessionPicker {
     search_query: String,
     /// Whether we're in search input mode
     search_active: bool,
-    /// Hidden test session count (debug + canary)
+    /// Hidden debug/test session count
     hidden_test_count: usize,
     /// Which pane has keyboard focus
     focus: PaneFocus,

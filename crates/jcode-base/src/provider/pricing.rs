@@ -179,7 +179,7 @@ fn usd_to_micros(usd: f64) -> u64 {
 /// `source_key` is the cross-provider activity key (see
 /// [`crate::provider_activity::source_key_for_provider_label`]), e.g.
 /// `claude:api-key`, `openai:api-key`, `openrouter`,
-/// `openai-compatible:deepseek`, `bedrock`.
+/// `openai-compatible:deepseek`.
 ///
 /// Resolution order:
 ///   1. Curated static tables (exact, hand-reviewed) for Anthropic/OpenAI.

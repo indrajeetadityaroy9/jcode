@@ -10,7 +10,6 @@ mod communicate;
 mod computer;
 mod config_edit_notice;
 mod conversation_search;
-mod debug_socket;
 mod edit;
 mod gmail;
 mod goal;
@@ -1126,17 +1125,6 @@ impl Registry {
                 }
             });
         }
-    }
-
-    /// Register developer-only tools (canary/debug sessions).
-    pub async fn register_dev_tools(&self) {
-        // Debug socket tool for direct debug socket access
-        let debug_socket_tool = debug_socket::DebugSocketTool::new();
-        self.register(
-            "debug_socket".to_string(),
-            Arc::new(debug_socket_tool) as Arc<dyn Tool>,
-        )
-        .await;
     }
 
     /// Register ambient-mode tools (only for ambient sessions)

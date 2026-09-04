@@ -717,7 +717,7 @@ impl Server {
         // can make cheap model calls on whatever provider the user is running.
         // Without this, the sidecar only works on OpenAI/Claude OAuth and
         // silently degrades (rerank -> hybrid order, no relevance/extraction) on
-        // Copilot, Antigravity, Gemini, Cursor, Bedrock, and OpenRouter.
+        // Copilot, Antigravity, Gemini, Cursor, and OpenRouter.
         crate::provider::set_active_provider(Arc::clone(&provider));
 
         let (event_tx, _) = broadcast::channel(1024);
@@ -908,9 +908,6 @@ impl Server {
             let previous_status = session.status.clone();
             let provider = self.provider.fork();
             let registry = crate::tool::Registry::new(provider.clone()).await;
-            if session.is_canary {
-                registry.register_dev_tools().await;
-            }
             registry
                 .register_mcp_tools_for_dir(
                     None,
@@ -1263,8 +1260,8 @@ impl Server {
         });
 
         // Spawn reload monitor (event-driven via in-process channel).
-        // In the unified server design, self-dev sessions share the main server,
-        // so the shared server must always listen for reload signals.
+        // Every session shares the main server, so the shared server must
+        // always listen for reload signals.
         let signal_sessions = Arc::clone(&self.sessions);
         let signal_swarm_members = Arc::clone(&self.swarm_state.members);
         let signal_shutdown_signals = Arc::clone(&self.shutdown_signals);

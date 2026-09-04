@@ -112,24 +112,15 @@ echo "Updated stable symlink: $stable_dir/jcode -> $version_dir/jcode"
 echo "Updated current symlink: $current_dir/jcode -> $version_dir/jcode"
 echo "Updated launcher symlink: $install_dir/jcode -> $current_dir/jcode"
 
-# Configure supported desktop launch hotkeys as part of installation. This is
-# idempotent and best-effort because headless installs may not expose a desktop
-# session; the first interactive launch retries automatically.
-case "$(uname -s)" in
-  Darwin)
-    if "$install_dir/jcode" setup-launcher </dev/null >/dev/null 2>&1; then
-      echo "Installed macOS launcher and turn-notification broker."
-    fi
-    if "$install_dir/jcode" setup-hotkey </dev/null >/dev/null 2>&1; then
-      echo "Configured system-wide jcode launch hotkeys (when supported)."
-    fi
-    ;;
-  Linux)
-    if "$install_dir/jcode" setup-hotkey </dev/null >/dev/null 2>&1; then
-      echo "Configured system-wide jcode launch hotkeys (when supported)."
-    fi
-    ;;
-esac
+# Install the macOS launcher and turn-notification broker as part of
+# installation. This is idempotent and best-effort because headless installs
+# may not expose a desktop session; the first interactive launch retries
+# automatically.
+if [ "$(uname -s)" = "Darwin" ]; then
+  if "$install_dir/jcode" setup-launcher </dev/null >/dev/null 2>&1; then
+    echo "Installed macOS launcher and turn-notification broker."
+  fi
+fi
 
 # Gracefully reload any running background server onto the binary we just
 # installed (issue #291). `server reload` only reloads when the running daemon

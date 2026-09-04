@@ -36,7 +36,6 @@ impl App {
             Some("claude") => "anthropic",
             Some("openai") => "openai",
             Some("openrouter") => "openrouter",
-            Some("bedrock") => "bedrock",
             Some("gemini") => "gemini",
             Some("cursor") => "cursor",
             Some("antigravity") => "antigravity",
@@ -86,11 +85,6 @@ impl App {
             .as_deref()
             .or(todo_title.as_deref())
             .or(self.session.title.as_deref());
-        let is_canary = if self.is_remote {
-            self.remote_is_canary.unwrap_or(self.session.is_canary)
-        } else {
-            self.session.is_canary
-        };
         let server_name = self.remote_server_short_name.as_deref().unwrap_or("jcode");
         let icon = connection_type_icon(self.connection_type.as_deref()).unwrap_or(session_icon);
         let session_label = crate::process_title::terminal_session_label(&session_name, None);
@@ -100,19 +94,14 @@ impl App {
             format!("jcode/{} {session_label}", server_name.to_lowercase())
         };
         if server_name.eq_ignore_ascii_case("jcode") {
-            crate::process_title::set_client_display_title(&session_name, is_canary);
+            crate::process_title::set_client_display_title(&session_name);
         } else {
-            crate::process_title::set_client_remote_display_title(
-                server_name,
-                &session_name,
-                is_canary,
-            );
+            crate::process_title::set_client_remote_display_title(server_name, &session_name);
         }
         let window_title = crate::process_title::terminal_window_title(
             icon,
             display_title,
             Some(&fallback_label),
-            is_canary,
         );
         let _ = crossterm::execute!(
             std::io::stdout(),
@@ -177,15 +166,7 @@ impl App {
             return false;
         };
 
-        let is_selfdev_session = if self.is_remote {
-            self.remote_is_canary.unwrap_or(self.session.is_canary)
-        } else {
-            self.session.is_canary
-        };
-
-        let Some((candidate, _label)) =
-            crate::build::preferred_reload_candidate(is_selfdev_session)
-        else {
+        let Some((candidate, _label)) = crate::build::preferred_reload_candidate() else {
             return false;
         };
 
@@ -198,37 +179,6 @@ impl App {
             .ok()
             .and_then(|m| m.modified().ok())
             .is_some_and(|mtime| mtime > startup_mtime)
-    }
-
-    /// After an in-process server reload (e.g. `self-dev build-reload`), the
-    /// server PID is unchanged and connected clients never disconnect, so they
-    /// keep running their old binary and client-side changes never take effect.
-    /// When this is a self-dev session, a newer client binary is on disk, and the
-    /// client is idle, re-exec onto the new binary so TUI-side changes apply too.
-    /// Returns true when a client reload was requested.
-    pub(super) fn maybe_self_reload_after_server_reload(&mut self) -> bool {
-        if !self.is_remote {
-            return false;
-        }
-        let is_selfdev_session = self.remote_is_canary.unwrap_or(self.session.is_canary);
-        if !is_selfdev_session {
-            return false;
-        }
-        // Never interrupt an in-flight turn; the reconnect path will catch it later.
-        if self.is_processing {
-            return false;
-        }
-        if !self.has_newer_binary() {
-            return false;
-        }
-        let session_id = self.reload_handoff_session_id();
-        self.append_reload_message(
-            "Server reloaded onto a newer build; reloading client binary to match...",
-        );
-        self.save_input_for_reload(&session_id);
-        self.reload_requested = Some(session_id);
-        self.should_quit = true;
-        true
     }
 
     /// Initialize MCP servers (call after construction)
@@ -286,11 +236,6 @@ impl App {
             for (name, tool) in tools {
                 self.registry.register(name, tool).await;
             }
-        }
-
-        // Register self-dev tools if this is a canary session
-        if self.session.is_canary {
-            self.registry.register_dev_tools().await;
         }
     }
 
@@ -474,7 +419,7 @@ impl App {
     /// Check if the current session was interrupted by a server reload.
     /// Detects two patterns:
     /// 1. Last message is a User ToolResult containing reload interruption text,
-    ///    including the non-error self-dev reload handoff marker
+    ///    including the non-error reload handoff marker
     /// 2. Last assistant message ends with "[generation interrupted - server reloading]"
     pub(super) fn was_interrupted_by_reload(&self) -> bool {
         use crate::message::{ContentBlock, Role};

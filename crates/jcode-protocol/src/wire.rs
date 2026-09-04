@@ -123,8 +123,6 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         working_dir: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        selfdev: Option<bool>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
         target_session_id: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         client_instance_id: Option<String>,
@@ -163,7 +161,7 @@ pub enum Request {
         /// reloads unconditionally. When `false`, the server only reloads if it
         /// detects a strictly-newer reload candidate binary, so callers like
         /// `jcode server reload` can request a graceful upgrade without risking
-        /// a downgrade (e.g. a newer self-dev daemon next to an older release).
+        /// a downgrade (e.g. a newer local daemon next to an older release).
         #[serde(default = "default_true")]
         force: bool,
     },
@@ -1111,9 +1109,6 @@ pub enum ServerEvent {
         /// Number of connected clients
         #[serde(skip_serializing_if = "Option::is_none")]
         client_count: Option<usize>,
-        /// Whether this session is in canary/self-dev mode
-        #[serde(skip_serializing_if = "Option::is_none")]
-        is_canary: Option<bool>,
         /// Server binary version string (e.g. "v0.1.123 (abc1234)")
         #[serde(skip_serializing_if = "Option::is_none")]
         server_version: Option<String>,

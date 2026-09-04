@@ -65,9 +65,6 @@ jcode-agent-runtime = { path = "../jcode-agent-runtime" }
 jcode-provider-metadata = { path = "../jcode-provider-metadata" }
 jcode-provider-env = { path = "../jcode-provider-env" }
 jcode-provider-core = { path = "../jcode-provider-core" }
-# default-features=false so this crate's `bedrock` feature (below) controls the
-# AWS SDK stack; the pure model-metadata/credential-detection layer is always on.
-jcode-provider-bedrock = { path = "../jcode-provider-bedrock", default-features = false }
 jcode-provider-antigravity = { path = "../jcode-provider-antigravity" }
 jcode-provider-copilot = { path = "../jcode-provider-copilot" }
 jcode-provider-openai = { path = "../jcode-provider-openai" }
@@ -115,7 +112,7 @@ tempfile = "3"
 qrcode = { version = "0.14.1", default-features = false }
 
 [features]
-default = ["embeddings", "bedrock"]
+default = ["embeddings"]
 # Compiles the in-crate test helpers (storage::lock_test_env,
 # auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests, ...) as
 # `pub` so downstream crates' test targets can reach them. Enabled as a
@@ -132,16 +129,11 @@ jemalloc-prof = [
     "tikv-jemalloc-ctl/profiling",
 ]
 embeddings = ["dep:jcode-embedding"]
-# Live AWS Bedrock support (the ~20-crate AWS SDK stack) lives in
-# jcode-provider-bedrock (aws-sdk); forward there. Without it the Bedrock
-# provider still compiles but live calls return an explanatory error.
-bedrock = ["jcode-provider-bedrock/aws-sdk"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_Threading"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-global-hotkey = "0.7"
 
 [dev-dependencies]
 # Dev-only cycle (cargo permits dev-dependencies on dependents): base's

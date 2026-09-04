@@ -1056,13 +1056,13 @@ mod tests {
     fn selected_model_route_notice_explains_unavailable_and_limited_routes() {
         let mut picker = sample_picker();
         picker.entries[0].options[0].available = false;
-        picker.entries[0].options[0].detail = "legacy Bedrock model".to_string();
+        picker.entries[0].options[0].detail = "legacy model".to_string();
         let notice = selected_route_notice_text(&picker, picker.entries[0].active_option());
         assert_eq!(
             notice
                 .as_ref()
                 .map(|(text, warning)| (text.as_str(), *warning)),
-            Some(("× unavailable · legacy Bedrock model", true))
+            Some(("× unavailable · legacy model", true))
         );
 
         picker.entries[0].options[0].available = true;

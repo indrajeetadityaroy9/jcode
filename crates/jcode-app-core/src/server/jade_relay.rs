@@ -800,12 +800,7 @@ impl RelayLauncherClient {
         ));
 
         let (session_id, cwd) = create_launch_session(&request)?;
-        let launched = spawn_launch_window(
-            &session_id,
-            &cwd,
-            request.selfdev,
-            request.provider_key.as_deref(),
-        )?;
+        let launched = spawn_launch_window(&session_id, &cwd, request.provider_key.as_deref())?;
         if !launched {
             anyhow::bail!("no supported terminal found for headed Jcode launch")
         }
@@ -1039,7 +1034,6 @@ struct LaunchRequest {
     working_dir: Option<String>,
     model: Option<String>,
     provider_key: Option<String>,
-    selfdev: bool,
 }
 
 impl LaunchRequest {
@@ -1061,7 +1055,6 @@ impl LaunchRequest {
             working_dir,
             model,
             provider_key,
-            selfdev: data_bool(data, "selfdev"),
         })
     }
 }
@@ -1072,12 +1065,6 @@ fn data_string(data: Option<&serde_json::Value>, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-}
-
-fn data_bool(data: Option<&serde_json::Value>, key: &str) -> bool {
-    data.and_then(|value| value.get(key))
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false)
 }
 
 fn provider_key_for_launch_model(
@@ -1126,41 +1113,23 @@ fn create_launch_session(request: &LaunchRequest) -> Result<(String, PathBuf)> {
     if let Some(provider_key) = &request.provider_key {
         session.provider_key = Some(provider_key.clone());
     }
-    if request.selfdev {
-        session.set_canary("self-dev");
-    }
     session.save()?;
     Ok((session.id.clone(), cwd))
 }
 
-fn spawn_launch_window(
-    session_id: &str,
-    cwd: &Path,
-    selfdev_requested: bool,
-    provider_key: Option<&str>,
-) -> Result<bool> {
-    let exe = crate::build::client_update_candidate(selfdev_requested)
+fn spawn_launch_window(session_id: &str, cwd: &Path, provider_key: Option<&str>) -> Result<bool> {
+    let exe = crate::build::client_update_candidate()
         .map(|(path, _label)| path)
         .or_else(|| std::env::current_exe().ok())
         .unwrap_or_else(|| PathBuf::from("jcode"));
     let context = crate::session_launch::SessionSpawnContext::kind("jade-relay");
-    if selfdev_requested {
-        crate::session_launch::spawn_selfdev_in_new_terminal_with_context(
-            &exe,
-            session_id,
-            cwd,
-            provider_key,
-            &context,
-        )
-    } else {
-        crate::session_launch::spawn_resume_in_new_terminal_with_context(
-            &exe,
-            session_id,
-            cwd,
-            provider_key,
-            &context,
-        )
-    }
+    crate::session_launch::spawn_resume_in_new_terminal_with_context(
+        &exe,
+        session_id,
+        cwd,
+        provider_key,
+        &context,
+    )
 }
 
 async fn wait_for_live_session(
@@ -1381,7 +1350,6 @@ mod tests {
                 "working_dir": "/tmp/repo",
                 "model": "openai:gpt-test",
                 "provider": "openai",
-                "selfdev": true,
             })),
         };
         let parsed = LaunchRequest::from_event(&event, Some("/fallback")).expect("launch request");
@@ -1389,7 +1357,6 @@ mod tests {
         assert_eq!(parsed.working_dir.as_deref(), Some("/tmp/repo"));
         assert_eq!(parsed.model.as_deref(), Some("openai:gpt-test"));
         assert_eq!(parsed.provider_key.as_deref(), Some("openai"));
-        assert!(parsed.selfdev);
     }
 
     #[test]

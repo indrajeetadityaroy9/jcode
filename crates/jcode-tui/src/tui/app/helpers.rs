@@ -177,7 +177,7 @@ pub(super) fn extract_bracketed_system_message(message: &str) -> Option<String> 
 }
 
 pub(super) fn launch_client_executable() -> PathBuf {
-    crate::build::client_update_candidate(jcode_dev_types::client_selfdev_requested())
+    crate::build::client_update_candidate()
         .map(|(path, _label)| path)
         .or_else(|| std::env::current_exe().ok())
         .unwrap_or_else(|| PathBuf::from("jcode"))
@@ -788,12 +788,7 @@ fn resumed_window_title(session_id: &str) -> String {
     } else {
         format!("jcode {}", session_label)
     };
-    crate::process_title::terminal_window_title(
-        icon,
-        display_title.as_deref(),
-        Some(&fallback_label),
-        false,
-    )
+    crate::process_title::terminal_window_title(icon, display_title.as_deref(), Some(&fallback_label))
 }
 
 /// Open `session_id` in a new terminal window.

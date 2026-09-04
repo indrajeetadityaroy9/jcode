@@ -281,7 +281,6 @@ pub struct ContextInfo {
     pub global_agents_md_chars: usize,
     /// Skills section size (chars)
     pub skills_chars: usize,
-    /// Self-dev section size (chars)
     /// Memory section size (chars)
     pub memory_chars: usize,
     /// Prompt overlay section size (chars)

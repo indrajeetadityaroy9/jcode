@@ -273,8 +273,8 @@ async fn handle_remote_key_internal(
     let mut modifiers = modifiers;
     ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
 
-    // Alt+5 always resets the simulator before modal routing, including in the
-    // remote/client mode used by self-dev sessions.
+    // Alt+5 always resets the simulator before modal routing, including in
+    // remote/client mode.
     if app.handle_onboarding_sim_reset_shortcut(code, modifiers) {
         return Ok(());
     }
@@ -374,8 +374,8 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    // Accept an armed "merge the diverged update" offer (self-dev/remote
-    // sessions surface the same update card as local ones).
+    // Accept an armed "merge the diverged update" offer (remote sessions
+    // surface the same update card as local ones).
     if app.merge_offer_key_matches(code, modifiers) {
         app.accept_update_merge_offer();
         return Ok(());

@@ -122,7 +122,6 @@ impl MultiProvider {
             .auth_status()
             .assessment_for_provider(crate::provider_catalog::CURSOR_LOGIN_PROVIDER)
             .is_available();
-        let has_bedrock_creds = bedrock::BedrockProvider::has_credentials();
         let has_openrouter_creds = openrouter::has_credentials();
 
         let use_claude_cli = std::env::var("JCODE_USE_CLAUDE_CLI")
@@ -206,12 +205,6 @@ impl MultiProvider {
             None
         };
 
-        let bedrock_provider = if has_bedrock_creds {
-            Some(Arc::new(bedrock::BedrockProvider::new()))
-        } else {
-            None
-        };
-
         let active_named_profile_is_anthropic = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
             .ok()
             .or_else(|| default_named_provider_profile.clone())
@@ -259,7 +252,6 @@ impl MultiProvider {
             antigravity: antigravity_provider.is_some(),
             gemini: gemini_provider.is_some(),
             cursor: cursor_provider.is_some(),
-            bedrock: bedrock_provider.is_some(),
             openrouter: openrouter.is_some(),
             copilot_premium_zero,
         };
@@ -315,7 +307,7 @@ impl MultiProvider {
                 }
             } else {
                 crate::logging::warn(&format!(
-                    "Unknown default_provider '{}' in config (expected: claude|openai|copilot|antigravity|gemini|cursor|bedrock|openrouter or an OpenAI-compatible profile such as deepseek|comtegra|zai|openai-compatible)",
+                    "Unknown default_provider '{}' in config (expected: claude|openai|copilot|antigravity|gemini|cursor|openrouter or an OpenAI-compatible profile such as deepseek|comtegra|zai|openai-compatible)",
                     pref
                 ));
             }
@@ -329,7 +321,6 @@ impl MultiProvider {
             antigravity: RwLock::new(antigravity_provider),
             gemini: RwLock::new(gemini_provider),
             cursor: RwLock::new(cursor_provider),
-            bedrock: RwLock::new(bedrock_provider),
             openrouter: RwLock::new(openrouter),
             openai_compatible_profiles: RwLock::new(HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -358,7 +349,7 @@ impl MultiProvider {
         result.spawn_openai_catalog_refresh_if_needed();
         result.auto_select_active_multi_account();
         crate::logging::info(&format!(
-            "[TIMING] provider_init: claude={}, anthropic={}, openai={}, copilot={}, antigravity={}, gemini={}, cursor={}, bedrock={}, openrouter={}, total={}ms",
+            "[TIMING] provider_init: claude={}, anthropic={}, openai={}, copilot={}, antigravity={}, gemini={}, cursor={}, openrouter={}, total={}ms",
             result
                 .claude
                 .read()
@@ -391,11 +382,6 @@ impl MultiProvider {
                 .is_some(),
             result
                 .cursor
-                .read()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .is_some(),
-            result
-                .bedrock
                 .read()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .is_some(),

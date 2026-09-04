@@ -267,24 +267,6 @@ fn globally_preferred_model_rank(model: &str) -> (u8, usize) {
     (5, usize::MAX)
 }
 
-/// Curated flagship-first order for Bedrock-hosted models. Bedrock ids carry a
-/// vendor prefix (`anthropic.claude-opus-4-...`, `us.anthropic.claude-...`) which
-/// `parse_frontier_model`/`normalize_model_for_preference` strip before matching,
-/// so the bare canonical ids here line up with the live route ids. Claude Opus
-/// is the flagship, then Sonnet, then Nova/Llama/Mistral, then Haiku/cheap.
-const ALL_BEDROCK_MODELS: &[&str] = &[
-    "claude-opus-4",
-    "claude-sonnet-4",
-    "claude-3-7-sonnet",
-    "claude-3-5-sonnet",
-    "amazon.nova-pro",
-    "meta.llama3-1-405b-instruct",
-    "mistral.mistral-large",
-    "claude-3-5-haiku",
-    "amazon.nova-lite",
-    "amazon.nova-micro",
-];
-
 /// Curated flagship-first order for Gemini (Code Assist OAuth + Gemini API).
 /// `pro` is Gemini's flagship tier and `flash`/`lite` are the cheaper tiers, so
 /// (unlike Claude/OpenAI) `pro` must NOT be treated as a non-flagship marker for
@@ -310,7 +292,7 @@ const ALL_GEMINI_MODELS: &[&str] = &[
 /// (`copilot:claude-opus-4-8`), so they share the same "catalog lists the cheap
 /// model first" hazard as a direct login and get the combined Claude+OpenAI
 /// order. The Claude/OpenAI subscription default bias mirrors jcode's global
-/// default model. Bedrock/Azure/Gemini/Antigravity are native hosted catalogs
+/// default model. Azure/Gemini/Antigravity are native hosted catalogs
 /// whose route lists are often ordered oldest-first, so they get an explicit
 /// curated order too.
 fn provider_preferred_model_orders(
@@ -323,7 +305,6 @@ fn provider_preferred_model_orders(
             crate::provider::ALL_CLAUDE_MODELS,
             crate::provider::ALL_OPENAI_MODELS,
         ],
-        Some("bedrock") => &[ALL_BEDROCK_MODELS],
         // Azure hosts the OpenAI family.
         Some("azure-openai") => &[crate::provider::ALL_OPENAI_MODELS],
         // Gemini (Code Assist OAuth) and Antigravity both serve Gemini models.
@@ -353,12 +334,10 @@ fn preferred_model_rank(orders: &[&[&str]], model: &str) -> usize {
 /// Normalize a model id for flagship-preference comparison: lowercase, drop a
 /// `[1m]` long-context suffix, strip a trailing 8-digit `-YYYYMMDD` date so live
 /// dated ids (`claude-haiku-4-5-20251001`) match bare canonical ids
-/// (`claude-haiku-4-5`), and strip hosted-vendor prefixes/suffixes so Bedrock and
-/// proxy ids line up with the curated bare ids.
+/// (`claude-haiku-4-5`), and strip hosted path prefixes and marketing suffixes
+/// so proxy ids line up with the curated bare ids.
 ///
 /// Examples:
-///   `us.anthropic.claude-opus-4-20250514-v1:0` -> `claude-opus-4`
-///   `anthropic.claude-3-5-sonnet-20241022-v2:0` -> `claude-3-5-sonnet`
 ///   `accounts/fireworks/models/qwen3-coder` -> `qwen3-coder`
 ///   `models/gemini-3-pro-preview` -> `gemini-3-pro`
 fn normalize_model_for_preference(model: &str) -> String {
@@ -367,14 +346,6 @@ fn normalize_model_for_preference(model: &str) -> String {
     // Drop a `/`-qualified path prefix (`accounts/x/models/y`, `models/gemini`).
     if let Some(idx) = id.rfind('/') {
         id = id[idx + 1..].to_string();
-    }
-
-    // Drop a trailing Bedrock version tag (`-v1:0`, `-v2:0`, `:0`).
-    if let Some(idx) = id.find(":0") {
-        id = id[..idx].to_string();
-    }
-    if let Some(stripped) = strip_trailing_bedrock_version(&id) {
-        id = stripped;
     }
 
     // Drop a trailing release-date suffix.
@@ -388,37 +359,7 @@ fn normalize_model_for_preference(model: &str) -> String {
         }
     }
 
-    // Drop a leading hosted-vendor segment (`anthropic.`, `us.anthropic.`,
-    // `meta.`, `amazon.`, `mistral.`) so `anthropic.claude-opus-4` matches the
-    // curated `claude-opus-4`. Keep `amazon.nova`/`meta.llama`/`mistral.` whole
-    // because those families are listed with their vendor prefix in
-    // `ALL_BEDROCK_MODELS`; only strip the region + the redundant `anthropic.`.
-    id = strip_bedrock_region_prefix(&id);
-    if let Some(rest) = id.strip_prefix("anthropic.") {
-        id = rest.to_string();
-    }
-
     id
-}
-
-/// Strip a leading Bedrock region routing segment (`us.`, `eu.`, `apac.`,
-/// `us-gov.`) from a model id.
-fn strip_bedrock_region_prefix(id: &str) -> String {
-    for region in ["us-gov.", "us.", "eu.", "apac.", "ap.", "global."] {
-        if let Some(rest) = id.strip_prefix(region) {
-            return rest.to_string();
-        }
-    }
-    id.to_string()
-}
-
-/// Strip a trailing Bedrock version tag like `-v1`, `-v2` (after the `:0` has
-/// already been removed). Returns `None` when there is no such tag.
-fn strip_trailing_bedrock_version(id: &str) -> Option<String> {
-    let (head, tail) = id.rsplit_once('-')?;
-    let is_version_tag =
-        tail.len() >= 2 && tail.starts_with('v') && tail[1..].chars().all(|c| c.is_ascii_digit());
-    is_version_tag.then(|| head.to_string())
 }
 
 /// A parsed "frontier flagship" model id: its family prefix (e.g. `claude-opus`
@@ -485,9 +426,7 @@ fn frontier_families(activation: &AuthActivationResult) -> &'static [FrontierFam
         Some("openai") | Some("openai-api") | Some("azure-openai") => &[GPT],
         // Copilot/Cursor proxy both families under canonical ids.
         Some("copilot") | Some("cursor") => &[CLAUDE, FABLE, GPT],
-        // Bedrock hosts Claude under `anthropic.claude-opus-...` (prefix stripped
-        // by normalize), so the Claude family applies.
-        Some("bedrock") => &[CLAUDE],
+        // Hosted catalogs that proxy the Claude family are handled above.
         Some("gemini") | Some("antigravity") => &[GEMINI],
         _ => &[],
     }
@@ -869,11 +808,14 @@ fn normalized_login_provider_id(provider_id: &str) -> Option<&'static str> {
         }
         "openrouter" => Some("openrouter"),
         "jcode" | "subscription" | "jcode-subscription" => Some("jcode"),
-        "bedrock" | "aws-bedrock" | "aws_bedrock" => Some("bedrock"),
         "cursor" => Some("cursor"),
         "copilot" => Some("copilot"),
         "gemini" => Some("gemini"),
         "antigravity" => Some("antigravity"),
+        // Subscription auth delegated to the Grok CLI. Deliberately not
+        // aliased to "grok"/"x-ai": those are the separate xai OpenAI-compatible
+        // profile (`jcode-provider-metadata` catalog).
+        "grok-build" => Some("grok-build"),
         _ => None,
     }
 }
@@ -929,16 +871,6 @@ fn api_key_env_bindings_for_provider(provider_id: &str) -> Vec<(String, String)>
             (
                 crate::subscription_catalog::JCODE_API_BASE_ENV.to_string(),
                 crate::subscription_catalog::JCODE_ENV_FILE.to_string(),
-            ),
-        ],
-        "bedrock" => vec![
-            (
-                crate::provider::bedrock::API_KEY_ENV.to_string(),
-                crate::provider::bedrock::ENV_FILE.to_string(),
-            ),
-            (
-                crate::provider::bedrock::REGION_ENV.to_string(),
-                crate::provider::bedrock::ENV_FILE.to_string(),
             ),
         ],
         "cursor" => vec![("CURSOR_API_KEY".to_string(), "cursor.env".to_string())],
@@ -1121,7 +1053,6 @@ fn direct_provider_activation(provider_id: &str) -> Option<ProviderActivation> {
         "openai-api" => (RuntimeProviderId::OpenAiApiKey, ActiveProvider::OpenAI),
         "openrouter" => (RuntimeProviderId::OpenRouter, ActiveProvider::OpenRouter),
         "jcode" => (RuntimeProviderId::Jcode, ActiveProvider::OpenRouter),
-        "bedrock" => (RuntimeProviderId::Bedrock, ActiveProvider::Bedrock),
         "cursor" => (RuntimeProviderId::Cursor, ActiveProvider::Cursor),
         "copilot" => (RuntimeProviderId::Copilot, ActiveProvider::Copilot),
         "gemini" => (RuntimeProviderId::Gemini, ActiveProvider::Gemini),
@@ -1152,7 +1083,6 @@ pub fn model_switch_request_for_provider_id(
         Some("openai-api") => format!("openai-api:{}", model),
         Some("openrouter") => format!("openrouter:{}", model),
         Some("jcode") => model.to_string(),
-        Some("bedrock") => format!("bedrock:{}", model),
         Some("cursor") => format!("cursor:{}", model),
         Some("copilot") => format!("copilot:{}", model),
         Some("gemini") => format!("gemini:{}", model),
@@ -1363,7 +1293,6 @@ mod tests {
             ("openai-key", "openai-api", "OpenAI API"),
             ("openrouter", "openrouter", "OpenRouter"),
             ("subscription", "jcode", "Jcode Subscription"),
-            ("bedrock", "bedrock", "AWS Bedrock"),
             ("cursor", "cursor", "Cursor"),
             ("copilot", "copilot", "GitHub Copilot"),
             ("gemini", "gemini", "Google Gemini"),
@@ -1416,7 +1345,6 @@ mod tests {
             ("openai-api", "openai-api", "openai"),
             ("openrouter", "openrouter", "openrouter"),
             ("jcode", "jcode", "openrouter"),
-            ("bedrock", "bedrock", "bedrock"),
             ("cursor", "cursor", "cursor"),
             ("copilot", "copilot", "copilot"),
             ("gemini", "gemini", "gemini"),
@@ -1473,9 +1401,6 @@ mod tests {
                 }
                 crate::provider_catalog::LoginProviderTarget::OpenRouter => {
                     Some(("openrouter", "openrouter", "openrouter", "openrouter"))
-                }
-                crate::provider_catalog::LoginProviderTarget::Bedrock => {
-                    Some(("bedrock", "bedrock", "bedrock", "bedrock"))
                 }
                 crate::provider_catalog::LoginProviderTarget::Cursor => {
                     Some(("cursor", "cursor", "cursor", "cursor"))
@@ -1562,7 +1487,6 @@ mod tests {
             "openai-api",
             "openrouter",
             "jcode",
-            "bedrock",
             "cursor",
             "copilot",
             "gemini",
@@ -1598,7 +1522,6 @@ mod tests {
             ("openrouter", "openrouter:shared-model"),
             ("jcode", "shared-model"),
             ("azure-openai", "openrouter:shared-model"),
-            ("bedrock", "bedrock:shared-model"),
             ("cursor", "cursor:shared-model"),
             ("copilot", "copilot:shared-model"),
             ("gemini", "gemini:shared-model"),
@@ -2157,72 +2080,6 @@ mod tests {
     }
 
     #[test]
-    fn post_auth_frontier_promotion_covers_bedrock_and_gemini() {
-        // Bedrock: a newer Opus 5 (vendor-prefixed + dated) auto-promotes over the
-        // curated Opus 4 baseline, and never falls back to the year-old 3.5.
-        let activation = activation_for_provider_id("bedrock");
-        let routes = vec![
-            route(
-                "anthropic.claude-3-5-sonnet-20241022-v2:0",
-                "AWS Bedrock",
-                "bedrock",
-                true,
-            ),
-            route(
-                "anthropic.claude-opus-4-20250514-v1:0",
-                "AWS Bedrock",
-                "bedrock",
-                true,
-            ),
-            route(
-                "anthropic.claude-opus-5-20260101-v1:0",
-                "AWS Bedrock",
-                "bedrock",
-                true,
-            ),
-        ];
-        assert_eq!(
-            provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
-            Some("anthropic.claude-opus-5-20260101-v1:0"),
-            "a newer Bedrock Opus must auto-promote over the curated Opus 4"
-        );
-
-        // Gemini: a newer pro auto-promotes; a newer flash never displaces it.
-        let activation = activation_for_provider_id("gemini");
-        let routes = vec![
-            route(
-                "gemini-2.5-flash",
-                "Google Gemini",
-                "code-assist-oauth",
-                true,
-            ),
-            route(
-                "gemini-3-pro-preview",
-                "Google Gemini",
-                "code-assist-oauth",
-                true,
-            ),
-            route(
-                "gemini-4-pro-preview",
-                "Google Gemini",
-                "code-assist-oauth",
-                true,
-            ),
-            route(
-                "gemini-9-flash-preview",
-                "Google Gemini",
-                "code-assist-oauth",
-                true,
-            ),
-        ];
-        assert_eq!(
-            provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
-            Some("gemini-4-pro-preview"),
-            "the newest Gemini *pro* must win; a higher-numbered flash must not"
-        );
-    }
-
-    #[test]
     fn frontier_version_parsing_and_compare() {
         let fams = &[
             FrontierFamily {
@@ -2259,18 +2116,6 @@ mod tests {
         assert_eq!(version_cmp(&[6], &[5, 9]), std::cmp::Ordering::Greater);
         assert_eq!(version_cmp(&[5, 5], &[5, 5]), std::cmp::Ordering::Equal);
 
-        // Bedrock vendor-prefixed/versioned ids normalize to the bare Claude
-        // family and parse as flagship.
-        let bedrock = parse_frontier_model(
-            "us.anthropic.claude-opus-4-20250514-v1:0",
-            &[FrontierFamily {
-                prefix: "claude-opus",
-                flagship_token: None,
-            }],
-        )
-        .expect("bedrock opus parses");
-        assert_eq!(bedrock.version, vec![4]);
-
         // Gemini flagship token: `pro` is required and `flash`/`lite` are rejected.
         let gem_fams = &[FrontierFamily {
             prefix: "gemini",
@@ -2297,14 +2142,6 @@ mod tests {
 
     #[test]
     fn normalize_model_for_preference_strips_hosted_prefixes_and_suffixes() {
-        assert_eq!(
-            normalize_model_for_preference("us.anthropic.claude-opus-4-20250514-v1:0"),
-            "claude-opus-4"
-        );
-        assert_eq!(
-            normalize_model_for_preference("anthropic.claude-3-5-sonnet-20241022-v2:0"),
-            "claude-3-5-sonnet"
-        );
         assert_eq!(
             normalize_model_for_preference("models/gemini-3-pro-preview"),
             "gemini-3-pro"
@@ -2334,7 +2171,6 @@ mod tests {
         "openai-api",
         "copilot",
         "cursor",
-        "bedrock",
         "azure-openai",
         "gemini",
         "antigravity",
@@ -2442,21 +2278,6 @@ mod tests {
                 "Cursor",
                 &["gpt-5-nano", "gpt-5.1", "gpt-5.5"],
                 "gpt-5.5",
-            ),
-            (
-                // Bedrock lists year-old Claude first; the curated order must
-                // still pick Opus 4 over claude-3-5-sonnet. Bedrock ids carry the
-                // vendor prefix + version tag, normalized away before ranking.
-                "bedrock",
-                "bedrock",
-                "AWS Bedrock",
-                &[
-                    "anthropic.claude-3-5-sonnet-20241022-v2:0",
-                    "anthropic.claude-3-5-haiku-20241022-v1:0",
-                    "anthropic.claude-sonnet-4-20250514-v1:0",
-                    "anthropic.claude-opus-4-20250514-v1:0",
-                ],
-                "anthropic.claude-opus-4-20250514-v1:0",
             ),
             (
                 // Azure hosts the OpenAI family over the OpenRouter transport.

@@ -93,7 +93,6 @@ impl MultiProvider {
             LoginProviderTarget::Claude | LoginProviderTarget::ClaudeApiKey => Some("claude"),
             LoginProviderTarget::OpenAi | LoginProviderTarget::OpenAiApiKey => Some("openai"),
             LoginProviderTarget::OpenRouter => Some("openrouter"),
-            LoginProviderTarget::Bedrock => Some("bedrock"),
             LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id),
             LoginProviderTarget::Cursor => Some("cursor"),
             LoginProviderTarget::Copilot => Some("copilot"),
@@ -153,7 +152,6 @@ impl MultiProvider {
                 format!("claude-api:{}", bare_name)
             }
             ModelRouteApiMethod::Cursor => format!("cursor:{}", bare_name),
-            ModelRouteApiMethod::Bedrock => format!("bedrock:{}", bare_name),
             ModelRouteApiMethod::OpenAIApiKey => format!("openai-api:{}", bare_name),
             ModelRouteApiMethod::OpenAIOAuth => format!("openai-oauth:{}", bare_name),
             _ if provider_display == "Antigravity" => format!("antigravity:{}", bare_name),
@@ -187,7 +185,6 @@ impl MultiProvider {
             ModelRouteApiMethod::OpenAIOAuth => Some("openai-oauth".to_string()),
             ModelRouteApiMethod::Copilot => Some("copilot".to_string()),
             ModelRouteApiMethod::Cursor => Some("cursor".to_string()),
-            ModelRouteApiMethod::Bedrock => Some("bedrock".to_string()),
             ModelRouteApiMethod::Other(method)
                 if method == "cli" && provider_display == "Antigravity" =>
             {
@@ -243,7 +240,7 @@ impl MultiProvider {
                     return Some(route.session_provider_key().to_string());
                 }
                 match prefix {
-                    "copilot" | "antigravity" | "gemini" | "cursor" | "bedrock" | "openrouter" => {
+                    "copilot" | "antigravity" | "gemini" | "cursor" | "openrouter" => {
                         return Some(prefix.to_string());
                     }
                     _ => {
@@ -318,7 +315,6 @@ impl MultiProvider {
             "cursor" => "cursor",
             "gemini" | "google" => "gemini",
             "antigravity" => "antigravity",
-            "bedrock" | "aws bedrock" => "bedrock",
             "" => return None,
             _ => return None,
         };
@@ -424,7 +420,7 @@ impl MultiProvider {
         let provider_key = Self::canonical_session_provider_key(provider_key);
 
         match provider_key {
-            "copilot" | "antigravity" | "gemini" | "cursor" | "bedrock" | "openrouter" => {
+            "copilot" | "antigravity" | "gemini" | "cursor" | "openrouter" => {
                 format!("{provider_key}:{model}")
             }
             _ => {
@@ -473,7 +469,6 @@ impl MultiProvider {
                 } => return format!("{profile_id}:{model}"),
                 ModelRouteApiMethod::Copilot => return format!("copilot:{model}"),
                 ModelRouteApiMethod::Cursor => return format!("cursor:{model}"),
-                ModelRouteApiMethod::Bedrock => return format!("bedrock:{model}"),
                 ModelRouteApiMethod::AntigravityHttps => return format!("antigravity:{model}"),
                 ModelRouteApiMethod::OpenAiCompatible { profile_id: None }
                 | ModelRouteApiMethod::CodeAssistOAuth
@@ -845,17 +840,6 @@ mod tests {
         );
         assert_eq!(copilot.model_spec, "copilot:gpt-5.1-codex");
         assert_eq!(copilot.provider_key.as_deref(), Some("copilot"));
-
-        let bedrock = MultiProvider::default_model_selection_from_route(
-            "arn:aws:bedrock:us-east-1:123:inference-profile/foo",
-            "bedrock",
-            "AWS Bedrock",
-        );
-        assert_eq!(
-            bedrock.model_spec,
-            "bedrock:arn:aws:bedrock:us-east-1:123:inference-profile/foo"
-        );
-        assert_eq!(bedrock.provider_key.as_deref(), Some("bedrock"));
 
         let profile = MultiProvider::default_model_selection_from_route(
             "moonshot-v1-8k",

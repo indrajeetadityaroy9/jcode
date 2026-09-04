@@ -2,7 +2,7 @@
 # Safely reclaim disk space from the Cargo target directory.
 #
 # This is designed to be safe to run even while other builds are in progress on
-# this machine (e.g. parallel self-dev agents). It will:
+# this machine (e.g. parallel agents). It will:
 #   - never touch a target/<profile> dir that has an active rustc/cargo process
 #     or that was written to within a recent activity window
 #   - by default only remove cross-compile / compat caches and obviously stale

@@ -133,7 +133,6 @@ pub fn models_dev_provider_id(jcode_provider: &str) -> Option<&'static str> {
         "302ai" => "302ai",
         "cortecs" => "cortecs",
         "alibaba-coding-plan" => "alibaba",
-        "bedrock" => "amazon-bedrock",
         "azure-openai" | "azure" => "azure",
         "gemini" | "gemini-api" => "google",
         _ => return None,
@@ -368,7 +367,6 @@ mod tests {
             models_dev_provider_id("openai-compatible:nvidia-nim"),
             Some("nvidia")
         );
-        assert_eq!(models_dev_provider_id("bedrock"), Some("amazon-bedrock"));
         assert_eq!(models_dev_provider_id("unknown-thing"), None);
     }
 

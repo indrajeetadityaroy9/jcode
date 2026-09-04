@@ -419,7 +419,7 @@ mod transcript_routing_tests {
         install_fake_niri(
             &bin_dir,
             focused_process.pid(),
-            "🦢 jcode/cliff Swan [self-dev]",
+            "🦢 jcode/cliff Swan",
         );
         let prev_path = std::env::var_os("PATH").unwrap_or_default();
         let mut path = OsString::from(bin_dir.as_os_str());

@@ -653,14 +653,14 @@ fn test_auto_edit_compresses_post_tool_idle_gap() {
         TimelineEvent {
             t: 1500,
             kind: TimelineEventKind::ToolStart {
-                name: "selfdev".into(),
+                name: "bash".into(),
                 input: serde_json::json!({"action": "reload"}),
             },
         },
         TimelineEvent {
             t: 2500,
             kind: TimelineEventKind::ToolDone {
-                name: "selfdev".into(),
+                name: "bash".into(),
                 output: "Reload initiated. Process restarting...".into(),
                 is_error: false,
             },

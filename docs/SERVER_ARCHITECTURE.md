@@ -135,16 +135,6 @@ reload, network issue, etc.):
 └── jcode-debug.sock    # Debug/testing socket
 ```
 
-## Self-Dev Mode
-
-When running `jcode` inside the jcode repository:
-
-1. Auto-detects the repo and enables self-dev mode
-2. Connects to the normal shared jcode server
-3. Marks that session as canary/self-dev via subscribe metadata
-4. Enables selfdev prompt/tooling only for that session
-5. `/reload` still hot-reloads the shared server and clients reconnect
-
 ## Key Behaviors
 
 | Scenario | Behavior |

@@ -140,7 +140,6 @@ fn tracked_env_vars() -> Vec<String> {
         "GOOGLE_API_KEY",
         "GEMINI_API_KEY",
         "CURSOR_API_KEY",
-        "BEDROCK_API_KEY",
     ]
     .into_iter()
     .map(ToString::to_string)

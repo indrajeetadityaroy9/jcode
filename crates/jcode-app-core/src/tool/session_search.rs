@@ -99,9 +99,6 @@ struct SearchInput {
     /// Restrict Jcode sessions by debug flag.
     #[serde(default)]
     debug: Option<bool>,
-    /// Restrict Jcode sessions by canary flag.
-    #[serde(default)]
-    canary: Option<bool>,
     /// Restrict source: jcode, claude, codex, pi, opencode, cursor, or all.
     #[serde(default)]
     source: Option<String>,
@@ -205,7 +202,6 @@ struct SearchOptions {
     source_filter: Option<String>,
     saved_filter: Option<bool>,
     debug_filter: Option<bool>,
-    canary_filter: Option<bool>,
     after: Option<DateTime<Utc>>,
     before: Option<DateTime<Utc>>,
     context_before: usize,
@@ -232,7 +228,6 @@ impl SearchOptions {
             source_filter: None,
             saved_filter: None,
             debug_filter: None,
-            canary_filter: None,
             after: None,
             before: None,
             context_before: 0,
@@ -362,10 +357,6 @@ impl Tool for SessionSearchTool {
                 "debug": {
                     "type": "boolean",
                     "description": "Restrict Jcode sessions by debug/test flag."
-                },
-                "canary": {
-                    "type": "boolean",
-                    "description": "Restrict Jcode sessions by canary flag."
                 },
                 "source": {
                     "type": "string",
@@ -503,7 +494,6 @@ impl Tool for SessionSearchTool {
             source_filter,
             saved_filter: params.saved,
             debug_filter: params.debug,
-            canary_filter: params.canary,
             after,
             before,
             context_before,
@@ -1666,12 +1656,6 @@ fn jcode_session_matches_filters(session: &Session, options: &SearchOptions) -> 
     {
         return false;
     }
-    if options
-        .canary_filter
-        .is_some_and(|expected| session.is_canary != expected)
-    {
-        return false;
-    }
     true
 }
 
@@ -1688,10 +1672,7 @@ fn external_session_matches_filters(
     if !field_filter_matches(session.model.as_deref(), options.model_filter.as_deref()) {
         return false;
     }
-    if options.saved_filter == Some(true)
-        || options.debug_filter == Some(true)
-        || options.canary_filter == Some(true)
-    {
+    if options.saved_filter == Some(true) || options.debug_filter == Some(true) {
         return false;
     }
     true

@@ -341,14 +341,13 @@ impl RemoteConnection {
 
         // Subscribe to events
         let subscribe_start = Instant::now();
-        let (working_dir, selfdev) = super::subscribe_metadata(remote_working_dir);
+        let working_dir = super::subscribe_metadata(remote_working_dir);
         let resume_target = resume_session
             .filter(|session_id| crate::session::session_exists(session_id))
             .map(|session_id| session_id.to_string());
         conn.send_request(Request::Subscribe {
             id: conn.next_request_id,
             working_dir,
-            selfdev,
             target_session_id: resume_target.clone(),
             client_instance_id: conn.client_instance_id.clone(),
             client_has_local_history,

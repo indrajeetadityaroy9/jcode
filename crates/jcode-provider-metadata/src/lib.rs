@@ -30,7 +30,6 @@ pub enum LoginProviderTarget {
     OpenAi,
     OpenAiApiKey,
     OpenRouter,
-    Bedrock,
     Azure,
     OpenAiCompatible(OpenAiCompatibleProfile),
     Cursor,
@@ -48,7 +47,6 @@ pub enum LoginProviderAuthStateKey {
     Anthropic,
     OpenAi,
     Azure,
-    Bedrock,
     OpenRouterLike,
     Copilot,
     Gemini,
@@ -643,10 +641,6 @@ mod tests {
             Some("anthropic-api")
         );
         assert_eq!(
-            resolve_login_selection("7", &providers).map(|provider| provider.id),
-            Some("bedrock")
-        );
-        assert_eq!(
             resolve_login_selection("compat", &providers).map(|provider| provider.id),
             Some("openai-compatible")
         );
@@ -679,15 +673,7 @@ mod tests {
         );
         assert_eq!(
             resolve_login_selection("8", &providers).map(|provider| provider.id),
-            Some("bedrock")
-        );
-        assert_eq!(
-            resolve_login_selection("9", &providers).map(|provider| provider.id),
             Some("azure")
-        );
-        assert_eq!(
-            resolve_login_selection("bedrock", &providers).map(|provider| provider.id),
-            Some("bedrock")
         );
     }
 }

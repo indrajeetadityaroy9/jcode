@@ -64,21 +64,6 @@ fn auth_status_default_all_not_configured() {
 }
 
 #[test]
-fn auth_status_check_fast_includes_bedrock_probe() {
-    let _lock = crate::storage::lock_test_env();
-    let prev_bedrock_enable = std::env::var_os("JCODE_BEDROCK_ENABLE");
-
-    crate::env::set_var("JCODE_BEDROCK_ENABLE", "1");
-    AuthStatus::invalidate_cache();
-
-    let status = AuthStatus::check_fast();
-    assert_eq!(status.bedrock, AuthState::Available);
-
-    restore_env_var("JCODE_BEDROCK_ENABLE", prev_bedrock_enable);
-    AuthStatus::invalidate_cache();
-}
-
-#[test]
 fn full_and_fast_auth_status_match_for_shared_probe_fields() {
     let _lock = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("create temp dir");
@@ -109,7 +94,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
         crate::auth::azure::API_KEY_ENV,
         crate::auth::azure::MODEL_ENV,
         crate::auth::azure::USE_ENTRA_ENV,
-        "JCODE_BEDROCK_ENABLE",
         "COPILOT_GITHUB_TOKEN",
         "GH_TOKEN",
         "GITHUB_TOKEN",
@@ -154,7 +138,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
     crate::env::set_var(crate::auth::azure::API_KEY_ENV, "azure-test-key");
     crate::env::set_var(crate::auth::azure::MODEL_ENV, "gpt-test-deployment");
     crate::env::remove_var(crate::auth::azure::USE_ENTRA_ENV);
-    crate::env::set_var("JCODE_BEDROCK_ENABLE", "1");
     crate::env::set_var("COPILOT_GITHUB_TOKEN", "gho_test_token");
     crate::env::remove_var("GH_TOKEN");
     crate::env::remove_var("GITHUB_TOKEN");
@@ -176,7 +159,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
     assert_eq!(full.openai, AuthState::Available);
     assert_eq!(full.openrouter, AuthState::Available);
     assert_eq!(full.azure, AuthState::Available);
-    assert_eq!(full.bedrock, AuthState::Available);
     assert_eq!(full.copilot, AuthState::Available);
     assert_eq!(full.cursor, AuthState::Available);
 
@@ -259,7 +241,6 @@ fn assert_auth_status_shared_fields_match(full: &AuthStatus, fast: &AuthStatus) 
         "azure api key"
     );
     assert_eq!(full.azure_uses_entra, fast.azure_uses_entra, "azure entra");
-    assert_eq!(full.bedrock, fast.bedrock, "bedrock");
     assert_eq!(full.openai, fast.openai, "openai");
     assert_eq!(full.openai_has_oauth, fast.openai_has_oauth, "openai oauth");
     assert_eq!(

@@ -4,12 +4,10 @@ mod source_state;
 mod storage_helpers;
 
 pub use paths::{
-    SELFDEV_CARGO_PROFILE, binary_name, binary_stem, client_update_candidate,
-    current_binary_build_time_string, current_binary_built_at, find_dev_binary,
-    find_repo_in_ancestors, get_repo_dir, is_jcode_repo, launcher_binary_path, launcher_dir,
-    preferred_reload_candidate, release_binary_path, resolve_binary_payload, run_selfdev_build,
-    selfdev_binary_path, selfdev_build_command, selfdev_build_command_for_target,
-    shared_server_update_candidate, update_launcher_symlink_to_current,
+    binary_name, binary_stem, client_update_candidate, current_binary_build_time_string,
+    current_binary_built_at, find_dev_binary, find_repo_in_ancestors, get_repo_dir, is_jcode_repo,
+    launcher_binary_path, launcher_dir, preferred_reload_candidate, release_binary_path,
+    resolve_binary_payload, shared_server_update_candidate, update_launcher_symlink_to_current,
     update_launcher_symlink_to_stable, version_matches_installed_channel,
 };
 pub use source_state::{
@@ -39,8 +37,7 @@ use std::time::{Duration, Instant};
 
 pub use jcode_dev_types::{
     BinaryChoice, BinaryVersionReport, BuildInfo, CanaryStatus, CrashInfo, DevBinarySourceMetadata,
-    MigrationContext, PendingActivation, PublishedBuild, SelfDevBuildCommand, SelfDevBuildTarget,
-    SourceState,
+    MigrationContext, PendingActivation, PublishedBuild, SourceState,
 };
 
 /// Manifest tracking build versions and their status
@@ -249,7 +246,7 @@ pub fn write_current_dev_binary_source_metadata(
     source: &SourceState,
 ) -> Result<PathBuf> {
     let binary = find_dev_binary(repo_dir)
-        .ok_or_else(|| anyhow::anyhow!("Binary not found in target/selfdev or target/release"))?;
+        .ok_or_else(|| anyhow::anyhow!("Binary not found in target/release"))?;
     write_dev_binary_source_metadata(&binary, source)
 }
 
@@ -680,7 +677,7 @@ pub fn publish_local_current_build_for_source(
     source: &SourceState,
 ) -> Result<PublishedBuild> {
     let binary = find_dev_binary(repo_dir)
-        .ok_or_else(|| anyhow::anyhow!("Binary not found in target/selfdev or target/release"))?;
+        .ok_or_else(|| anyhow::anyhow!("Binary not found in target/release"))?;
     if !binary.exists() {
         anyhow::bail!("Binary not found at {:?}", binary);
     }
@@ -745,12 +742,12 @@ pub fn promote_version_to_shared_server(version: &str) -> Result<Option<String>>
 
 /// Returns true when the `shared-server` channel is merely tracking the
 /// `stable` channel rather than pinned to a deliberately-promoted build (e.g. a
-/// local self-dev binary).
+/// local repo binary).
 ///
 /// Updates only advance `current`/`stable`, so the long-lived daemon's reload
 /// target (`shared-server`) can drift behind an update. When the channel was
 /// just following stable we want updates to carry it forward automatically;
-/// when it was explicitly promoted to a self-dev build we must leave it alone
+/// when it was explicitly promoted to a local build we must leave it alone
 /// so an update never silently wipes that build out from under a force reload.
 ///
 /// A never-promoted (missing/empty) shared-server marker counts as "tracking":
@@ -811,7 +808,7 @@ pub enum SharedServerRepair {
 ///
 /// Safety: we only repair when the `stable` binary is *strictly newer by mtime*
 /// than the current `shared-server` binary. That preserves a deliberately-pinned
-/// self-dev `shared-server` build whenever it is at least as fresh as stable (the
+/// pinned `shared-server` build whenever it is at least as fresh as stable (the
 /// case the pin exists to protect), and never downgrades the channel.
 pub fn repair_stale_shared_server_channel() -> Result<SharedServerRepair> {
     let stable_version = read_stable_version()?;
@@ -844,7 +841,7 @@ pub fn repair_stale_shared_server_channel() -> Result<SharedServerRepair> {
     }
 
     // Only repair when stable is strictly newer than the current shared-server
-    // binary on disk. This never downgrades, and it preserves a self-dev pin
+    // binary on disk. This never downgrades, and it preserves a deliberate pin
     // that is fresher than stable.
     let shared_binary = shared_server_binary_path()?;
     if !shared_server_binary_is_strictly_older_than(&shared_binary, &stable_binary) {

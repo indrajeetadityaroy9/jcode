@@ -33,7 +33,7 @@ Introduce `crates/jcode-harness-api`:
     token usage, turn done, errors.
   - Permissions: permission request event + client response.
   - State: agent status snapshot, todos, plan/task-graph summaries.
-  Everything else (swarm internals, selfdev, debug) stays on the internal
+  Everything else (swarm internals, debug) stays on the internal
   protocol until promoted deliberately.
 - **Transport.** NDJSON over Unix socket stays the primary transport.
   The API crate defines transport-agnostic types + a small client

@@ -780,7 +780,7 @@ impl App {
                                         self.resume_streaming_tps();
                                         // Reflect active reasoning in the status line even when the
                                         // provider streams reasoning deltas without an explicit
-                                        // ThinkingStart (e.g. OpenRouter, Bedrock) or when the
+                                        // ThinkingStart (e.g. OpenRouter) or when the
                                         // reasoning text itself is hidden by config.
                                         let thinking_start =
                                             *self.thinking_start.get_or_insert_with(Instant::now);

@@ -284,13 +284,6 @@ impl App {
                 Self::clear_api_key_login("OPENROUTER_API_KEY", "openrouter.env")?;
                 Ok("Logged out of OpenRouter API key.".to_string())
             }
-            LoginProviderTarget::Bedrock => {
-                Self::clear_api_key_login(
-                    crate::provider::bedrock::API_KEY_ENV,
-                    crate::provider::bedrock::ENV_FILE,
-                )?;
-                Ok("Logged out of Bedrock API key.".to_string())
-            }
             LoginProviderTarget::Azure => {
                 Self::clear_api_key_login(
                     crate::auth::azure::API_KEY_ENV,
@@ -400,13 +393,6 @@ impl App {
             "OpenRouter API key",
             "OPENROUTER_API_KEY",
             "openrouter.env",
-        );
-        Self::clear_api_key_logout_summary(
-            &mut summary,
-            &mut errors,
-            "Bedrock API key",
-            crate::provider::bedrock::API_KEY_ENV,
-            crate::provider::bedrock::ENV_FILE,
         );
         Self::clear_api_key_logout_summary(
             &mut summary,
@@ -543,7 +529,6 @@ impl App {
             crate::provider_catalog::LoginProviderTarget::OpenRouter => {
                 self.start_openrouter_login()
             }
-            crate::provider_catalog::LoginProviderTarget::Bedrock => self.start_bedrock_login(),
             crate::provider_catalog::LoginProviderTarget::Azure => self.start_azure_login(),
             crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
                 self.start_openai_compatible_profile_login(profile)
@@ -1469,21 +1454,6 @@ impl App {
         );
     }
 
-    fn start_bedrock_login(&mut self) {
-        self.start_api_key_login(
-            "AWS Bedrock",
-            "https://console.aws.amazon.com/bedrock/home#/api-keys",
-            crate::provider::bedrock::ENV_FILE,
-            crate::provider::bedrock::API_KEY_ENV,
-            Some("us.amazon.nova-micro-v1:0"),
-            Some(
-                "Region: us-east-2 (default for TUI onboarding; use CLI login for another region)",
-            ),
-            false,
-            None,
-        );
-    }
-
     fn start_openai_api_key_login(&mut self) {
         self.start_api_key_login(
             "OpenAI API",
@@ -2364,15 +2334,8 @@ impl App {
                             crate::env::set_var(&key_name, &key);
                             Ok(())
                         })()
-                    } else if key_name == crate::provider::bedrock::API_KEY_ENV {
-                        (|| {
-                            Self::save_named_api_key(&env_file, &key_name, &key)?;
-                            crate::provider_catalog::save_env_value_to_env_file(
-                                crate::provider::bedrock::REGION_ENV,
-                                &env_file,
-                                Some("us-east-2"),
-                            )
-                        })()
+                    } else if false {
+                        Self::save_named_api_key(&env_file, &key_name, &key)
                     } else {
                         Self::save_named_api_key(&env_file, &key_name, &key)
                     };
@@ -2393,15 +2356,6 @@ impl App {
                                 ),
                             ],
                         );
-                        if key_name == crate::provider::bedrock::API_KEY_ENV {
-                            crate::provider::activation::select_initial_runtime_provider_key(
-                                "bedrock",
-                            );
-                            if let Some(default_model) = default_model.as_deref() {
-                                crate::env::set_var("JCODE_BEDROCK_MODEL", default_model);
-                            }
-                        }
-
                         if let Some(profile) = openai_compatible_profile {
                             crate::provider_catalog::apply_openai_compatible_profile_env(Some(
                                 profile,
@@ -2434,8 +2388,6 @@ impl App {
                                     endpoint.as_deref().unwrap_or(resolved.api_base.as_str()),
                                 )
                             }
-                        } else if key_name == crate::provider::bedrock::API_KEY_ENV {
-                            "You can now use /model to switch to Bedrock models. TUI onboarding saved region us-east-2; for a different region, run jcode login --provider bedrock from a terminal.".to_string()
                         } else if key_name == "OPENROUTER_API_KEY" {
                             "You can now use /model to switch to OpenRouter models. If the model list looks stale, run /refresh-model-list.".to_string()
                         } else {

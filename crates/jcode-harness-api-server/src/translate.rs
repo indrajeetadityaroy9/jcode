@@ -293,17 +293,6 @@ impl BridgeState {
                     "id": id,
                     "working_dir": working_dir,
                 });
-                // Sessions rooted inside a jcode checkout are self-dev
-                // sessions: the daemon only enables the self-dev tools and
-                // prompt when the subscribe says so, and a client that opens
-                // the repo without saying so gets an agent that cannot build
-                // the very app it is running in.
-                if working_dir
-                    .as_deref()
-                    .is_some_and(Self::path_is_inside_jcode_repo)
-                {
-                    subscribe["selfdev"] = json!(true);
-                }
                 if req == "attach_session"
                     && let Some(target) = request["session_id"].as_str()
                 {
@@ -1122,21 +1111,6 @@ impl BridgeState {
             provider: event["provider_name"].as_str().map(str::to_string),
             model: event["provider_model"].as_str().map(str::to_string),
         }
-    }
-
-    /// True when `path`, or any ancestor, looks like a jcode source checkout.
-    ///
-    /// Matched by content (a workspace manifest next to the crates directory)
-    /// rather than by name, so a clone in any directory is recognised.
-    fn path_is_inside_jcode_repo(path: &str) -> bool {
-        let mut current = Some(std::path::Path::new(path));
-        while let Some(dir) = current {
-            if dir.join("Cargo.toml").is_file() && dir.join("crates/jcode-base").is_dir() {
-                return true;
-            }
-            current = dir.parent();
-        }
-        false
     }
 
     /// Path of a session's persisted record, or `None` if the id is not a

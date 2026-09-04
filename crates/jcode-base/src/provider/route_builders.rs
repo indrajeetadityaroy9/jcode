@@ -11,7 +11,7 @@ pub fn is_listable_model_name(model: &str) -> bool {
 
 /// Heuristic to keep obviously non-chat models (embeddings, speech, image,
 /// rerankers, etc.) out of the chat model picker. OpenAI-compatible profiles
-/// (e.g. NVIDIA NIM, FPT, Chutes, Groq) and Bedrock expose their *entire*
+/// (e.g. NVIDIA NIM, FPT, Chutes, Groq) expose their *entire*
 /// catalog, which otherwise floods the picker with hundreds of models that
 /// can't be used for chat. The match is conservative and token-boundary aware
 /// so it won't drop a legitimately named chat model.

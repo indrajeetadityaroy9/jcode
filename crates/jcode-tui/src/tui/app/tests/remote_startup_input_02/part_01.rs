@@ -108,109 +108,6 @@ fn test_model_picker_cursor_selection_prefixes_model() {
 }
 
 #[test]
-fn test_model_picker_bedrock_selection_prefixes_model() {
-    let mut app = create_test_app();
-    app.is_remote = true;
-    app.remote_available_entries = vec!["amazon.nova-pro-v1:0".to_string()];
-    app.remote_model_options = vec![crate::provider::ModelRoute {
-        model: "amazon.nova-pro-v1:0".to_string(),
-        provider: "AWS Bedrock".to_string(),
-        api_method: "bedrock".to_string(),
-        available: true,
-        detail: String::new(),
-        cheapness: None,
-    }];
-
-    app.open_model_picker();
-
-    let picker = app
-        .inline_interactive_state
-        .as_ref()
-        .expect("model picker should be open");
-    let model_idx = picker
-        .entries
-        .iter()
-        .position(|m| m.name == "amazon.nova-pro-v1:0")
-        .expect("Bedrock model should be in picker");
-    let filtered_pos = picker
-        .filtered
-        .iter()
-        .position(|&i| i == model_idx)
-        .expect("Bedrock model should be in filtered list");
-
-    app.inline_interactive_state.as_mut().unwrap().selected = filtered_pos;
-    app.handle_key(KeyCode::Enter, KeyModifiers::empty())
-        .unwrap();
-
-    assert_eq!(
-        app.pending_model_switch.as_deref(),
-        Some("bedrock:amazon.nova-pro-v1:0")
-    );
-    assert!(app.inline_interactive_state.is_none());
-}
-
-#[test]
-fn test_model_picker_bedrock_arn_selection_prefixes_model() {
-    let mut app = create_test_app();
-    app.is_remote = true;
-    let model = "arn:aws:bedrock:us-east-2:302154194530:inference-profile/us.deepseek.r1-v1:0";
-    app.remote_available_entries = vec![model.to_string()];
-    app.remote_model_options = vec![crate::provider::ModelRoute {
-        model: model.to_string(),
-        provider: "AWS Bedrock".to_string(),
-        api_method: "bedrock".to_string(),
-        available: true,
-        detail: String::new(),
-        cheapness: None,
-    }];
-
-    app.open_model_picker();
-
-    let picker = app
-        .inline_interactive_state
-        .as_ref()
-        .expect("model picker should be open");
-    let model_idx = picker
-        .entries
-        .iter()
-        .position(|m| m.name == model)
-        .expect("Bedrock ARN should be in picker");
-    let filtered_pos = picker
-        .filtered
-        .iter()
-        .position(|&i| i == model_idx)
-        .expect("Bedrock ARN should be in filtered list");
-
-    app.inline_interactive_state.as_mut().unwrap().selected = filtered_pos;
-    app.handle_key(KeyCode::Enter, KeyModifiers::empty())
-        .unwrap();
-
-    let expected = format!("bedrock:{model}");
-    assert_eq!(app.pending_model_switch.as_deref(), Some(expected.as_str()));
-    assert!(app.inline_interactive_state.is_none());
-}
-
-#[test]
-fn test_remote_fallback_bedrock_arn_does_not_create_openrouter_route() {
-    let mut app = create_test_app();
-    app.is_remote = true;
-    let model = "arn:aws:bedrock:us-east-2:302154194530:inference-profile/us.deepseek.r1-v1:0";
-    app.remote_available_entries = vec![model.to_string()];
-    app.remote_model_options.clear();
-
-    let routes = app.build_remote_model_routes_fallback();
-
-    assert!(routes.iter().any(|route| {
-        route.model == model && route.api_method == "bedrock" && route.provider == "AWS Bedrock"
-    }));
-    assert!(
-        !routes
-            .iter()
-            .any(|route| route.model == model && route.api_method == "openrouter")
-    );
-}
-
-#[test]
 fn test_remote_placeholder_only_openai_routes_are_replaced_with_real_routes() {
     // A poisoned persisted catalog can pin OpenAI models to placeholder
     // "remote-catalog" routes (provider "OpenAI", detail "refreshing route
@@ -249,49 +146,6 @@ fn test_remote_placeholder_only_openai_routes_are_replaced_with_real_routes() {
             "expected a real OpenAI credential route for {model}, got {:?}",
             app.remote_model_options
         );
-    });
-}
-
-#[test]
-fn test_remote_hydrated_catalog_restores_missing_direct_bedrock_route() {
-    with_temp_jcode_home(|| {
-        let previous_enable = std::env::var_os("JCODE_BEDROCK_ENABLE");
-        crate::env::set_var("JCODE_BEDROCK_ENABLE", "1");
-        crate::auth::AuthStatus::invalidate_cache();
-
-        let model = "amazon.nova-pro-v1:0";
-        let mut app = create_test_app();
-        app.is_remote = true;
-        app.remote_provider_name = Some("OpenAI".to_string());
-        app.remote_available_entries = vec![model.to_string()];
-        app.remote_model_options = vec![crate::provider::ModelRoute {
-            model: model.to_string(),
-            provider: "OpenAI".to_string(),
-            api_method: "remote-catalog".to_string(),
-            available: true,
-            detail: "compacted route snapshot".to_string(),
-            cheapness: None,
-        }];
-
-        app.open_model_picker();
-
-        match previous_enable {
-            Some(value) => crate::env::set_var("JCODE_BEDROCK_ENABLE", value),
-            None => crate::env::remove_var("JCODE_BEDROCK_ENABLE"),
-        }
-        crate::auth::AuthStatus::invalidate_cache();
-
-        assert!(app.remote_model_options.iter().any(|route| {
-            route.model == model
-                && route.provider == "AWS Bedrock"
-                && route.api_method == "bedrock"
-                && route.available
-        }));
-        assert!(app.remote_model_options.iter().any(|route| {
-            route.model == model
-                && route.provider == "OpenAI"
-                && route.api_method == "remote-catalog"
-        }));
     });
 }
 
@@ -767,15 +621,15 @@ fn test_remote_non_jcode_catalog_repairs_poisoned_all_jcode_routes() {
 }
 
 #[test]
-fn test_model_picker_ctrl_b_bedrock_selection_saves_bedrock_default() {
+fn test_model_picker_ctrl_o_cursor_selection_saves_cursor_default() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.is_remote = true;
-        app.remote_available_entries = vec!["amazon.nova-pro-v1:0".to_string()];
+        app.remote_available_entries = vec!["composer-2-fast".to_string()];
         app.remote_model_options = vec![crate::provider::ModelRoute {
-            model: "amazon.nova-pro-v1:0".to_string(),
-            provider: "AWS Bedrock".to_string(),
-            api_method: "bedrock".to_string(),
+            model: "composer-2-fast".to_string(),
+            provider: "Cursor".to_string(),
+            api_method: "cursor".to_string(),
             available: true,
             detail: String::new(),
             cheapness: None,
@@ -790,13 +644,13 @@ fn test_model_picker_ctrl_b_bedrock_selection_saves_bedrock_default() {
         let model_idx = picker
             .entries
             .iter()
-            .position(|m| m.name == "amazon.nova-pro-v1:0")
-            .expect("Bedrock model should be in picker");
+            .position(|m| m.name == "composer-2-fast")
+            .expect("Cursor model should be in picker");
         let filtered_pos = picker
             .filtered
             .iter()
             .position(|&i| i == model_idx)
-            .expect("Bedrock model should be in filtered list");
+            .expect("Cursor model should be in filtered list");
         app.inline_interactive_state.as_mut().unwrap().selected = filtered_pos;
 
         // Ctrl+O replaced Ctrl+B so the picker no longer steals tmux's prefix.
@@ -806,9 +660,9 @@ fn test_model_picker_ctrl_b_bedrock_selection_saves_bedrock_default() {
         let cfg = crate::config::Config::load();
         assert_eq!(
             cfg.provider.default_model.as_deref(),
-            Some("bedrock:amazon.nova-pro-v1:0")
+            Some("cursor:composer-2-fast")
         );
-        assert_eq!(cfg.provider.default_provider.as_deref(), Some("bedrock"));
+        assert_eq!(cfg.provider.default_provider.as_deref(), Some("cursor"));
     });
 }
 

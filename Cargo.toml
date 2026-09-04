@@ -48,7 +48,6 @@ members = [
     "crates/jcode-provider-env",
     "crates/jcode-provider-core",
     "crates/jcode-schema-dialect",
-    "crates/jcode-provider-bedrock",
     "crates/jcode-provider-anthropic",
     "crates/jcode-provider-antigravity",
     "crates/jcode-provider-copilot",
@@ -207,7 +206,7 @@ tempfile = "3"
 # semantic retrieval, and embedding-backed features work out of the box.
 # Use `JCODE_DEV_FEATURE_PROFILE=minimal` for compile-speed probes that need
 # to skip optional default feature stacks.
-default = ["pdf", "embeddings", "bedrock"]
+default = ["pdf", "embeddings"]
 dev-bins = ["jcode-tui/dev-bins"]
 jemalloc = [
     "dep:tikv-jemallocator",
@@ -222,9 +221,6 @@ jemalloc-prof = [
 # Local embeddings and PDF extraction live in jcode-base / jcode-app-core;
 # these features just forward down the stack.
 embeddings = ["jcode-tui/embeddings"]
-# Live AWS Bedrock support (the AWS SDK stack) lives in jcode-provider-bedrock;
-# forwards down through jcode-tui -> jcode-app-core -> jcode-base.
-bedrock = ["jcode-tui/bedrock"]
 # Internal release feature: build a supported OpenSSL inside the CentOS 7
 # compatibility image while preserving the glibc 2.17 runtime baseline.
 linux-compat-vendored-openssl = ["jcode-tui/linux-compat-vendored-openssl"]
@@ -243,7 +239,6 @@ jcode-harness-api-server = { path = "crates/jcode-harness-api-server" }
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-global-hotkey = "0.7"
 objc2 = "0.6"
 block2 = "0.6"
 objc2-foundation = { version = "0.3", features = [

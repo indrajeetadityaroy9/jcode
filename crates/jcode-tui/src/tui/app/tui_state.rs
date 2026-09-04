@@ -35,7 +35,7 @@ impl WidgetProviderKind {
             Some(provider)
                 if matches!(
                     provider.as_str(),
-                    "bedrock" | "aws-bedrock" | "azure-openai"
+                    "azure-openai"
                 ) || crate::provider_catalog::openai_compatible_profile_by_id(&provider)
                     .is_some_and(|profile| profile.requires_api_key) =>
             {
@@ -840,14 +840,6 @@ impl crate::tui::TuiState for App {
 
     fn is_remote_mode(&self) -> bool {
         self.is_remote
-    }
-
-    fn is_canary(&self) -> bool {
-        if self.is_remote {
-            self.remote_is_canary.unwrap_or(self.session.is_canary)
-        } else {
-            self.session.is_canary
-        }
     }
 
     fn is_replay(&self) -> bool {

@@ -629,7 +629,6 @@ fn build_persistent_header_with_auth(
     let mut lines: Vec<Line> = Vec::new();
     let w = width as usize;
 
-    let is_canary = app.is_canary();
     let is_remote = app.is_remote_mode();
     let server_update = app.server_update_available() == Some(true);
     let client_update = app.client_update_available();
@@ -679,19 +678,13 @@ fn build_persistent_header_with_auth(
         .as_deref()
         .map(|version| header_version_label(version, include_hash));
 
-    // First line: `jcode` (+ `self-dev` when running a dev/canary build),
-    // followed by any remaining status badges rendered dimly.
+    // First line: `jcode`, followed by any remaining status badges rendered
+    // dimly.
     {
         let mut spans = vec![Span::styled(
             "jcode".to_string(),
             Style::default().fg(header_name_color()).bold(),
         )];
-        if is_canary {
-            spans.push(Span::styled(
-                " self-dev".to_string(),
-                Style::default().fg(dim_color()),
-            ));
-        }
         if !status_items.is_empty() {
             spans.push(Span::styled(
                 format!(" · {}", status_items.join(" · ")),

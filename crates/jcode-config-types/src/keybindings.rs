@@ -323,9 +323,8 @@ pub const KEYBINDING_DEFAULTS: &[KeybindingDefault] = &[
     KeybindingDefault {
         id: "new_terminal",
         description: "Spawn a fresh jcode session in a new terminal window",
-        // Companion to the system-wide launch hotkey (Cmd+; / Alt+;): the
-        // shifted variant spawns a new session from inside jcode, reusing the
-        // current session's working directory. Note: many macOS terminals
+        // Spawns a new session from inside jcode, reusing the current
+        // session's working directory. Note: many macOS terminals
         // intercept Cmd combos, so this only fires when the terminal forwards
         // the key to the TUI.
         macos: PlatformDefault::dev("cmd+shift+;"),

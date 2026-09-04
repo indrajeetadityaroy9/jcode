@@ -60,8 +60,7 @@ SERVER COMMANDS (server: prefix or no prefix):
   swarm:help               - Full swarm command reference
   create_session                - Create headless session
   create_session:<path>         - Create session with working dir
-  create_session:selfdev:<path> - Create headless self-dev session
-  destroy_session:<id>     - Destroy a session
+    destroy_session:<id>     - Destroy a session
   set_model:<model>        - Switch model (may change provider)
   set_provider:<name>      - Switch provider (claude/openai/openrouter/cursor/copilot/gemini/antigravity)
   trigger_extraction       - Force end-of-session memory extraction

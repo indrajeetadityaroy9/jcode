@@ -184,7 +184,7 @@ pub fn durable_state_dir() -> PathBuf {
 ///
 /// Default location is the platform config dir + `jcode` (for example
 /// `~/.config/jcode` on Linux). When `JCODE_HOME` is set, sandbox this under
-/// `$JCODE_HOME/config/jcode` so self-dev/tests do not leak into the user's
+/// `$JCODE_HOME/config/jcode` so sandboxes/tests do not leak into the user's
 /// real config directory.
 pub fn app_config_dir() -> Result<PathBuf> {
     if let Ok(path) = std::env::var("JCODE_HOME") {
@@ -558,7 +558,7 @@ fn write_bytes_inner(path: &Path, bytes: &[u8], durable: bool, secret: bool) -> 
             // the new content, never ENOENT. (The old rename-away approach
             // opened a window where the primary did not exist, which made
             // concurrent load-all style readers silently drop entries, e.g.
-            // self-dev build requests "disappearing" from the queue.)
+            // build requests "disappearing" from the queue.)
             #[cfg(unix)]
             {
                 let _ = std::fs::remove_file(&bak_path);

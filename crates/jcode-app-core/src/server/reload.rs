@@ -80,8 +80,8 @@ pub(super) async fn await_reload_signal(
         };
 
         crate::logging::info(&format!(
-            "Server: reload signal received via channel request={} hash={} triggering_session={:?} prefer_selfdev_binary={}",
-            signal.request_id, signal.hash, signal.triggering_session, signal.prefer_selfdev_binary
+            "Server: reload signal received via channel request={} hash={} triggering_session={:?}",
+            signal.request_id, signal.hash, signal.triggering_session
         ));
         super::reload_trace::record_value(
             &signal.request_id,
@@ -89,7 +89,6 @@ pub(super) async fn await_reload_signal(
             serde_json::json!({
                 "hash": signal.hash,
                 "triggering_session": signal.triggering_session,
-                "prefer_selfdev_binary": signal.prefer_selfdev_binary,
             }),
         );
         let reload_started = std::time::Instant::now();
@@ -150,7 +149,7 @@ pub(super) async fn await_reload_signal(
             }),
         );
 
-        // Finalize in-process background tasks (selfdev builds/tests, bash
+        // Finalize in-process background tasks (builds/tests, bash
         // tasks, run_plan drivers) before exec replaces this process image.
         // exec runs no destructors, so without this the task futures vanish:
         // kill_on_drop build children leak, and their status files read
@@ -172,9 +171,7 @@ pub(super) async fn await_reload_signal(
             serde_json::json!({ "count": aborted }),
         );
 
-        let prefers_selfdev = signal.prefer_selfdev_binary;
-
-        if let Some((binary, label)) = super::reload_exec_target(prefers_selfdev) {
+        if let Some((binary, label)) = super::reload_exec_target() {
             if binary.exists() {
                 let socket = super::socket_path();
                 crate::logging::info(&format!(

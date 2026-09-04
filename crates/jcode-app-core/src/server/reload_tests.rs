@@ -51,7 +51,6 @@ async fn receive_reload_signal_consumes_already_pending_value() {
     tx.send(Some(ReloadSignal {
         hash: "abc1234".to_string(),
         triggering_session: Some("sess-1".to_string()),
-        prefer_selfdev_binary: true,
         request_id: "reload-1".to_string(),
     }))
     .expect("send pending reload signal");
@@ -66,7 +65,6 @@ async fn receive_reload_signal_consumes_already_pending_value() {
 
     assert_eq!(signal.hash, "abc1234");
     assert_eq!(signal.triggering_session.as_deref(), Some("sess-1"));
-    assert!(signal.prefer_selfdev_binary);
     assert_eq!(signal.request_id, "reload-1");
 }
 
@@ -80,7 +78,6 @@ async fn receive_reload_signal_waits_for_future_value_when_initially_empty() {
     tx.send(Some(ReloadSignal {
         hash: "def5678".to_string(),
         triggering_session: Some("sess-2".to_string()),
-        prefer_selfdev_binary: false,
         request_id: "reload-2".to_string(),
     }))
     .expect("send future reload signal");
@@ -93,7 +90,6 @@ async fn receive_reload_signal_waits_for_future_value_when_initially_empty() {
 
     assert_eq!(signal.hash, "def5678");
     assert_eq!(signal.triggering_session.as_deref(), Some("sess-2"));
-    assert!(!signal.prefer_selfdev_binary);
     assert_eq!(signal.request_id, "reload-2");
 }
 
@@ -138,7 +134,7 @@ fn persist_reload_recovery_intents_records_running_peer_recovery() -> anyhow::Re
         crate::server::reload_recovery::pending_directive_for_session("initiator")
             .expect("claim initiator recovery")
             .is_none(),
-        "initiator without selfdev reload context should not get a generic interrupted-peer intent"
+        "initiator without reload context should not get a generic interrupted-peer intent"
     );
 
     if let Some(prev_home) = prev_home {
@@ -212,7 +208,7 @@ async fn graceful_shutdown_sessions_signals_all_running_sessions_including_initi
 
     assert!(
         initiator_signal.is_set(),
-        "initiating selfdev session should also be interrupted so reload tool cannot hang"
+        "initiating session should also be interrupted so the reload cannot hang"
     );
     assert!(
         peer_signal.is_set(),

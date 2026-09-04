@@ -105,12 +105,9 @@ impl Config {
 
 **Ambient:**
 - Enabled: {}
-- Provider: {}
 - Model: {}
 - Interval: {}-{} minutes
 - Pause on active session: {}
-- Proactive work: {}
-- Work branch prefix: `{}`
 - Visible mode: {}
 
 **Notifications:**
@@ -298,7 +295,6 @@ impl Config {
                 .as_deref()
                 .unwrap_or("(provider default)"),
             self.ambient.enabled,
-            self.ambient.provider.as_deref().unwrap_or("(auto)"),
             self.ambient
                 .model
                 .as_deref()
@@ -306,8 +302,6 @@ impl Config {
             self.ambient.min_interval_minutes,
             self.ambient.max_interval_minutes,
             self.ambient.pause_on_active_session,
-            self.ambient.proactive_work,
-            self.ambient.work_branch_prefix,
             self.ambient.visible,
             self.safety
                 .ntfy_topic

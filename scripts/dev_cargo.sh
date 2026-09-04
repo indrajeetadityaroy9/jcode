@@ -311,7 +311,7 @@ feature_args_from_profile() {
       printf '%s\0' --no-default-features --features embeddings
       ;;
     full)
-      printf '%s\0' --features embeddings,pdf,bedrock
+      printf '%s\0' --features embeddings,pdf
       ;;
     *)
       return 1
@@ -440,7 +440,7 @@ cpu_count() {
 }
 
 # Choose a Cargo job count from *currently available* memory so concurrent
-# builds (e.g. several self-dev agents on one machine) self-throttle instead of
+# builds (e.g. several agents on one machine) self-throttle instead of
 # all assuming the full core count and tripping earlyoom/OOM.
 #
 # After the monolith was split into the jcode-base/app-core/tui/cli crate DAG,
@@ -511,7 +511,7 @@ select_build_jobs() {
 # `git status`, commit, and concurrent-agent git op -- which would force a
 # full-tree recompile (base -> app-core -> tui -> cli) on every incremental
 # build. The trade-off was that after a commit the binary kept embedding the
-# previous short hash, so the self-dev publish guard rejected it with
+# previous short hash, so the publish guard rejected it with
 # "binary was built from git hash X, but source state is Y" until someone
 # manually touched Cargo.toml.
 #

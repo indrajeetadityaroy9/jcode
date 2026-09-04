@@ -84,13 +84,9 @@ fn render_cold_cache_warning_is_always_one_width_bounded_line() {
 }
 
 #[test]
-fn render_compact_launch_and_divergence_notices_as_one_line() {
+fn render_compact_divergence_notice_as_one_line() {
     let saved = crate::tui::markdown::center_code_blocks();
     let notices = [
-        DisplayMessage::system(
-            "Configured Jcode launch hotkeys (niri):\nSuper+; → jcode (/home/user/project)\n\nBound system-wide.",
-        )
-        .with_title("Launch hotkeys"),
         DisplayMessage::system(
             "Update diverged. Press Ctrl+Y to let a jcode agent merge local and upstream (or run `git pull` / `git rebase` yourself).",
         )

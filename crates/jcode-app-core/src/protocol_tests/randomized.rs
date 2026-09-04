@@ -52,7 +52,6 @@ fn test_protocol_request_roundtrip_randomized_samples() -> Result<()> {
         let working_dir = rng
             .random_bool(0.5)
             .then(|| format!("/tmp/{}", sample_ascii(&mut rng, 12)));
-        let selfdev = rng.random_bool(0.5).then(|| rng.random_bool(0.5));
         let target_session_id = rng.random_bool(0.5).then(|| format!("sess_{}", id));
         let client_instance_id = rng.random_bool(0.5).then(|| format!("client-{}", id));
         let client_has_local_history = rng.random_bool(0.5);
@@ -60,7 +59,6 @@ fn test_protocol_request_roundtrip_randomized_samples() -> Result<()> {
         let req = Request::Subscribe {
             id,
             working_dir: working_dir.clone(),
-            selfdev,
             target_session_id: target_session_id.clone(),
             client_instance_id: client_instance_id.clone(),
             client_has_local_history,
@@ -71,7 +69,6 @@ fn test_protocol_request_roundtrip_randomized_samples() -> Result<()> {
         let Request::Subscribe {
             id: decoded_id,
             working_dir: decoded_working_dir,
-            selfdev: decoded_selfdev,
             target_session_id: decoded_target_session_id,
             client_instance_id: decoded_client_instance_id,
             client_has_local_history: decoded_client_has_local_history,
@@ -83,7 +80,6 @@ fn test_protocol_request_roundtrip_randomized_samples() -> Result<()> {
         };
         assert_eq!(decoded_id, id);
         assert_eq!(decoded_working_dir, working_dir);
-        assert_eq!(decoded_selfdev, selfdev);
         assert_eq!(decoded_target_session_id, target_session_id);
         assert_eq!(decoded_client_instance_id, client_instance_id);
         assert_eq!(decoded_client_has_local_history, client_has_local_history);

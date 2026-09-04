@@ -797,7 +797,6 @@ fn subscribe_request(working_dir: Option<&str>) -> Request {
     Request::Subscribe {
         id: 1,
         working_dir: working_dir.map(str::to_string),
-        selfdev: None,
         target_session_id: None,
         client_instance_id: None,
         client_has_local_history: false,

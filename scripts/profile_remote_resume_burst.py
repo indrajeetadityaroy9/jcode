@@ -165,7 +165,6 @@ def start_resume_client(binary: str, env: dict[str, str], session_id: str) -> Li
         [
             binary,
             "--no-update",
-            "--no-selfdev",
             "--socket",
             env["JCODE_SOCKET"],
             "--fresh-spawn",

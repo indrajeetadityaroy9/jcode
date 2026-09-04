@@ -29,7 +29,9 @@ fn test_scheduled_queue_push_and_pop() {
         scheduled_for: past,
         context: "past item".into(),
         priority: Priority::Low,
-        target: ScheduleTarget::Ambient,
+        target: ScheduleTarget::Session {
+            session_id: "sess".into(),
+        },
         created_by_session: "test".into(),
         created_at: Utc::now(),
         working_dir: None,
@@ -44,7 +46,9 @@ fn test_scheduled_queue_push_and_pop() {
         scheduled_for: future,
         context: "future item".into(),
         priority: Priority::High,
-        target: ScheduleTarget::Ambient,
+        target: ScheduleTarget::Session {
+            session_id: "sess".into(),
+        },
         created_by_session: "test".into(),
         created_at: Utc::now(),
         working_dir: None,
@@ -56,7 +60,7 @@ fn test_scheduled_queue_push_and_pop() {
 
     assert_eq!(queue.len(), 2);
 
-    let ready = queue.pop_ready();
+    let ready = queue.take_ready_direct_items();
     assert_eq!(ready.len(), 1);
     assert_eq!(ready[0].id, "s1");
 
@@ -112,7 +116,7 @@ fn test_scheduled_queue_remove_by_id_persists_remaining_items() {
 }
 
 #[test]
-fn test_pop_ready_sorts_by_priority_then_time() {
+fn take_ready_direct_items_sorts_by_priority_then_time() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     let path = tmp.path().to_path_buf();
 
@@ -125,7 +129,9 @@ fn test_pop_ready_sorts_by_priority_then_time() {
         scheduled_for: past1,
         context: "low early".into(),
         priority: Priority::Low,
-        target: ScheduleTarget::Ambient,
+        target: ScheduleTarget::Session {
+            session_id: "sess".into(),
+        },
         created_by_session: "test".into(),
         created_at: Utc::now(),
         working_dir: None,
@@ -140,7 +146,9 @@ fn test_pop_ready_sorts_by_priority_then_time() {
         scheduled_for: past2,
         context: "high late".into(),
         priority: Priority::High,
-        target: ScheduleTarget::Ambient,
+        target: ScheduleTarget::Session {
+            session_id: "sess".into(),
+        },
         created_by_session: "test".into(),
         created_at: Utc::now(),
         working_dir: None,
@@ -150,7 +158,7 @@ fn test_pop_ready_sorts_by_priority_then_time() {
         additional_context: None,
     });
 
-    let ready = queue.pop_ready();
+    let ready = queue.take_ready_direct_items();
     assert_eq!(ready.len(), 2);
     // High priority should come first
     assert_eq!(ready[0].id, "high_late");

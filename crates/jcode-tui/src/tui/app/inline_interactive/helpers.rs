@@ -131,7 +131,6 @@ pub(super) fn picker_route_model_spec(entry: &PickerEntry, route: &PickerOption)
             format!("claude-api:{}", bare_name)
         }
         crate::provider::ModelRouteApiMethod::Cursor => format!("cursor:{}", bare_name),
-        crate::provider::ModelRouteApiMethod::Bedrock => format!("bedrock:{}", bare_name),
         crate::provider::ModelRouteApiMethod::OpenAIApiKey => format!("openai-api:{}", bare_name),
         crate::provider::ModelRouteApiMethod::OpenAIOAuth => {
             format!("openai-oauth:{}", bare_name)

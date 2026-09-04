@@ -129,7 +129,7 @@ enum SidecarBackend {
     /// Dispatch through the live agent provider (`crate::provider::active_provider_fork`).
     /// Used when neither OpenAI nor Claude OAuth credentials are present but the
     /// user is running on another provider (Copilot, Antigravity, Gemini,
-    /// Cursor, Bedrock, OpenRouter). This is what makes the memory sidecar work
+    /// Cursor, OpenRouter). This is what makes the memory sidecar work
     /// on ALL providers instead of only the two with dedicated HTTP clients.
     Provider,
 }
@@ -188,7 +188,7 @@ impl Sidecar {
     /// 1. OpenAI GPT-5.6 Luna at reasoning=none if Codex creds exist.
     /// 2. Claude haiku (dedicated fast/cheap OAuth path) if Claude creds exist.
     /// 3. The live agent provider (works for EVERY provider jcode supports:
-    ///    Copilot, Antigravity, Gemini, Cursor, Bedrock, OpenRouter, and even
+    ///    Copilot, Antigravity, Gemini, Cursor, OpenRouter, and even
     ///    OpenAI/Claude API-key setups), dispatched via `complete_simple`.
     ///
     /// Only when no provider is registered at all do we fall back to Claude,
@@ -1356,7 +1356,6 @@ mod tests {
             "antigravity",
             "gemini",
             "cursor",
-            "bedrock",
             "openrouter",
         ] {
             crate::provider::set_active_provider(std::sync::Arc::new(StubProvider {

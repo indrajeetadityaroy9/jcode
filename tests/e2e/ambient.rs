@@ -50,7 +50,9 @@ fn test_ambient_scheduled_queue() {
         scheduled_for: now - chrono::Duration::minutes(5),
         context: "low priority task".to_string(),
         priority: Priority::Low,
-        target: jcode::ambient::ScheduleTarget::Ambient,
+        target: jcode::ambient::ScheduleTarget::Session {
+            session_id: "sess".into(),
+        },
         created_by_session: "test".to_string(),
         created_at: now,
         working_dir: None,
@@ -65,7 +67,9 @@ fn test_ambient_scheduled_queue() {
         scheduled_for: now - chrono::Duration::minutes(5),
         context: "high priority task".to_string(),
         priority: Priority::High,
-        target: jcode::ambient::ScheduleTarget::Ambient,
+        target: jcode::ambient::ScheduleTarget::Session {
+            session_id: "sess".into(),
+        },
         created_by_session: "test".to_string(),
         created_at: now,
         working_dir: None,
@@ -80,7 +84,9 @@ fn test_ambient_scheduled_queue() {
         scheduled_for: now + chrono::Duration::hours(1),
         context: "future task".to_string(),
         priority: Priority::Normal,
-        target: jcode::ambient::ScheduleTarget::Ambient,
+        target: jcode::ambient::ScheduleTarget::Session {
+            session_id: "sess".into(),
+        },
         created_by_session: "test".to_string(),
         created_at: now,
         working_dir: None,
@@ -93,7 +99,7 @@ fn test_ambient_scheduled_queue() {
     assert_eq!(queue.len(), 3);
 
     // Pop ready items: should get high priority first, then low (future not ready)
-    let ready = queue.pop_ready();
+    let ready = queue.take_ready_direct_items();
     assert_eq!(ready.len(), 2);
     assert_eq!(ready[0].id, "high_1"); // High priority first
     assert_eq!(ready[1].id, "low_1"); // Low priority second
@@ -221,56 +227,6 @@ async fn test_ambient_end_cycle_tool() -> Result<()> {
     );
     assert_eq!(result.memories_modified, 3);
     assert_eq!(result.compactions, 0);
-
-    Ok(())
-}
-
-/// Test ambient tools: request_permission via mock agent
-#[tokio::test]
-async fn test_ambient_request_permission_tool() -> Result<()> {
-    let _env = setup_test_env()?;
-    let provider = MockProvider::new();
-
-    let tool_input = serde_json::json!({
-        "action": "create_pull_request",
-        "description": "Create PR for test fixes",
-        "rationale": "Found 3 failing tests in auth module",
-        "urgency": "high",
-        "wait": false
-    })
-    .to_string();
-
-    provider.queue_response(vec![
-        StreamEvent::ToolUseStart {
-            id: "tool_perm_001".to_string(),
-            name: "request_permission".to_string(),
-        },
-        StreamEvent::ToolInputDelta(tool_input),
-        StreamEvent::ToolUseEnd,
-        StreamEvent::MessageEnd {
-            stop_reason: Some("tool_use".to_string()),
-        },
-    ]);
-
-    // After tool execution, mock a final response
-    provider.queue_response(vec![
-        StreamEvent::TextDelta("Permission requested.".to_string()),
-        StreamEvent::MessageEnd {
-            stop_reason: Some("end_turn".to_string()),
-        },
-    ]);
-
-    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
-    let registry = Registry::new(provider.clone()).await;
-    registry.register_ambient_tools().await;
-
-    let mut agent = Agent::new(provider, registry);
-    let ambient_session_id = agent.session_id().to_string();
-    jcode::tool::ambient::register_ambient_session(ambient_session_id.clone());
-
-    let response = agent.run_once_capture("Request permission").await?;
-    jcode::tool::ambient::unregister_ambient_session(&ambient_session_id);
-    assert_eq!(response, "Permission requested.");
 
     Ok(())
 }
@@ -504,15 +460,11 @@ fn test_ambient_config_defaults() {
 
     let config = AmbientConfig::default();
     assert!(!config.enabled);
-    assert!(!config.allow_api_keys);
     assert_eq!(config.min_interval_minutes, 5);
     assert_eq!(config.max_interval_minutes, 120);
     assert!(config.pause_on_active_session);
-    assert!(config.proactive_work);
-    assert_eq!(config.work_branch_prefix, "ambient/");
-    assert!(config.provider.is_none());
+    assert!(config.visible);
     assert!(config.model.is_none());
-    assert!(config.api_daily_budget.is_none());
 }
 
 /// Test ambient lock acquisition and release

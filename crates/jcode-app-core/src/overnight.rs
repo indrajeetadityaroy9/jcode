@@ -1,8 +1,6 @@
-use crate::agent::Agent;
 use crate::provider::Provider;
-use crate::session::{Session, SessionStatus};
+use crate::session::Session;
 use crate::storage;
-use crate::tool::Registry;
 use anyhow::{Context, Result};
 use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::{Value, json};
@@ -11,25 +9,19 @@ use std::ffi::CString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Duration;
 
 pub use jcode_overnight_core::{
     GitSnapshot, OVERNIGHT_VERSION, OvernightCommand, OvernightDuration, OvernightEvent,
     OvernightManifest, OvernightPreflight, OvernightProgressCard, OvernightRunStatus,
     OvernightTaskCard, OvernightTaskCardAfter, OvernightTaskCardBefore, OvernightTaskCardSummary,
     OvernightTaskCardValidation, OvernightTaskStatusCounts, ResourceSnapshot, UsageLimitSnapshot,
-    UsageProjection, UsageProviderSnapshot, build_continuation_prompt, build_coordinator_prompt,
-    build_final_wrapup_prompt, build_handoff_ready_prompt, build_morning_report_prompt,
-    build_post_wake_continuation_prompt, build_progress_card_from_parts, build_review_html,
+    UsageProjection, UsageProviderSnapshot, build_progress_card_from_parts, build_review_html,
     build_visible_current_session_prompt, event_class, format_log_markdown_from_events,
     format_minutes, format_status_markdown_from_summary, git_summary, html_escape, overnight_usage,
     parse_duration, parse_overnight_command, preflight_summary, prompt_event_summary,
     render_task_cards_html, resource_summary, summarize_task_cards_slice, task_card_title,
     task_card_validated, task_status_bucket,
 };
-
-const RESOURCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(5 * 60);
-const LONG_TURN_NOTICE_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
 #[derive(Debug, Clone)]
 pub struct OvernightLaunch {
@@ -45,11 +37,7 @@ pub struct OvernightStartOptions {
     pub mission: Option<String>,
     pub parent_session: Session,
     pub provider: Arc<dyn Provider>,
-    pub registry: Registry,
     pub working_dir: Option<PathBuf>,
-    /// When true, run the overnight coordinator in the session that launched
-    /// `/overnight` instead of forking an invisible child transcript.
-    pub use_current_session: bool,
 }
 
 pub fn start_overnight_run(options: OvernightStartOptions) -> Result<OvernightLaunch> {
@@ -72,28 +60,17 @@ pub fn start_overnight_run(options: OvernightStartOptions) -> Result<OvernightLa
     std::fs::create_dir_all(&issue_drafts_dir)?;
     std::fs::create_dir_all(&validation_dir)?;
 
-    let mut child = if options.use_current_session {
-        options.parent_session.clone()
-    } else {
-        create_coordinator_session(&options.parent_session, &options.mission)?
-    };
+    // The overnight coordinator always runs in the session that launched
+    // `/overnight`; the run is driven by the client's auto-poke state machine
+    // (`jcode-tui/src/tui/app/commands_overnight.rs`).
+    let mut child = options.parent_session.clone();
     if let Some(working_dir) = options.working_dir.as_ref() {
         child.working_dir = Some(working_dir.to_string_lossy().to_string());
     }
     child.model = Some(options.provider.model());
     let coordinator_session_id = child.id.clone();
     let coordinator_session_name = child.display_name().to_string();
-    let child_is_canary = child.is_canary;
-    if !options.use_current_session {
-        child.status = SessionStatus::Closed;
-    }
     child.save()?;
-
-    if !options.use_current_session
-        && let Ok(todos) = crate::todo::load_todos(&options.parent_session.id)
-    {
-        let _ = crate::todo::save_todos(&coordinator_session_id, &todos);
-    }
 
     let manifest = OvernightManifest {
         version: OVERNIGHT_VERSION,
@@ -148,383 +125,12 @@ pub fn start_overnight_run(options: OvernightStartOptions) -> Result<OvernightLa
     )?;
     render_review_html(&manifest)?;
 
-    let initial_prompt = if options.use_current_session {
-        Some(build_visible_current_session_prompt(&manifest))
-    } else {
-        spawn_supervisor(
-            manifest.clone(),
-            child,
-            options.provider,
-            options.registry,
-            child_is_canary,
-        );
-        None
-    };
+    let initial_prompt = Some(build_visible_current_session_prompt(&manifest));
 
     Ok(OvernightLaunch {
         manifest,
         initial_prompt,
     })
-}
-
-fn create_coordinator_session(parent: &Session, mission: &Option<String>) -> Result<Session> {
-    let title = Some(match mission {
-        Some(mission) => format!("Overnight: {}", crate::util::truncate_str(mission, 48)),
-        None => "Overnight coordinator".to_string(),
-    });
-    let mut child = Session::create(Some(parent.id.clone()), title);
-    child.replace_messages(parent.messages.clone());
-    child.compaction = parent.compaction.clone();
-    child.provider_key = parent.provider_key.clone();
-    child.route_api_method = parent.route_api_method.clone();
-    child.reasoning_effort = parent.reasoning_effort.clone();
-    child.subagent_model = parent.subagent_model.clone();
-    child.improve_mode = parent.improve_mode;
-    child.autoreview_enabled = Some(false);
-    child.autojudge_enabled = Some(false);
-    child.is_canary = parent.is_canary;
-    child.testing_build = parent.testing_build.clone();
-    child.working_dir = parent.working_dir.clone();
-    child.provider_session_id = None;
-    Ok(child)
-}
-
-fn spawn_supervisor(
-    manifest: OvernightManifest,
-    child: Session,
-    provider: Arc<dyn Provider>,
-    registry: Registry,
-    child_is_canary: bool,
-) {
-    let fut = async move {
-        if let Err(err) =
-            run_supervisor(manifest.clone(), child, provider, registry, child_is_canary).await
-        {
-            let mut updated = load_manifest(&manifest.run_id).unwrap_or(manifest.clone());
-            updated.status = OvernightRunStatus::Failed;
-            updated.completed_at = Some(Utc::now());
-            let _ = save_manifest(&updated);
-            let _ = record_event(
-                &updated,
-                "run_failed",
-                format!("Overnight supervisor failed: {}", err),
-                json!({ "error": crate::util::format_error_chain(&err) }),
-                true,
-            );
-            let _ = render_review_html(&updated);
-        }
-    };
-
-    if tokio::runtime::Handle::try_current().is_ok() {
-        tokio::spawn(fut);
-    } else {
-        std::thread::spawn(move || match tokio::runtime::Runtime::new() {
-            Ok(runtime) => runtime.block_on(fut),
-            Err(err) => crate::logging::error(&format!(
-                "Failed to start overnight supervisor runtime: {}",
-                err
-            )),
-        });
-    }
-}
-
-async fn run_supervisor(
-    manifest: OvernightManifest,
-    child: Session,
-    provider: Arc<dyn Provider>,
-    registry: Registry,
-    child_is_canary: bool,
-) -> Result<()> {
-    record_event(
-        &manifest,
-        "preflight_started",
-        "Collecting overnight usage/resource/git preflight".to_string(),
-        json!({}),
-        true,
-    )?;
-    let preflight = gather_preflight(&manifest).await;
-    storage::write_json(&manifest.preflight_path, &preflight)?;
-    record_event(
-        &manifest,
-        "preflight_completed",
-        preflight_summary(&preflight),
-        serde_json::to_value(&preflight).unwrap_or_else(|_| json!({})),
-        true,
-    )?;
-    render_review_html(&manifest)?;
-
-    if child_is_canary {
-        registry.register_dev_tools().await;
-    }
-
-    let mut agent = Agent::new_with_session(provider, registry, child, None);
-    let mut next_prompt = build_coordinator_prompt(&manifest, &preflight);
-    let mut handoff_notice_sent = false;
-    let mut morning_report_prompt_sent = false;
-    let mut final_wrapup_prompt_sent = false;
-
-    loop {
-        let current = load_manifest(&manifest.run_id)?;
-        if matches!(current.status, OvernightRunStatus::CancelRequested) {
-            record_event(
-                &current,
-                "run_cancel_acknowledged",
-                "Cancellation requested; stopping before next coordinator turn".to_string(),
-                json!({}),
-                true,
-            )?;
-            mark_completed(
-                &current,
-                OvernightRunStatus::Completed,
-                "Cancelled before next turn",
-            )?;
-            break;
-        }
-
-        let now = Utc::now();
-        if !handoff_notice_sent && now >= current.handoff_ready_at && now < current.target_wake_at {
-            record_event(
-                &current,
-                "handoff_ready_notice",
-                "Entering handoff-ready mode".to_string(),
-                json!({ "target_wake_at": current.target_wake_at }),
-                true,
-            )?;
-            next_prompt = build_handoff_ready_prompt(&current);
-            handoff_notice_sent = true;
-        }
-
-        record_event(
-            &current,
-            "coordinator_turn_started",
-            prompt_event_summary(&next_prompt),
-            json!({ "prompt_preview": crate::util::truncate_str(&next_prompt, 600) }),
-            true,
-        )?;
-        render_review_html(&current)?;
-
-        let output = run_turn_monitored(&mut agent, &current, &next_prompt).await?;
-        let after_turn = load_manifest(&manifest.run_id)?;
-        record_event(
-            &after_turn,
-            "coordinator_turn_completed",
-            "Coordinator turn completed".to_string(),
-            json!({ "output_preview": crate::util::truncate_str(&output, 4000) }),
-            true,
-        )?;
-        render_review_html(&after_turn)?;
-
-        let after_turn = load_manifest(&manifest.run_id)?;
-        if matches!(after_turn.status, OvernightRunStatus::CancelRequested) {
-            mark_completed(
-                &after_turn,
-                OvernightRunStatus::Completed,
-                "Cancelled after coordinator turn",
-            )?;
-            break;
-        }
-
-        let now = Utc::now();
-        if now >= after_turn.target_wake_at {
-            if !morning_report_prompt_sent && after_turn.morning_report_posted_at.is_none() {
-                let mut updated = after_turn.clone();
-                updated.morning_report_posted_at = Some(now);
-                save_manifest(&updated)?;
-                record_event(
-                    &updated,
-                    "morning_report_requested",
-                    "Target wake time reached; requesting morning report".to_string(),
-                    json!({ "target_wake_at": updated.target_wake_at }),
-                    true,
-                )?;
-                next_prompt = build_morning_report_prompt(&updated);
-                morning_report_prompt_sent = true;
-                continue;
-            }
-
-            if now < after_turn.post_wake_grace_until {
-                record_event(
-                    &after_turn,
-                    "post_wake_continuation",
-                    "Morning report is posted; allowing bounded post-wake continuation".to_string(),
-                    json!({ "post_wake_grace_until": after_turn.post_wake_grace_until }),
-                    true,
-                )?;
-                next_prompt = build_post_wake_continuation_prompt(&after_turn);
-                continue;
-            }
-
-            if !final_wrapup_prompt_sent {
-                record_event(
-                    &after_turn,
-                    "post_wake_grace_expired",
-                    "Post-wake grace window expired; requesting final wrap-up".to_string(),
-                    json!({ "post_wake_grace_until": after_turn.post_wake_grace_until }),
-                    true,
-                )?;
-                next_prompt = build_final_wrapup_prompt(&after_turn);
-                final_wrapup_prompt_sent = true;
-                continue;
-            }
-
-            mark_completed(
-                &after_turn,
-                OvernightRunStatus::Completed,
-                "Morning report turn completed",
-            )?;
-            break;
-        }
-
-        next_prompt = build_continuation_prompt(&after_turn);
-    }
-
-    Ok(())
-}
-
-async fn run_turn_monitored(
-    agent: &mut Agent,
-    manifest: &OvernightManifest,
-    prompt: &str,
-) -> Result<String> {
-    let started = Utc::now();
-    let mut sample_interval = tokio::time::interval_at(
-        tokio::time::Instant::now() + RESOURCE_SAMPLE_INTERVAL,
-        RESOURCE_SAMPLE_INTERVAL,
-    );
-    sample_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut long_notice_interval = tokio::time::interval_at(
-        tokio::time::Instant::now() + LONG_TURN_NOTICE_INTERVAL,
-        LONG_TURN_NOTICE_INTERVAL,
-    );
-    long_notice_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-    let run_future = agent.run_once_capture(prompt);
-    tokio::pin!(run_future);
-
-    loop {
-        tokio::select! {
-            result = &mut run_future => return result,
-            _ = sample_interval.tick() => {
-                let snapshot = gather_resource_snapshot(manifest.working_dir.as_deref().map(Path::new));
-                let _ = record_event(
-                    manifest,
-                    "resource_sample",
-                    resource_summary(&snapshot),
-                    serde_json::to_value(&snapshot).unwrap_or_else(|_| json!({})),
-                    false,
-                );
-                let _ = render_review_html(manifest);
-            }
-            _ = long_notice_interval.tick() => {
-                let elapsed = Utc::now().signed_duration_since(started).num_minutes().max(0);
-                let _ = record_event(
-                    manifest,
-                    "coordinator_turn_still_running",
-                    format!("Coordinator turn still running after {}m", elapsed),
-                    json!({ "elapsed_minutes": elapsed }),
-                    true,
-                );
-                let _ = render_review_html(manifest);
-            }
-        }
-    }
-}
-
-async fn gather_preflight(manifest: &OvernightManifest) -> OvernightPreflight {
-    let usage_reports = crate::usage::fetch_all_provider_usage().await;
-    let usage = build_usage_projection(&usage_reports, manifest);
-    let resources = gather_resource_snapshot(manifest.working_dir.as_deref().map(Path::new));
-    let git = gather_git_snapshot(manifest.working_dir.as_deref().map(Path::new));
-    OvernightPreflight {
-        captured_at: Utc::now(),
-        usage,
-        resources,
-        git,
-    }
-}
-
-fn build_usage_projection(
-    reports: &[crate::usage::ProviderUsage],
-    manifest: &OvernightManifest,
-) -> UsageProjection {
-    let providers: Vec<UsageProviderSnapshot> = reports
-        .iter()
-        .map(|provider| UsageProviderSnapshot {
-            provider_name: provider.provider_name.clone(),
-            hard_limit_reached: provider.hard_limit_reached,
-            error: provider.error.clone(),
-            limits: provider
-                .limits
-                .iter()
-                .map(|limit| UsageLimitSnapshot {
-                    name: limit.name.clone(),
-                    usage_percent: limit.usage_percent,
-                    resets_at: limit.resets_at.clone(),
-                })
-                .collect(),
-            extra_info: provider.extra_info.clone(),
-        })
-        .collect();
-
-    let max_usage = providers
-        .iter()
-        .flat_map(|provider| provider.limits.iter().map(|limit| limit.usage_percent))
-        .fold(None::<f32>, |acc, value| {
-            Some(acc.unwrap_or(value).max(value))
-        });
-    let hard_limit = providers.iter().any(|provider| provider.hard_limit_reached);
-    let has_errors = providers.iter().any(|provider| provider.error.is_some());
-    let hours = manifest
-        .target_wake_at
-        .signed_duration_since(manifest.started_at)
-        .num_minutes()
-        .max(1) as f32
-        / 60.0;
-    let delta_min = (hours * 3.0).min(35.0);
-    let delta_max = (hours * 7.0 * manifest.max_agents_guidance as f32 / 2.0).min(75.0);
-    let projected_end_min = max_usage.map(|current| (current + delta_min).min(100.0));
-    let projected_end_max = max_usage.map(|current| (current + delta_max).min(100.0));
-
-    let risk = if hard_limit || projected_end_max.is_some_and(|value| value >= 95.0) {
-        "high"
-    } else if projected_end_max.is_some_and(|value| value >= 80.0) || has_errors {
-        "medium"
-    } else if max_usage.is_some() {
-        "low"
-    } else {
-        "unknown"
-    }
-    .to_string();
-
-    let confidence = if max_usage.is_some() && !has_errors {
-        "medium"
-    } else {
-        "low"
-    }
-    .to_string();
-
-    let mut notes = Vec::new();
-    if providers.is_empty() {
-        notes.push(
-            "No connected-provider usage reports were available; projection is heuristic."
-                .to_string(),
-        );
-    } else {
-        notes.push("Projection uses provider usage percentages plus a conservative overnight burn-rate heuristic.".to_string());
-    }
-    notes.push("This is a warning only; the run starts regardless and should adapt concurrency conservatively.".to_string());
-
-    UsageProjection {
-        captured_at: Utc::now(),
-        risk,
-        confidence,
-        projected_delta_min_percent: max_usage.map(|_| delta_min),
-        projected_delta_max_percent: max_usage.map(|_| delta_max),
-        projected_end_min_percent: projected_end_min,
-        projected_end_max_percent: projected_end_max,
-        providers,
-        notes,
-    }
 }
 
 pub fn gather_resource_snapshot(working_dir: Option<&Path>) -> ResourceSnapshot {
@@ -922,27 +528,6 @@ pub fn record_event(
         let _ = save_manifest(&updated);
     }
 
-    Ok(())
-}
-
-fn mark_completed(
-    manifest: &OvernightManifest,
-    status: OvernightRunStatus,
-    summary: &str,
-) -> Result<()> {
-    let mut updated = load_manifest(&manifest.run_id).unwrap_or_else(|_| manifest.clone());
-    updated.status = status;
-    updated.completed_at = Some(Utc::now());
-    updated.last_activity_at = Utc::now();
-    save_manifest(&updated)?;
-    record_event(
-        &updated,
-        "run_completed",
-        summary.to_string(),
-        json!({ "status": updated.status.label() }),
-        true,
-    )?;
-    render_review_html(&updated)?;
     Ok(())
 }
 

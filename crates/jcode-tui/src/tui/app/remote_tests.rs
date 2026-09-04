@@ -238,10 +238,6 @@ fn auth_provider_hint_maps_direct_provider_logins_by_display_label() {
         auth_provider_hint_for_login_provider("OpenRouter"),
         Some("openrouter")
     );
-    assert_eq!(
-        auth_provider_hint_for_login_provider("AWS Bedrock"),
-        Some("bedrock")
-    );
 }
 
 #[test]
@@ -267,7 +263,6 @@ fn auth_provider_hint_resolves_every_emitted_login_completed_provider() {
         // API-key paste logins emit descriptor display labels.
         ("Anthropic API", Some("anthropic-api")),
         ("OpenAI API", Some("openai-api")),
-        ("AWS Bedrock", Some("bedrock")),
         ("OpenRouter", Some("openrouter")),
         // Azure keeps its dedicated runtime id mapping.
         ("Azure OpenAI", Some("azure-openai")),
@@ -381,7 +376,7 @@ fn auth_changed_event_for_cerebras_login_carries_runtime_and_catalog_identity() 
 fn reload_handoff_inactive_without_flag_or_marker() {
     // `reload_handoff_active` falls back to the on-disk reload marker in the
     // runtime dir. Point the runtime dir at an empty tempdir so a real
-    // `jcode.reload` left by a live self-dev reload on this machine cannot
+    // `jcode.reload` left by a live reload on this machine cannot
     // leak into the assertion.
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("create temp dir");

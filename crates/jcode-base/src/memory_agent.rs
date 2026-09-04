@@ -54,7 +54,7 @@ const MAX_MEMORIES_PER_TURN: usize = 5;
 /// of the previous kept score. The first big gap cuts the tail. This injects a
 /// VARIABLE count (1..=MAX_MEMORIES_PER_TURN) instead of a fixed 5.
 ///
-/// Bench (self-dev corpus, 150 query windows): precision@5 0.23 -> 0.36 (+56%),
+/// Bench (local repo corpus, 150 query windows): precision@5 0.23 -> 0.36 (+56%),
 /// avg injected 5.0 -> ~2.25/turn, at zero added cost. Note this cannot drop to
 /// 0 on no-memory turns (cosdiag proved no zero-cost score separates them); the
 /// only lever for true 0-injection is the LLM precision rerank (sidecar mode).

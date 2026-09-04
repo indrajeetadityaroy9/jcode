@@ -367,7 +367,6 @@ mod tests {
             "openrouter",
             "copilot",
             "gemini",
-            "bedrock",
             "jcode",
             "nonsense",
         ] {

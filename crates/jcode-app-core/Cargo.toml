@@ -107,14 +107,12 @@ tempfile = "3"
 agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.6" }
 
 [features]
-default = ["pdf", "embeddings", "bedrock"]
+default = ["pdf", "embeddings"]
 # jemalloc allocator stats live in jcode-base (process_memory); forward there.
 jemalloc = ["jcode-base/jemalloc"]
 jemalloc-prof = ["jcode-base/jemalloc-prof"]
 # local embeddings live in jcode-base (embedding); forward there.
 embeddings = ["jcode-base/embeddings"]
-# live AWS Bedrock support lives in jcode-base (provider/bedrock); forward there.
-bedrock = ["jcode-base/bedrock"]
 # Used only by the CentOS 7 portable Linux release build.
 linux-compat-vendored-openssl = ["jcode-notify-email/linux-compat-vendored-openssl"]
 # PDF text extraction lives in this crate (tool/read.rs).
@@ -138,7 +136,6 @@ jcode-base = { path = "../jcode-base", default-features = false, features = ["te
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-global-hotkey = "0.7"
 # Native desktop control for the `macos_computer_use` tool (synthetic mouse/keyboard
 # events, cursor positioning, display bounds). `highsierra` enables the
 # CGEventCreateScrollWheelEvent2 binding used for scroll.

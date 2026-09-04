@@ -22,21 +22,6 @@ fn test_provider_for_model_gemini() {
 }
 
 #[test]
-fn test_provider_for_model_bedrock() {
-    assert_eq!(provider_for_model("amazon.nova-pro-v1:0"), Some("bedrock"));
-    assert_eq!(
-        provider_for_model("us.amazon.nova-micro-v1:0"),
-        Some("bedrock")
-    );
-    assert_eq!(
-        provider_for_model(
-            "arn:aws:bedrock:us-east-2:302154194530:inference-profile/us.deepseek.r1-v1:0"
-        ),
-        Some("bedrock")
-    );
-}
-
-#[test]
 fn test_provider_for_model_openrouter() {
     // OpenRouter uses provider/model format
     assert_eq!(
@@ -68,12 +53,6 @@ fn test_openrouter_catalog_model_id_normalizes_bare_openai_and_claude_models() {
         openrouter_catalog_model_id("anthropic/claude-sonnet-4").as_deref(),
         Some("anthropic/claude-sonnet-4")
     );
-    assert_eq!(
-        openrouter_catalog_model_id(
-            "arn:aws:bedrock:us-east-2:302154194530:inference-profile/us.deepseek.r1-v1:0"
-        ),
-        None
-    );
     assert_eq!(openrouter_catalog_model_id("composer-2-fast"), None);
 }
 
@@ -91,7 +70,6 @@ fn test_available_models_display_uses_route_models_and_filters_placeholder_rows(
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -140,7 +118,6 @@ fn test_cerebras_model_routes_are_profile_scoped_and_unique() {
                 antigravity: RwLock::new(None),
                 gemini: RwLock::new(None),
                 cursor: RwLock::new(None),
-                bedrock: RwLock::new(None),
                 openrouter: RwLock::new(Some(openrouter)),
                 openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                 active_openai_compatible_profile: RwLock::new(None),
@@ -237,7 +214,6 @@ fn test_direct_chutes_ignores_legacy_openrouter_catalog_cache() {
                     antigravity: RwLock::new(None),
                     gemini: RwLock::new(None),
                     cursor: RwLock::new(None),
-                    bedrock: RwLock::new(None),
                     openrouter: RwLock::new(Some(openrouter)),
                     openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                     active_openai_compatible_profile: RwLock::new(None),
@@ -296,7 +272,6 @@ fn test_auth_changed_preserves_existing_direct_profile_session() {
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(Some(openrouter)),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -357,7 +332,6 @@ fn test_auth_changed_replaces_template_direct_profile_for_new_logins() {
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(Some(openrouter)),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -410,7 +384,6 @@ fn test_state_space_openrouter_default_survives_switch_to_nvidia_nim() {
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(Some(openrouter)),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -547,12 +520,6 @@ fn test_session_route_restore_request_matrix_preserves_runtime_identity() {
             "cursor:composer-2.5",
         ),
         (
-            "anthropic.claude-3-5-sonnet-20241022-v2:0",
-            Some("bedrock"),
-            Some("bedrock"),
-            "bedrock:anthropic.claude-3-5-sonnet-20241022-v2:0",
-        ),
-        (
             "default",
             Some("antigravity"),
             Some("antigravity-https"),
@@ -597,7 +564,6 @@ fn test_openrouter_and_compatible_profile_transition_invariants() {
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(Some(openrouter.clone())),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -670,7 +636,6 @@ fn test_set_model_accepts_bare_openai_openrouter_pin_when_openrouter_available()
                 antigravity: RwLock::new(None),
                 gemini: RwLock::new(None),
                 cursor: RwLock::new(None),
-                bedrock: RwLock::new(None),
                 openrouter: RwLock::new(Some(openrouter)),
                 openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                 active_openai_compatible_profile: RwLock::new(None),
@@ -711,7 +676,6 @@ fn test_active_compatible_route_treats_claude_like_bare_model_as_provider_local(
                             antigravity: RwLock::new(None),
                             gemini: RwLock::new(None),
                             cursor: RwLock::new(None),
-                            bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
                             openai_compatible_profiles: RwLock::new(
                                 std::collections::HashMap::new(),
@@ -749,7 +713,6 @@ fn test_multi_provider_with_openrouter(openrouter: Arc<dyn Provider>) -> MultiPr
         antigravity: RwLock::new(None),
         gemini: RwLock::new(None),
         cursor: RwLock::new(None),
-        bedrock: RwLock::new(None),
         openrouter: RwLock::new(Some(openrouter)),
         openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
         active_openai_compatible_profile: RwLock::new(None),
@@ -844,7 +807,6 @@ fn test_active_compatible_route_preserves_custom_at_sign_model_ids() {
                             antigravity: RwLock::new(None),
                             gemini: RwLock::new(None),
                             cursor: RwLock::new(None),
-                            bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
                             openai_compatible_profiles: RwLock::new(
                                 std::collections::HashMap::new(),
@@ -895,7 +857,6 @@ fn test_config_default_provider_openai_compatible_keeps_gpt_model_provider_local
                             antigravity: RwLock::new(None),
                             gemini: RwLock::new(None),
                             cursor: RwLock::new(None),
-                            bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
                             openai_compatible_profiles: RwLock::new(
                                 std::collections::HashMap::new(),
@@ -949,7 +910,6 @@ fn test_custom_compatible_model_routes_do_not_request_openrouter_rewrite() {
                             antigravity: RwLock::new(None),
                             gemini: RwLock::new(None),
                             cursor: RwLock::new(None),
-                            bedrock: RwLock::new(None),
                             openrouter: RwLock::new(Some(openrouter)),
                             openai_compatible_profiles: RwLock::new(
                                 std::collections::HashMap::new(),
@@ -1000,7 +960,6 @@ fn test_configured_direct_compatible_profiles_are_listed_without_openrouter_key(
                     antigravity: RwLock::new(None),
                     gemini: RwLock::new(None),
                     cursor: RwLock::new(None),
-                    bedrock: RwLock::new(None),
                     openrouter: RwLock::new(None),
                     openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                     active_openai_compatible_profile: RwLock::new(None),
@@ -1083,7 +1042,6 @@ input = ["image"]
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -1131,7 +1089,6 @@ input = ["image"]
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -1167,7 +1124,6 @@ fn test_config_default_provider_deepseek_applies_without_openrouter_key() {
                 antigravity: RwLock::new(None),
                 gemini: RwLock::new(None),
                 cursor: RwLock::new(None),
-                bedrock: RwLock::new(None),
                 openrouter: RwLock::new(None),
                 openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                 active_openai_compatible_profile: RwLock::new(None),
@@ -1202,7 +1158,6 @@ fn test_profile_prefixed_model_switch_reinitializes_direct_compatible_runtime() 
                     antigravity: RwLock::new(None),
                     gemini: RwLock::new(None),
                     cursor: RwLock::new(None),
-                    bedrock: RwLock::new(None),
                     openrouter: RwLock::new(None),
                     openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                     active_openai_compatible_profile: RwLock::new(None),
@@ -1259,7 +1214,6 @@ fn test_openai_auth_mode_prefixed_model_switch_changes_credentials() {
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -1329,7 +1283,6 @@ fn test_initial_openai_provider_can_switch_to_anthropic_auth_routes() {
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -1405,7 +1358,6 @@ fn test_config_default_provider_anthropic_api_pins_api_credential() {
                 antigravity: RwLock::new(None),
                 gemini: RwLock::new(None),
                 cursor: RwLock::new(None),
-                bedrock: RwLock::new(None),
                 openrouter: RwLock::new(None),
                 openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                 active_openai_compatible_profile: RwLock::new(None),
@@ -1484,7 +1436,6 @@ fn test_config_default_model_with_credential_prefix_applies_model_and_pin() {
                 antigravity: RwLock::new(None),
                 gemini: RwLock::new(None),
                 cursor: RwLock::new(None),
-                bedrock: RwLock::new(None),
                 openrouter: RwLock::new(None),
                 openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                 active_openai_compatible_profile: RwLock::new(None),
@@ -1558,7 +1509,6 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -1631,7 +1581,6 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -1671,7 +1620,6 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -1705,7 +1653,6 @@ fn test_multi_provider_fork_switch_request_preserves_route_identity_state_space(
                 antigravity: RwLock::new(None),
                 gemini: RwLock::new(None),
                 cursor: RwLock::new(None),
-                bedrock: RwLock::new(None),
                 openrouter: RwLock::new(Some(openrouter)),
                 openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                 active_openai_compatible_profile: RwLock::new(None),
@@ -1740,7 +1687,6 @@ fn test_deepseek_direct_profile_supports_reasoning_effort_via_multi_provider() {
                 antigravity: RwLock::new(None),
                 gemini: RwLock::new(None),
                 cursor: RwLock::new(None),
-                bedrock: RwLock::new(None),
                 openrouter: RwLock::new(None),
                 openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                 active_openai_compatible_profile: RwLock::new(None),
@@ -1788,7 +1734,6 @@ fn test_explicit_copilot_prefix_treats_claude_like_model_as_provider_local() {
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -1823,7 +1768,6 @@ fn test_initial_provider_does_not_block_provider_specific_model_switch() {
                 antigravity: RwLock::new(None),
                 gemini: RwLock::new(None),
                 cursor: RwLock::new(Some(test_cursor_runtime())),
-                bedrock: RwLock::new(None),
                 openrouter: RwLock::new(Some(openrouter)),
                 openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
                 active_openai_compatible_profile: RwLock::new(None),
@@ -2396,7 +2340,6 @@ fn bare_openai_compatible_model_ids_route_to_their_profile_not_the_active_provid
             antigravity: RwLock::new(None),
             gemini: RwLock::new(None),
             cursor: RwLock::new(None),
-            bedrock: RwLock::new(None),
             openrouter: RwLock::new(None),
             openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),

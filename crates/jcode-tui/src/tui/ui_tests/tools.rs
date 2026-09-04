@@ -894,18 +894,6 @@ fn test_common_tool_summaries_keep_full_text_when_row_budget_fits() {
             },
             "'rust unicode width truncation examples'",
         ),
-        (
-            ToolCall {
-                id: "debug-wide".to_string(),
-                name: "debug_socket".to_string(),
-                input: serde_json::json!({
-                    "command": "tester:list"
-                }),
-                intent: None,
-                thought_signature: None,
-            },
-            "tester:list",
-        ),
     ];
 
     for (tool, expected) in cases {
@@ -916,10 +904,10 @@ fn test_common_tool_summaries_keep_full_text_when_row_budget_fits() {
 }
 
 #[test]
-fn test_debug_socket_summary_hides_transient_missing_input() {
+fn test_tool_summary_hides_transient_missing_input() {
     let tool = ToolCall {
-        id: "debug-start".to_string(),
-        name: "debug_socket".to_string(),
+        id: "browser-start".to_string(),
+        name: "browser".to_string(),
         input: serde_json::Value::Null,
         intent: None,
         thought_signature: None,
@@ -1211,7 +1199,6 @@ fn test_action_tools_hide_missing_placeholder_for_streaming_input() {
         "bg",
         "swarm",
         "initiative",
-        "selfdev",
         "side_panel",
         "memory",
     ];

@@ -1555,12 +1555,12 @@ fn background_widget_and_compact_share_summary_format() {
     let info = BackgroundInfo {
         running_count: 4,
         running_tasks: vec![
-            "selfdev build".to_string(),
+            "cargo build".to_string(),
             "train.py".to_string(),
             "cargo test".to_string(),
             "download".to_string(),
         ],
-        progress_summary: Some("selfdev build".to_string()),
+        progress_summary: Some("cargo build".to_string()),
         progress_detail: Some("[#####-------] 42% · Building (parsed)".to_string()),
         memory_agent_active: false,
         memory_agent_turns: 0,
@@ -1580,7 +1580,7 @@ fn background_widget_and_compact_share_summary_format() {
     assert!(widget_text.contains("Background"), "got: {widget_text}");
     assert!(widget_text.contains("4"), "got: {widget_text}");
     assert!(!widget_text.contains("mem:"), "got: {widget_text}");
-    assert!(widget_text.contains("selfdev build"), "got: {widget_text}");
+    assert!(widget_text.contains("cargo build"), "got: {widget_text}");
     assert!(widget_text.contains("train.py"), "got: {widget_text}");
     assert!(widget_text.contains("cargo test"), "got: {widget_text}");
     assert!(widget_text.contains("+1 more"), "got: {widget_text}");

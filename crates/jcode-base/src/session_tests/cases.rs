@@ -295,7 +295,13 @@ fn initial_session_context_preserves_explicitly_bound_cwd_when_inserted() -> Res
         .tempdir()
         .map_err(|e| anyhow!(e))?;
 
-    std::env::set_current_dir(first_dir.path()).map_err(|e| anyhow!(e))?;
+    // `current_dir()` returns the resolved path, and on macOS `/var` is a
+    // symlink to `/private/var`, so compare against canonicalized temp paths.
+    // (These asserts panic rather than return Err, so a mismatch would unwind
+    // past the cwd restore below and leave every later test with ENOENT.)
+    let first_path = first_dir.path().canonicalize().map_err(|e| anyhow!(e))?;
+    let second_path = second_dir.path().canonicalize().map_err(|e| anyhow!(e))?;
+    std::env::set_current_dir(&first_path).map_err(|e| anyhow!(e))?;
     let mut session = Session::create_with_id(
         "session_context_cwd_refresh_test".to_string(),
         None,
@@ -303,23 +309,23 @@ fn initial_session_context_preserves_explicitly_bound_cwd_when_inserted() -> Res
     );
     assert_eq!(
         session.working_dir.as_deref(),
-        Some(first_dir.path().to_str().unwrap())
+        Some(first_path.to_str().unwrap())
     );
 
-    std::env::set_current_dir(second_dir.path()).map_err(|e| anyhow!(e))?;
+    std::env::set_current_dir(&second_path).map_err(|e| anyhow!(e))?;
     let result: std::result::Result<(), anyhow::Error> = (|| {
         assert!(session.ensure_initial_session_context_message());
         let first = session.messages[0].content_preview();
         assert!(
             first.contains(&format!(
                 "Working directory: {}",
-                first_dir.path().display()
+                first_path.display()
             )),
             "session context should preserve the bound cwd, got: {first}"
         );
         assert_eq!(
             session.working_dir.as_deref(),
-            Some(first_dir.path().to_str().unwrap())
+            Some(first_path.to_str().unwrap())
         );
         Ok(())
     })();
@@ -343,7 +349,13 @@ fn initial_session_context_can_refresh_before_real_conversation() -> Result<()> 
         .tempdir()
         .map_err(|e| anyhow!(e))?;
 
-    std::env::set_current_dir(first_dir.path()).map_err(|e| anyhow!(e))?;
+    // `current_dir()` returns the resolved path, and on macOS `/var` is a
+    // symlink to `/private/var`, so compare against canonicalized temp paths.
+    // (These asserts panic rather than return Err, so a mismatch would unwind
+    // past the cwd restore below and leave every later test with ENOENT.)
+    let first_path = first_dir.path().canonicalize().map_err(|e| anyhow!(e))?;
+    let second_path = second_dir.path().canonicalize().map_err(|e| anyhow!(e))?;
+    std::env::set_current_dir(&first_path).map_err(|e| anyhow!(e))?;
     let result: std::result::Result<(), anyhow::Error> = (|| {
         let mut session = Session::create_with_id(
             "session_context_remote_cwd_refresh_test".to_string(),
@@ -353,22 +365,22 @@ fn initial_session_context_can_refresh_before_real_conversation() -> Result<()> 
         assert!(session.ensure_initial_session_context_message());
         assert!(session.messages[0].content_preview().contains(&format!(
             "Working directory: {}",
-            first_dir.path().display()
+            first_path.display()
         )));
 
-        session.working_dir = Some(second_dir.path().display().to_string());
+        session.working_dir = Some(second_path.display().to_string());
         assert!(session.refresh_initial_session_context_message());
         let refreshed = session.messages[0].content_preview();
         assert!(
             refreshed.contains(&format!(
                 "Working directory: {}",
-                second_dir.path().display()
+                second_path.display()
             )),
             "session context should refresh to subscribed cwd, got: {refreshed}"
         );
         assert!(!refreshed.contains(&format!(
             "Working directory: {}",
-            first_dir.path().display()
+            first_path.display()
         )));
         Ok(())
     })();
@@ -392,7 +404,13 @@ fn initial_session_context_does_not_refresh_after_real_conversation() -> Result<
         .tempdir()
         .map_err(|e| anyhow!(e))?;
 
-    std::env::set_current_dir(first_dir.path()).map_err(|e| anyhow!(e))?;
+    // `current_dir()` returns the resolved path, and on macOS `/var` is a
+    // symlink to `/private/var`, so compare against canonicalized temp paths.
+    // (These asserts panic rather than return Err, so a mismatch would unwind
+    // past the cwd restore below and leave every later test with ENOENT.)
+    let first_path = first_dir.path().canonicalize().map_err(|e| anyhow!(e))?;
+    let second_path = second_dir.path().canonicalize().map_err(|e| anyhow!(e))?;
+    std::env::set_current_dir(&first_path).map_err(|e| anyhow!(e))?;
     let result: std::result::Result<(), anyhow::Error> = (|| {
         let mut session = Session::create_with_id(
             "session_context_late_cwd_refresh_test".to_string(),
@@ -408,16 +426,16 @@ fn initial_session_context_does_not_refresh_after_real_conversation() -> Result<
             }],
         );
 
-        session.working_dir = Some(second_dir.path().display().to_string());
+        session.working_dir = Some(second_path.display().to_string());
         assert!(!session.refresh_initial_session_context_message());
         let original = session.messages[0].content_preview();
         assert!(original.contains(&format!(
             "Working directory: {}",
-            first_dir.path().display()
+            first_path.display()
         )));
         assert!(!original.contains(&format!(
             "Working directory: {}",
-            second_dir.path().display()
+            second_path.display()
         )));
         Ok(())
     })();
@@ -470,7 +488,6 @@ fn load_startup_stub_preserves_metadata_but_skips_heavy_vectors() -> Result<()> 
     session.reasoning_effort = Some("high".to_string());
     session.provider_key = Some("openai".to_string());
     session.route_api_method = Some("openai-api".to_string());
-    session.set_canary("self-dev");
     session.append_stored_message(StoredMessage {
         id: "msg_1".to_string(),
         role: Role::User,
@@ -496,10 +513,7 @@ fn load_startup_stub_preserves_metadata_but_skips_heavy_vectors() -> Result<()> 
         os: "linux".to_string(),
         arch: "x86_64".to_string(),
         pid: 123,
-        is_selfdev: true,
         is_debug: false,
-        is_canary: true,
-        testing_build: Some("self-dev".to_string()),
         working_git: None,
     });
     session.record_memory_injection(
@@ -520,7 +534,6 @@ fn load_startup_stub_preserves_metadata_but_skips_heavy_vectors() -> Result<()> 
     assert_eq!(stub.reasoning_effort.as_deref(), Some("high"));
     assert_eq!(stub.provider_key.as_deref(), Some("openai"));
     assert_eq!(stub.route_api_method.as_deref(), Some("openai-api"));
-    assert!(stub.is_canary);
     assert!(stub.messages.is_empty());
     assert!(stub.env_snapshots.is_empty());
     assert!(stub.memory_injections.is_empty());
@@ -570,10 +583,7 @@ fn load_for_remote_startup_preserves_messages_and_replay_but_skips_heavy_vectors
         os: "linux".to_string(),
         arch: "x86_64".to_string(),
         pid: 123,
-        is_selfdev: false,
         is_debug: false,
-        is_canary: false,
-        testing_build: None,
         working_git: None,
     });
     session.record_memory_injection(

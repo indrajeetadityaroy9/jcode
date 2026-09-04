@@ -3,8 +3,8 @@ use crate::auth::{AuthState, AuthStatus};
 use super::pricing::cheapness_for_route;
 use super::{
     ALL_OPENAI_MODELS, AccountModelAvailabilityState, CHATGPT_WEB_MODEL, GROK_BUILD_PROFILE_ID,
-    ModelRoute, MultiProvider, Provider, ProviderRegistry, anthropic_api_key_route_availability,
-    anthropic_oauth_route_availability, bedrock, build_anthropic_oauth_route,
+    ModelRoute, MultiProvider, ProviderRegistry, anthropic_api_key_route_availability,
+    anthropic_oauth_route_availability, build_anthropic_oauth_route,
     build_chatgpt_web_route, build_copilot_route, build_openai_api_key_route,
     build_openai_oauth_route, build_openrouter_auto_route, build_openrouter_endpoint_route,
     build_openrouter_fallback_provider_route, configured_standard_openrouter_profile_routes,
@@ -83,19 +83,7 @@ pub fn simplified_model_routes_for_picker(
             continue;
         }
 
-        let (provider, api_method, available, detail) =
-            if super::bedrock::BedrockProvider::is_bedrock_model_id(&model) {
-                (
-                    "AWS Bedrock".to_string(),
-                    "bedrock".to_string(),
-                    auth.bedrock != AuthState::NotConfigured,
-                    if auth.bedrock == AuthState::NotConfigured {
-                        "no Bedrock credentials or region; run /login bedrock".to_string()
-                    } else {
-                        String::new()
-                    },
-                )
-            } else if model.contains('/') {
+        let (provider, api_method, available, detail) = if model.contains('/') {
                 (
                     "auto".to_string(),
                     "openrouter".to_string(),
@@ -234,7 +222,6 @@ pub(super) fn multiprovider_model_routes(provider: &MultiProvider) -> Vec<ModelR
     append_gemini_routes(provider, &mut routes);
     append_antigravity_routes(provider, &mut routes);
     append_cursor_routes(provider, &mut routes);
-    append_bedrock_routes(provider, &mut routes);
 
     let has_openrouter_transport = provider.openrouter_provider().is_some();
     let has_openrouter_provider_features = provider
@@ -276,7 +263,7 @@ pub(super) fn multiprovider_model_routes(provider: &MultiProvider) -> Vec<ModelR
     let routes_before_filter = routes.len();
 
     // Drop obviously non-chat models (embeddings, speech, rerankers, etc.) that
-    // some providers (Bedrock, OpenAI-compatible profiles like NVIDIA NIM / FPT
+    // some providers (OpenAI-compatible profiles like NVIDIA NIM / FPT
     // / Chutes) dump wholesale into their catalogs. Without this the picker is
     // flooded with hundreds of unusable entries.
     routes.retain(|route| is_listable_model_name(&route.model));
@@ -604,23 +591,6 @@ fn append_cursor_routes(provider: &MultiProvider, routes: &mut Vec<ModelRoute>) 
     }
 }
 
-/// AWS Bedrock models and inference profiles, including the
-/// credentials-configured-but-uninitialized case.
-fn append_bedrock_routes(provider: &MultiProvider, routes: &mut Vec<ModelRoute>) {
-    if let Some(bedrock) = provider.bedrock_provider() {
-        routes.extend(bedrock.model_routes());
-    } else if bedrock::BedrockProvider::has_credentials() {
-        let bedrock = bedrock::BedrockProvider::new();
-        routes.extend(bedrock.model_routes().into_iter().map(|mut route| {
-            if route.detail.trim().is_empty() {
-                route.detail =
-                    "credentials configured; provider will initialize on selection".to_string();
-            }
-            route
-        }));
-    }
-}
-
 /// OpenRouter models with per-provider endpoint routes, plus the direct
 /// OpenAI-compatible runtime path that shares the OpenRouter transport.
 fn append_openrouter_routes(
@@ -878,24 +848,6 @@ pub fn remote_model_routes_fallback(
         let openrouter_cached = openrouter_catalog_model
             .as_deref()
             .and_then(openrouter::load_endpoints_disk_cache_public);
-
-        if super::bedrock::BedrockProvider::is_bedrock_model_id(model) {
-            let available = auth.bedrock != AuthState::NotConfigured
-                || super::bedrock::BedrockProvider::has_credentials();
-            routes.push(ModelRoute {
-                model: model.clone(),
-                provider: "AWS Bedrock".to_string(),
-                api_method: "bedrock".to_string(),
-                available,
-                detail: if available {
-                    String::new()
-                } else {
-                    "no Bedrock credentials or region; run /login bedrock".to_string()
-                },
-                cheapness: None,
-            });
-            continue;
-        }
 
         if model.contains('/')
             && let Some(route) = remote_openai_compatible_route_for_model(model)

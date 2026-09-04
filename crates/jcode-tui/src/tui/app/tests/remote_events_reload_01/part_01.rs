@@ -168,7 +168,6 @@ fn test_handle_server_event_history_clears_connection_type_on_session_change_whe
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             reload_recovery: None,
             server_version: None,
             server_name: None,
@@ -221,7 +220,6 @@ fn test_handle_server_event_history_preserves_connection_type_for_same_session_w
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             reload_recovery: None,
             server_version: None,
             server_name: None,
@@ -302,7 +300,6 @@ fn test_handle_server_event_history_session_change_clears_streaming_preview_diag
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             reload_recovery: None,
             server_version: None,
             server_name: None,
@@ -404,7 +401,6 @@ fn test_handle_server_event_history_same_session_rewind_reapply_clears_streaming
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             reload_recovery: None,
             server_version: None,
             server_name: None,
@@ -512,7 +508,6 @@ fn test_handle_server_event_history_same_session_midstream_duplicate_is_dropped_
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             reload_recovery: None,
             server_version: None,
             server_name: None,
@@ -593,7 +588,6 @@ fn test_handle_server_event_history_same_session_midstream_duplicate_is_dropped_
                 token_usage_totals: None,
                 all_sessions: vec![],
                 client_count: None,
-                is_canary: None,
                 reload_recovery: None,
                 server_version: None,
                 server_name: None,
@@ -694,7 +688,6 @@ fn test_handle_server_event_history_same_session_rewind_then_late_done_does_not_
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             reload_recovery: None,
             server_version: None,
             server_name: None,
@@ -783,7 +776,6 @@ fn test_handle_server_event_history_session_change_clears_pending_interleaves() 
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             server_version: None,
             server_name: None,
             server_icon: None,
@@ -811,7 +803,7 @@ fn test_handle_server_event_history_session_change_clears_pending_interleaves() 
 }
 
 #[test]
-fn test_handle_post_connect_marker_without_reload_context_does_not_queue_selfdev_continuation() {
+fn test_handle_post_connect_marker_without_reload_context_does_not_queue_continuation() {
     let _guard = crate::storage::lock_test_env();
     let temp_home = tempfile::TempDir::new().expect("create temp home");
     let prev_home = std::env::var_os("JCODE_HOME");
@@ -852,7 +844,7 @@ fn test_handle_post_connect_marker_without_reload_context_does_not_queue_selfdev
         !app.display_messages()
             .iter()
             .any(|m| m.content.starts_with("Reload complete - continuing")),
-        "marker-only reconnect should not queue selfdev continuation"
+        "marker-only reconnect should not queue reload continuation"
     );
     assert!(app.reload_info.is_empty());
     assert!(
@@ -1869,11 +1861,11 @@ fn test_pending_startup_notice_survives_history_bootstrap_for_fresh_session() {
     // A fresh client has no remote session yet; the startup notice card is
     // pushed before the History bootstrap arrives.
     app.remote_session_id = None;
-    app.set_pending_startup_notice("Launch hotkeys", "cmd+; -> home\ncmd+' -> last project");
+    app.set_pending_startup_notice("Terminal", "Terminal.app renders jcode poorly");
     assert!(
         app.display_messages()
             .iter()
-            .any(|m| m.content.contains("cmd+;")),
+            .any(|m| m.content.contains("renders jcode poorly")),
         "card should be visible before bootstrap"
     );
 
@@ -1897,7 +1889,6 @@ fn test_pending_startup_notice_survives_history_bootstrap_for_fresh_session() {
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             reload_recovery: None,
             server_version: None,
             server_name: None,
@@ -1921,7 +1912,7 @@ fn test_pending_startup_notice_survives_history_bootstrap_for_fresh_session() {
     let card_count = app
         .display_messages()
         .iter()
-        .filter(|m| m.content.contains("cmd+;"))
+        .filter(|m| m.content.contains("renders jcode poorly"))
         .count();
     assert_eq!(
         card_count, 1,

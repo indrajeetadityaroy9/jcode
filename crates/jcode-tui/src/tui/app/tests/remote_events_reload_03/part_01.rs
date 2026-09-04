@@ -153,7 +153,6 @@ fn test_handle_server_event_history_with_interruption_queues_continuation() {
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             server_version: None,
             server_name: None,
             server_icon: None,
@@ -226,7 +225,6 @@ fn test_handle_server_event_history_uses_server_owned_reload_recovery_directive(
         token_usage_totals: None,
         all_sessions: vec![],
         client_count: None,
-        is_canary: None,
         server_version: None,
         server_name: None,
         server_icon: None,
@@ -307,7 +305,6 @@ fn test_handle_server_event_history_without_interruption_does_not_queue() {
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             server_version: None,
             server_name: None,
             server_icon: None,
@@ -370,7 +367,6 @@ fn test_handle_server_event_history_after_reload_reports_no_continuation_needed(
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             server_version: None,
             server_name: None,
             server_icon: None,
@@ -400,7 +396,7 @@ fn test_handle_server_event_history_after_reload_reports_no_continuation_needed(
 }
 
 #[test]
-fn test_finalize_reload_reconnect_marker_only_does_not_queue_selfdev_continuation() {
+fn test_finalize_reload_reconnect_marker_only_does_not_queue_continuation() {
     let mut app = create_test_app();
     app.reload_info
         .push("Reloaded with build abc1234".to_string());
@@ -671,7 +667,6 @@ fn test_handle_server_event_history_restores_side_panel_snapshot() {
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             server_version: None,
             server_name: None,
             server_icon: None,
@@ -728,7 +723,6 @@ fn test_handle_server_event_history_restores_active_resume_processing_state() {
             token_usage_totals: None,
             all_sessions: vec![],
             client_count: None,
-            is_canary: None,
             server_version: None,
             server_name: None,
             server_icon: None,

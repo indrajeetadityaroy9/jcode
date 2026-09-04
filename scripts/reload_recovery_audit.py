@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Audit self-dev reload recovery handoffs.
+Audit reload recovery handoffs.
 
 This is a read-only diagnostic helper for bugs where `selfdev reload` restarts the
 server but not every interrupted session continues. It correlates three sources:
@@ -595,7 +595,7 @@ def render_table(records: list[IntentRecord], hidden_sends: list[Event], show_li
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Audit self-dev reload recovery handoffs")
+    parser = argparse.ArgumentParser(description="Audit reload recovery handoffs")
     parser.add_argument("--home", type=pathlib.Path, default=jcode_home(), help="JCODE_HOME path")
     parser.add_argument("--reload-id", type=str, help="Only show one reload id")
     parser.add_argument("--session", type=str, help="Only show one session id")

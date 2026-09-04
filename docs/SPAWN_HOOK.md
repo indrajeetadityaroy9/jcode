@@ -1,10 +1,10 @@
 # Spawn Hook: External Control of Headed Session Spawns
 
 jcode opens new terminal windows in several flows: swarm agent spawning
-(`swarm spawn` with `spawn_mode=visible`), resume-in-new-terminal, self-dev
-sessions, restart restores, and jade relay launches. By default jcode detects
-an installed terminal emulator (kitty, wezterm, alacritty, gnome-terminal, ...)
-and opens a new OS window.
+(`swarm spawn` with `spawn_mode=visible`), resume-in-new-terminal, restart
+restores, and jade relay launches. By default jcode detects an installed
+terminal emulator (kitty, wezterm, alacritty, gnome-terminal, ...) and opens a
+new OS window.
 
 The **spawn hook** lets an external program take over this spawn so it can
 decide *where and how* the session appears: a tmux pane, a kitty tab, a zellij
@@ -51,7 +51,7 @@ The hook (and any terminal spawned by the built-in fallback) receives:
 
 | Variable | Meaning |
 | --- | --- |
-| `JCODE_SPAWN_KIND` | Why the spawn happened: `swarm-agent`, `resume`, `selfdev`, `restart`, `jade-relay` |
+| `JCODE_SPAWN_KIND` | Why the spawn happened: `swarm-agent`, `resume`, `restart`, `jade-relay` |
 | `JCODE_SPAWN_SESSION_ID` | The jcode session the window will run |
 | `JCODE_SPAWN_TITLE` | Suggested window/tab title (includes session icon + name) |
 | `JCODE_SPAWN_CWD` | Session working directory |
@@ -90,8 +90,8 @@ the client actually has set are forwarded.
 When jcode detects that the requesting client is inside tmux, its built-in
 launcher automatically opens headed spawns in a right-side pane targeted at the
 requesting `TMUX_PANE`. This covers `/split`, `/fork`, resume-in-new-terminal,
-self-dev, and visible agent spawns. `JCODE_TERMINAL` can explicitly choose a
-terminal emulator instead, and a configured `spawn_hook` still takes complete
+and visible agent spawns. `JCODE_TERMINAL` can explicitly choose a terminal
+emulator instead, and a configured `spawn_hook` still takes complete
 precedence.
 
 ### tmux: one window per agent
@@ -170,10 +170,10 @@ the wrapper's hook.
 
 ## Focus hook
 
-When jcode wants to bring an existing session window to the foreground (e.g.
-after launching a self-dev window), it normally does a best-effort
-wmctrl/xdotool title search on X11. That doesn't work under Wayland or inside
-multiplexers, and a wrapper that owns placement should also own focus:
+When jcode wants to bring an existing session window to the foreground, it
+normally does a best-effort wmctrl/xdotool title search on X11. That doesn't
+work under Wayland or inside multiplexers, and a wrapper that owns placement
+should also own focus:
 
 ```toml
 [terminal]

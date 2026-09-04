@@ -1,7 +1,7 @@
 //! Embedding facade for jcode.
 //!
 //! The heavy ONNX/tokenizer implementation lives in the `jcode-embedding`
-//! workspace crate so unchanged embedding code can stay cached across self-dev
+//! workspace crate so unchanged embedding code can stay cached across local
 //! builds. This module keeps jcode's process-wide cache, stats, and local path /
 //! logging integration stable.
 

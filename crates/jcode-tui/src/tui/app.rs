@@ -1165,8 +1165,6 @@ pub struct App {
     remote_total_tokens: Option<(u64, u64)>,
     // Detailed persisted token/cache usage totals (from server in remote mode)
     remote_token_usage_totals: Option<crate::protocol::TokenUsageTotals>,
-    // Whether the remote session is canary/self-dev (from server)
-    remote_is_canary: Option<bool>,
     // Remote server version (from server)
     remote_server_version: Option<String>,
     // Whether the remote server has a newer binary available

@@ -286,7 +286,10 @@ fn run_auto_poke_followup_targets_below_threshold_todos() {
         }) => {
             assert_eq!(total_todos, 2);
             assert!(message.starts_with(crate::todo::TODO_COMPLETION_CONTINUATION_MESSAGE));
-            assert!(message.contains("completion confidence"));
+            // The follow-up names the todos to revisit rather than exposing
+            // calibration vocabulary (see `docs/MESSAGE_VOICE.md`; the digest
+            // is asserted to avoid evaluator terms in `jcode_base::todo`).
+            assert!(message.contains("Validate further:"));
             assert!(!message.to_ascii_lowercase().contains("threshold"));
         }
         _ => panic!("expected confidence-summary follow-up"),
@@ -778,7 +781,7 @@ fn is_syncable_session_stem_filters_non_session_files() {
     assert!(is_syncable_session_stem("session_abc_123"));
     assert!(is_syncable_session_stem("imported_codex_456"));
     assert!(!is_syncable_session_stem("req"));
-    assert!(!is_syncable_session_stem("test_selfdev_session"));
+    assert!(!is_syncable_session_stem("test_debug_session"));
     assert!(!is_syncable_session_stem("session_abc.journal"));
 }
 

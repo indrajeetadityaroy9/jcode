@@ -564,7 +564,7 @@ impl App {
     }
 
     pub(super) fn cycle_effort(&mut self, direction: i8) {
-        // Remote/self-dev sessions infer the level list from provider+model (the
+        // Remote sessions infer the level list from provider+model (the
         // same source the model picker uses), since `self.provider` is a local
         // stand-in. Local sessions read the real provider. This keeps the cycle
         // and the picker consistent (both expose swarm / swarm-deep).

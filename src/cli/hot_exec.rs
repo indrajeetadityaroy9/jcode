@@ -35,16 +35,12 @@ pub fn execute_requested_action(run_result: &RunResult) -> Result<()> {
 pub fn hot_restart(session_id: &str) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let exe = std::env::current_exe()?;
-    let is_selfdev = jcode_dev_types::client_selfdev_requested();
 
     crate::logging::info(&format!("Restarting with current binary: {:?}", exe));
 
     crate::env::set_var("JCODE_RESUMING", "1");
 
     let mut cmd = ProcessCommand::new(&exe);
-    if is_selfdev {
-        cmd.arg("self-dev");
-    }
     cmd.arg("--resume").arg(session_id).current_dir(&cwd);
     let err = crate::platform::replace_process(&mut cmd);
 
@@ -76,8 +72,7 @@ pub fn hot_reload(session_id: &str) -> Result<()> {
         }
     }
 
-    let is_selfdev = jcode_dev_types::client_selfdev_requested();
-    let (exe, _label) = build::preferred_reload_candidate(is_selfdev)
+    let (exe, _label) = build::preferred_reload_candidate()
         .ok_or_else(|| anyhow::anyhow!("No reloadable binary found"))?;
 
     if let Ok(metadata) = std::fs::metadata(&exe) {
@@ -107,9 +102,6 @@ pub fn hot_reload(session_id: &str) -> Result<()> {
             }
         }
         let mut cmd = ProcessCommand::new(&exe);
-        if is_selfdev {
-            cmd.arg("self-dev");
-        }
         cmd.arg("--resume")
             .arg(session_id)
             // The server has already completed its handoff before the client
@@ -161,8 +153,7 @@ pub fn hot_update(session_id: &str) -> Result<()> {
                     update::print_centered(&format!("✓ Installed {}", release.tag_name));
                     reload_server_after_update("installed update");
 
-                    let is_selfdev = jcode_dev_types::client_selfdev_requested();
-                    let exe = build::client_update_candidate(is_selfdev)
+                    let exe = build::client_update_candidate()
                         .map(|(p, _)| p)
                         .unwrap_or(path);
 
@@ -171,9 +162,6 @@ pub fn hot_update(session_id: &str) -> Result<()> {
                     crate::env::set_var("JCODE_RESUMING", "1");
 
                     let mut cmd = ProcessCommand::new(&exe);
-                    if is_selfdev {
-                        cmd.arg("self-dev");
-                    }
                     cmd.arg("--resume")
                         .arg(session_id)
                         .arg("--no-update")
@@ -208,11 +196,7 @@ pub fn hot_update(session_id: &str) -> Result<()> {
 
     crate::env::set_var("JCODE_RESUMING", "1");
     let exe = std::env::current_exe()?;
-    let is_selfdev = jcode_dev_types::client_selfdev_requested();
     let mut cmd = ProcessCommand::new(&exe);
-    if is_selfdev {
-        cmd.arg("self-dev");
-    }
     cmd.arg("--resume")
         .arg(session_id)
         .arg("--no-update")
@@ -365,7 +349,7 @@ pub fn run_auto_update() -> Result<()> {
     crate::logging::info(&format!("Updated to {}. Restarting...", version));
     std::thread::sleep(std::time::Duration::from_millis(250));
 
-    let exe = build::client_update_candidate(false)
+    let exe = build::client_update_candidate()
         .map(|(p, _)| p)
         .or_else(|| std::env::current_exe().ok())
         .ok_or_else(|| anyhow::anyhow!("No executable path found after update"))?;
@@ -483,7 +467,7 @@ fn repair_stale_shared_server_after_update_check() -> bool {
 }
 
 fn reload_server_after_update(reason: &str) {
-    let exe = build::client_update_candidate(false)
+    let exe = build::client_update_candidate()
         .map(|(path, _)| path)
         .or_else(|| std::env::current_exe().ok());
     let Some(exe) = exe else {

@@ -558,9 +558,6 @@ impl Config {
                 self.ambient.enabled = parsed;
             }
         }
-        if let Ok(v) = std::env::var("JCODE_AMBIENT_PROVIDER") {
-            self.ambient.provider = Some(v);
-        }
         if let Ok(v) = std::env::var("JCODE_AMBIENT_MODEL") {
             self.ambient.model = Some(v);
         }
@@ -572,11 +569,6 @@ impl Config {
         if let Ok(v) = std::env::var("JCODE_AMBIENT_MAX_INTERVAL") {
             if let Ok(parsed) = v.trim().parse::<u32>() {
                 self.ambient.max_interval_minutes = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_AMBIENT_PROACTIVE") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.ambient.proactive_work = parsed;
             }
         }
 

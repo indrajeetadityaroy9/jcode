@@ -813,8 +813,6 @@ impl App {
         new_session.custom_title = old_session.custom_title.clone();
         new_session.provider_session_id = old_session.provider_session_id.clone();
         new_session.model = old_session.model.clone();
-        new_session.is_canary = old_session.is_canary;
-        new_session.testing_build = old_session.testing_build.clone();
         new_session.is_debug = old_session.is_debug;
         new_session.saved = old_session.saved;
         new_session.save_label = old_session.save_label.clone();

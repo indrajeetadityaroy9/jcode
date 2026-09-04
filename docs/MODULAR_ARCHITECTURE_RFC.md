@@ -17,7 +17,7 @@ It is intentionally aligned with:
 - Define a target layered and crate architecture that improves maintainability and compile times.
 - Establish dependency rules that prevent the workspace from collapsing back into a monolith.
 - Provide a phased migration plan that fits the refactoring roadmap and compile-performance plan.
-- Preserve runtime behavior: one shared server, reconnecting clients, session-local self-dev capability, and stable tool/provider flows.
+- Preserve runtime behavior: one shared server, reconnecting clients, and stable tool/provider flows.
 
 ## Non-Goals
 
@@ -38,7 +38,7 @@ The target architecture is a **layered workspace**:
 
 1. **Foundation layer** for stable shared types and runtime primitives.
 2. **Domain/runtime layer** for session, agent, provider, and server logic.
-3. **Interface layer** for CLI, TUI, self-dev, and optional heavy integrations.
+3. **Interface layer** for CLI, TUI, and optional heavy integrations.
 4. **Composition layer** where the top-level `jcode` package wires the product together.
 
 The most important design rule is this:
@@ -56,7 +56,6 @@ At the product level, the runtime architecture is already clear:
 - `jcode` is a **single-server, multi-client** application.
 - The server owns sessions, swarm state, background tasks, provider state, and shared services.
 - Clients are primarily TUI frontends that attach to server-owned sessions.
-- Self-dev is session-local capability on the shared server, not a separate architecture.
 
 That model should stay intact.
 
@@ -112,7 +111,7 @@ These splits already exist and should be treated as real architectural footholds
 | `jcode-message-types` | message content and transport-adjacent data contracts |
 | `jcode-protocol` | client/server protocol surface built from stable type crates and provider-core values |
 | `jcode-plan` | plan/task graph data model shared across coordination flows |
-| `jcode-dev-types` | self-development request/status data contracts |
+| `jcode-dev-types` | build publish/activation and canary status data contracts |
 | `jcode-session-types` | session DTOs, currently depending only on message types internally |
 | `jcode-side-panel-types` | side-panel page and update data contracts |
 | `jcode-task-types` | task/tool scheduling data contracts |
@@ -227,7 +226,6 @@ flowchart TD
 
   subgraph L2[Layer 2: interfaces and product surfaces]
     TUI[jcode-tui]
-    SelfDev[jcode-selfdev]
     CLI[jcode-cli or root CLI modules]
   end
 
@@ -254,7 +252,6 @@ flowchart TD
 
   App --> Server
   App --> TUI
-  App --> SelfDev
   App --> CLI
 
   CLI --> Server
@@ -263,9 +260,6 @@ flowchart TD
 
   TUI --> Core
   TUI --> TW
-
-  SelfDev --> Server
-  SelfDev --> Core
 
   Server --> Agent
   Server --> Provider
@@ -359,7 +353,6 @@ Target crates:
 - `jcode-cli`: parsing and command dispatch if CLI keeps growing.
 - `jcode-tui`: app state, reducers, key handling, command/input handling, UI orchestration.
 - `jcode-desktop`: already a separate surface.
-- `jcode-selfdev`: self-dev build/reload/customization workflows if they remain a substantial product surface.
 
 Compile-time reason:
 
@@ -408,7 +401,7 @@ A healthy final graph should look like this:
 
 ```text
 jcode binary/composition
-  -> jcode-cli, jcode-tui, jcode-server, jcode-selfdev
+  -> jcode-cli, jcode-tui, jcode-server
 
 jcode-cli / jcode-tui
   -> jcode-protocol, jcode-*-types, jcode-server-client contracts
@@ -479,7 +472,7 @@ A useful near-term policy: every time a large root file is touched, ask whether 
 Each structural phase should record at least:
 
 - touched-file `cargo check` for the edited hotspot
-- touched-file selfdev build for the edited hotspot
+- touched-file `cargo build` for the edited hotspot
 - `cargo tree -p jcode --edges normal --depth 1` before/after for dependency surprises
 - crate-level test coverage for newly extracted crates
 
@@ -630,25 +623,6 @@ Notes:
 - This aligns directly with the refactoring roadmap's "TUI State/Reducer Split" phase.
 - `jcode-tui-workspace` can remain a leaf crate or become a child dependency of `jcode-tui`.
 
-### `jcode-selfdev`
-
-Purpose: self-dev workflows, customization records, reload/build productization.
-
-Should contain:
-
-- self-dev state and tooling policy
-- build/reload orchestration specific to self-dev workflows
-- customization record and migration logic as it lands
-
-Should not contain:
-
-- generic server lifecycle not specific to self-dev
-- general TUI rendering
-
-Notes:
-
-- This aligns with the compile-performance plan's issue-#32 direction and with the already-unified shared-server model.
-
 ### `jcode` top-level package
 
 Purpose: composition root and shipping product package.
@@ -671,7 +645,7 @@ These rules are the core of the RFC.
 A higher layer may depend on a lower layer. A lower layer may not depend on a higher layer.
 
 - foundation cannot depend on domain/runtime, interfaces, or product crates
-- domain/runtime cannot depend on TUI or self-dev UI/product layers
+- domain/runtime cannot depend on TUI or other UI/product layers
 - leaf adapters must not pull UI or server concerns downward
 
 ### Rule 2: No TUI types below the interface layer
@@ -750,7 +724,6 @@ This is the recommended direction from the current tree, not a one-shot move lis
 | existing provider helper crates | remain leaf/provider support crates |
 | `src/tui/*` + `jcode-tui-workspace` | `jcode-tui` + leaf workspace widget crate |
 | `src/cli/*` | stay in root initially or become `jcode-cli` later if justified |
-| `src/tool/selfdev/*`, self-dev workflow/productization | `jcode-selfdev` |
 
 ## Phased Migration Plan
 
@@ -834,19 +807,7 @@ Exit criteria:
 
 - TUI can evolve rapidly without dragging broad server/provider recompilation
 
-### Phase 5: Extract `jcode-selfdev`
-
-Focus:
-
-- isolate self-dev workflow code and future customization/productization work
-- keep shared-server runtime behavior intact
-- move issue-#32 style no-rebuild customization logic here when it becomes concrete
-
-Exit criteria:
-
-- self-dev product behavior is explicit and no longer scattered across server/CLI/tool glue
-
-### Phase 6: Shrink the root package into a composition shell
+### Phase 5: Shrink the root package into a composition shell
 
 Desired end state:
 
@@ -871,7 +832,6 @@ If we must prioritize, use this order:
 2. keep shrinking server/provider/session/agent hotspots internally
 3. extract runtime contracts and orchestration crates
 4. extract TUI
-5. extract self-dev productization
 
 This ordering gives the best overlap between architecture safety and compile-speed payoff.
 
@@ -884,7 +844,7 @@ We should consider this RFC materially implemented when most of the following ar
 - server, agent, provider, and TUI have clear ownership boundaries
 - provider support crates no longer need root-crate-only types
 - TUI depends on protocol/service contracts rather than runtime internals
-- common self-dev edits avoid recompiling unrelated heavy subsystems whenever possible
+- common edits avoid recompiling unrelated heavy subsystems whenever possible
 - architecture docs match the actual crate graph
 
 ## Practical Guidance For Future Changes

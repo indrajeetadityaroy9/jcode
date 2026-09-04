@@ -50,8 +50,6 @@ fn test_agents_review_picker_saves_config_override() {
                 format!("claude-oauth:{}", base)
             } else if route.api_method == "claude-api" && route.provider == "Anthropic" {
                 format!("claude-api:{}", base)
-            } else if route.api_method == "bedrock" {
-                format!("bedrock:{}", base)
             } else if route.api_method == "openrouter" && route.provider != "auto" {
                 let catalog_model = crate::provider::openrouter_catalog_model_id(&base)
                     .unwrap_or_else(|| base.clone());

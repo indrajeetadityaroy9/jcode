@@ -83,7 +83,6 @@ impl ResolvedTokenPricing {
 fn remote_provider_is_inherently_billed(provider_name: &str) -> bool {
     provider_name.contains("opencode")
         || provider_name.contains("openrouter")
-        || provider_name.contains("bedrock")
         || provider_name.contains("cerebras")
         || provider_name.contains("compatible")
         || crate::provider_catalog::openai_compatible_profile_id_for_display_name(provider_name)
@@ -213,8 +212,7 @@ impl App {
                     && auth_status.openai_has_api_key
                     && !auth_status.openai_has_oauth)
         } else {
-            provider_name.contains("bedrock")
-                || provider_name.contains("azure-openai")
+            provider_name.contains("azure-openai")
                 || crate::provider_catalog::openai_compatible_profile_by_id(provider_name.trim())
                     .is_some_and(|profile| profile.requires_api_key)
         };
@@ -364,7 +362,7 @@ impl App {
 
         // For dual-auth providers (Anthropic/OpenAI) we require an API-key
         // credential. Other cost-based providers (OpenCode, OpenRouter direct,
-        // bedrock-style API-key profiles) always meter per token when remote.
+        // API-key profiles) always meter per token when remote.
         let billed = if is_anthropic || is_openai {
             api_key_billed
         } else {

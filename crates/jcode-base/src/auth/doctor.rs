@@ -8,7 +8,7 @@ pub const VALIDATION_STALE_AFTER_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 /// cannot be exercised by the generic OpenAI-compatible doctor). Today this is
 /// the Claude OAuth/subscription provider, the Antigravity (Google OAuth Cloud
 /// Code) provider, and the generic native-runtime providers (OpenAI, Gemini,
-/// Cursor, Copilot, Bedrock, jcode, Azure OpenAI).
+/// Cursor, Copilot, jcode, Azure OpenAI).
 ///
 /// The drivers themselves live downstream in the `jcode-provider-doctor`
 /// crate (which re-exports this predicate); this roster lives here so
@@ -25,7 +25,6 @@ pub fn native_doctor_supports_provider(provider_id: &str) -> bool {
                 | "gemini"
                 | "cursor"
                 | "copilot"
-                | "bedrock"
                 | "jcode"
                 | "azure-openai"
         )

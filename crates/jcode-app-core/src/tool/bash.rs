@@ -661,6 +661,25 @@ mod utf8_truncation_tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn build_shell_command_uses_disk_backed_scratch_directory() {
+        // `tool_scratch_dir()` resolves `$JCODE_SCRATCH_DIR` / `$JCODE_HOME` at
+        // call time, so a sibling test mutating either one between `expected`
+        // and the child process would make this compare two different temp
+        // dirs. Hold the env lock and pin JCODE_HOME for the whole test.
+        let _env_lock = crate::storage::lock_test_env();
+        let home = tempfile::TempDir::new().expect("scratch home");
+        let previous_home = std::env::var_os("JCODE_HOME");
+        let previous_scratch = std::env::var_os("JCODE_SCRATCH_DIR");
+        crate::env::remove_var("JCODE_SCRATCH_DIR");
+        crate::env::set_var("JCODE_HOME", home.path());
+        let restore = || {
+            match &previous_home {
+                Some(value) => crate::env::set_var("JCODE_HOME", value),
+                None => crate::env::remove_var("JCODE_HOME"),
+            }
+            if let Some(value) = &previous_scratch {
+                crate::env::set_var("JCODE_SCRATCH_DIR", value);
+            }
+        };
         let expected = super::tool_scratch_dir().expect("jcode scratch directory");
         let output = build_shell_command("printf '%s\\n%s\\n' \"$TMPDIR\" \"$JCODE_SCRATCH_DIR\"")
             .output()
@@ -672,6 +691,7 @@ mod utf8_truncation_tests {
         let expected = expected.to_string_lossy().into_owned();
         assert_eq!(paths, vec![expected.as_str(), expected.as_str()]);
         assert!(std::path::Path::new(&expected).is_dir());
+        restore();
     }
 }
 

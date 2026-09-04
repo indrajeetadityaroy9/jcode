@@ -13,8 +13,8 @@ fn allow_runtime_identity_mismatch() -> bool {
 /// only for *clean release* builds.
 ///
 /// Dev/dirty builds share a base semver and cannot be ordered against each other
-/// or against releases (issue #277/#291: a self-dev / branched daemon must never
-/// be force-downgraded just because its version string differs). So we refuse to
+/// or against releases (issue #277/#291: a branched daemon must never be
+/// force-downgraded just because its version string differs). So we refuse to
 /// classify anything carrying a `-dev` or `dirty` marker as an orderable version
 /// and return `None`, leaving such daemons to the existing `server_has_update`
 /// (mtime-directional) path.
@@ -46,7 +46,7 @@ fn parse_release_semver(version: &str) -> Option<(u32, u32, u32)> {
 /// happily attaches to it (then a `set_route`-shaped request explodes against the
 /// ancient protocol). We detect that case independently here.
 ///
-/// Gated on clean release semvers on BOTH sides, so dev/dirty/self-dev daemons
+/// Gated on clean release semvers on BOTH sides, so dev/dirty daemons
 /// (which cannot be ordered) are never affected.
 fn server_release_is_older_than_client(server_version: Option<&str>, client_version: &str) -> bool {
     let Some(server) = server_version.and_then(parse_release_semver) else {
@@ -203,7 +203,7 @@ mod runtime_identity_tests {
     }
 
     #[test]
-    fn server_release_older_than_client_is_selfdev_safe() {
+    fn server_release_older_than_client_is_dev_build_safe() {
         // Clean release older than clean client -> stale.
         assert!(server_release_is_older_than_client(
             Some("v0.14.2 (38452185)"),
@@ -219,7 +219,7 @@ mod runtime_identity_tests {
             "v0.17.0"
         ));
         // Either side dev/dirty/unparseable -> never claim staleness (protects
-        // self-dev and branched daemons from a forced downgrade).
+        // branched daemons from a forced downgrade).
         assert!(!server_release_is_older_than_client(
             Some("v0.14.2-dev (abc, dirty)"),
             "v0.17.0"
@@ -1458,12 +1458,7 @@ pub(in crate::tui::app) fn handle_server_event(
         }
         ServerEvent::Reloading { .. } => {
             app.append_reload_message("🔄 Server reload initiated...");
-            // In-process server reloads (self-dev build-reload) keep the same
-            // server PID and never disconnect this client, so the reconnect-time
-            // client re-exec never fires. If a newer client binary is on disk and
-            // we are idle, re-exec now so client-side (TUI) changes also take
-            // effect. No-op for non-selfdev sessions or when already current.
-            app.maybe_self_reload_after_server_reload()
+            false
         }
         ServerEvent::ReloadProgress {
             step,
@@ -1514,7 +1509,6 @@ pub(in crate::tui::app) fn handle_server_event(
             total_tokens,
             all_sessions,
             client_count,
-            is_canary,
             server_version,
             server_name,
             server_icon,
@@ -1724,7 +1718,6 @@ pub(in crate::tui::app) fn handle_server_event(
             app.invalidate_command_candidates_cache();
             app.remote_sessions = all_sessions;
             app.remote_client_count = client_count;
-            app.remote_is_canary = is_canary;
             app.remote_server_version = server_version;
             app.remote_server_short_name = server_name.clone();
             app.remote_server_icon = server_icon.clone();

@@ -1466,12 +1466,6 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
             "gpt-oss-120b",
             crate::tui::info_widget::AuthMethod::ApiKey,
         ),
-        (
-            "bedrock",
-            "bedrock",
-            "anthropic.claude-3-5-sonnet-20241022-v2:0",
-            crate::tui::info_widget::AuthMethod::ApiKey,
-        ),
     ];
 
     for (runtime_provider, provider_name, model, expected_auth) in cases {

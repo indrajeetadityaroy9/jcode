@@ -66,12 +66,6 @@ if [ "$PURGE" = true ] && [ -d "$USER_DATA_DIR" ]; then
   TARGETS+=("$USER_DATA_DIR (ALL user data: config, auth, sessions, logs, memory)")
 fi
 
-# Compatibility wrapper installed by some setups.
-SELFDEV_WRAPPER="$HOME/.local/bin/selfdev"
-if [ -f "$SELFDEV_WRAPPER" ] && grep -q "jcode" "$SELFDEV_WRAPPER" 2>/dev/null; then
-  TARGETS+=("$SELFDEV_WRAPPER (selfdev wrapper)")
-fi
-
 if [ ${#TARGETS[@]} -eq 0 ]; then
   info "Nothing to uninstall: no jcode installation found."
   exit 0

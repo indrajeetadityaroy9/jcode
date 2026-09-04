@@ -4,14 +4,14 @@ This document defines the target structure for keeping `jcode` modular without t
 
 ## Goals
 
-Primary goal: make normal development and selfdev builds faster by shrinking the root crate's recompilation surface. Structural cleanliness is valuable because it supports that compile-time goal.
+Primary goal: make normal development and `--profile selfdev` builds faster by shrinking the root crate's recompilation surface. Structural cleanliness is valuable because it supports that compile-time goal.
 
 - Move stable DTOs and protocol-safe state into small crates so changes in root behavior do not recompile those contracts, and changes in contracts recompile only focused dependents.
 - Keep dependency-light crates dependency-light so they compile quickly and do not pull large runtime/TUI/provider graphs into unrelated builds.
 - Keep root-only behavior, storage, process, TUI, server, and provider runtime logic in the root crate until a full dependency boundary can move without increasing dependency fan-out.
 - Avoid cyclic dependencies and hidden coupling through broad `jcode-core` re-exports.
 - Preserve serde compatibility and root re-exports during migrations unless all call sites are intentionally updated.
-- Measure success by compile impact: fewer root edits, fewer root-owned DTOs, smaller dependency fan-out, and faster `cargo check --profile selfdev` / `selfdev build` after common changes.
+- Measure success by compile impact: fewer root edits, fewer root-owned DTOs, smaller dependency fan-out, and faster `cargo check --profile selfdev` after common changes.
 
 ## Ownership rules
 
@@ -62,7 +62,7 @@ During migrations:
 
 1. Move the type to the target crate.
 2. Keep the old root path as `pub use ...` to preserve call sites.
-3. Validate focused tests and selfdev build/reload.
+3. Validate focused tests and a full build.
 4. Later, remove obsolete root re-exports only after downstream crates can depend directly on the domain crate.
 
 ## Move checklist
@@ -89,7 +89,7 @@ Use this checklist for every type or pure-helper migration. Copy it into the PR/
    - [ ] Did `cargo check --profile selfdev -p <type-crate> -p jcode --bin jcode` pass?
    - [ ] Did relevant focused root tests pass?
    - [ ] Did `cargo fmt` pass?
-   - [ ] Did selfdev build and reload pass from a clean committed HEAD?
+   - [ ] Did a full build pass from a clean committed HEAD?
 
 ## Dependency boundary guard
 
@@ -238,4 +238,4 @@ The structure is good enough when:
 - `jcode-core` contains only true primitives or documented temporary staging modules.
 - Root modules no longer mix large DTO blocks, persistence, runtime orchestration, and rendering in one file.
 - Every domain has focused validation commands.
-- Selfdev build/reload works cleanly after every structural change.
+- A full build works cleanly after every structural change.

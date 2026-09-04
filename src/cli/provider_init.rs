@@ -40,8 +40,6 @@ pub enum ProviderChoice {
     )]
     OpenaiApi,
     Openrouter,
-    #[value(alias = "aws-bedrock", alias = "aws_bedrock")]
-    Bedrock,
     #[value(alias = "azure-openai", alias = "aoai")]
     Azure,
     #[value(alias = "opencode-zen", alias = "zen")]
@@ -148,7 +146,6 @@ impl ProviderChoice {
             Self::Openai => "openai",
             Self::OpenaiApi => "openai-api",
             Self::Openrouter => "openrouter",
-            Self::Bedrock => "bedrock",
             Self::Azure => "azure",
             Self::Opencode => "opencode",
             Self::OpencodeGo => "opencode-go",
@@ -225,10 +222,6 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
     (
         ProviderChoice::Openrouter,
         crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Bedrock,
-        crate::provider_catalog::BEDROCK_LOGIN_PROVIDER,
     ),
     (
         ProviderChoice::Azure,
@@ -1309,11 +1302,6 @@ pub async fn login_and_bootstrap_provider(
             disable_subscription_runtime_mode();
             Arc::new(provider::MultiProvider::new())
         }
-        LoginProviderTarget::Bedrock => {
-            disable_subscription_runtime_mode();
-            select_initial_model_provider("bedrock");
-            Arc::new(provider::MultiProvider::new())
-        }
         LoginProviderTarget::Azure => {
             disable_subscription_runtime_mode();
             let model = crate::provider::activation::apply_azure_openai_runtime()?;
@@ -1532,12 +1520,6 @@ async fn init_provider_with_options(
             ensure_external_api_key_auth_allowed_for_explicit_choice("OPENROUTER_API_KEY")?;
             init_notice("Using OpenRouter as the initial provider (use /model to switch)");
             select_initial_model_provider("openrouter");
-            Arc::new(provider::MultiProvider::new_fast())
-        }
-        ProviderChoice::Bedrock => {
-            disable_subscription_runtime_mode();
-            init_notice("Using AWS Bedrock as the initial provider (use /model to switch)");
-            select_initial_model_provider("bedrock");
             Arc::new(provider::MultiProvider::new_fast())
         }
         ProviderChoice::Azure => {

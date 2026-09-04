@@ -495,7 +495,6 @@ pub(super) async fn execute_debug_command(
         let mut payload = serde_json::json!({
             "session_id": agent.session_id(),
             "messages": agent.message_count(),
-            "is_canary": agent.is_canary(),
             "provider": agent.provider_name(),
             "model": agent.provider_model(),
             "upstream_provider": agent.last_upstream_provider(),
@@ -516,7 +515,7 @@ pub(super) async fn execute_debug_command(
 
     if trimmed == "help" {
         return Ok(
-            "debug commands: state, usage, history, tools, tools:full, mcp:servers, mcp:tools, mcp:connect:<server> <json>, mcp:disconnect:<server>, mcp:reload, mcp:call:<server>:<tool> <json>, last_response, message:<text>, message_async:<text>, swarm_message:<text>, swarm_message_async:<text>, tool:<name> <json>, queue_interrupt:<content>, queue_interrupt_urgent:<content>, agent:info, agent:memory, allocator, allocator:profile:on, allocator:profile:off, allocator:profile:prefix:<prefix>, allocator:profile:dump [path], jobs, job_status:<id>, job_wait:<id>, sessions, create_session, create_session:<path>, create_session:selfdev:<path>, set_model:<model>, set_provider:<name>, trigger_extraction, available_models, reload, help".to_string()
+            "debug commands: state, usage, history, tools, tools:full, mcp:servers, mcp:tools, mcp:connect:<server> <json>, mcp:disconnect:<server>, mcp:reload, mcp:call:<server>:<tool> <json>, last_response, message:<text>, message_async:<text>, swarm_message:<text>, swarm_message_async:<text>, tool:<name> <json>, queue_interrupt:<content>, queue_interrupt_urgent:<content>, agent:info, agent:memory, allocator, allocator:profile:on, allocator:profile:off, allocator:profile:prefix:<prefix>, allocator:profile:dump [path], jobs, job_status:<id>, job_wait:<id>, sessions, create_session, create_session:<path>, set_model:<model>, set_provider:<name>, trigger_extraction, available_models, reload, help".to_string()
         );
     }
 
@@ -597,7 +596,7 @@ pub(super) async fn execute_debug_command(
             .unwrap_or_else(|| build::release_binary_path(&repo_dir));
         if !target_binary.exists() {
             return Err(anyhow::anyhow!(format!(
-                "No binary found at {}. Run 'jcode self-dev --build' first, or build with 'scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode' and publish current.",
+                "No binary found at {}. Build with 'scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode' and publish current.",
                 target_binary.display()
             )));
         }
@@ -618,7 +617,7 @@ pub(super) async fn execute_debug_command(
         let info_path = jcode_dir.join("reload-info");
         std::fs::write(&info_path, format!("reload:{}", hash))?;
 
-        let _request_id = super::send_reload_signal(hash.clone(), None, false);
+        let _request_id = super::send_reload_signal(hash.clone(), None);
 
         return Ok(format!(
             "Reload signal sent for build {}. Server will restart.",
@@ -639,46 +638,9 @@ mod tests {
     use async_trait::async_trait;
     use jcode_agent_runtime::InterruptSignal;
     use std::collections::HashMap;
-    use std::ffi::OsString;
-    use std::sync::{Arc, Mutex, OnceLock};
-    use std::time::{Duration, Instant};
+    use std::sync::Arc;
+    use std::time::Duration;
     use tokio::sync::{Mutex as AsyncMutex, RwLock};
-
-    /// Serialize env mutation on the *shared* process-wide test lock.
-    ///
-    /// Env vars are per-process, so a private mutex here would only exclude
-    /// other tests in this module while racing every other test that mutates
-    /// the environment (notably the `IsolatedHome` users in `reload_recovery`,
-    /// which set `JCODE_HOME` under `storage::lock_test_env`). Two mutexes
-    /// guarding one global serialize nothing, which showed up as a rotating set
-    /// of failures under `cargo test` that all passed with `--test-threads=1`
-    /// (issue #593). Everything touching the environment must share one lock.
-    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-        crate::storage::lock_test_env()
-    }
-
-    struct EnvGuard {
-        key: &'static str,
-        original: Option<OsString>,
-    }
-
-    impl EnvGuard {
-        fn set(key: &'static str, value: &str) -> Self {
-            let original = std::env::var_os(key);
-            crate::env::set_var(key, value);
-            Self { key, original }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            if let Some(value) = &self.original {
-                crate::env::set_var(self.key, value);
-            } else {
-                crate::env::remove_var(self.key);
-            }
-        }
-    }
 
     struct TestProvider;
 
@@ -703,69 +665,6 @@ mod tests {
         fn fork(&self) -> Arc<dyn Provider> {
             Arc::new(Self)
         }
-    }
-
-    #[tokio::test]
-    async fn debug_tool_selfdev_reload_returns_promptly_for_direct_execution() {
-        let _env_lock = lock_env();
-        let _test_session = EnvGuard::set("JCODE_TEST_SESSION", "1");
-        let _debug_control = EnvGuard::set("JCODE_DEBUG_CONTROL", "1");
-
-        let mut reload_rx = crate::server::subscribe_reload_signal_for_tests();
-
-        let provider: Arc<dyn Provider> = Arc::new(TestProvider);
-        let registry = Registry::new(provider.clone()).await;
-        registry.register_dev_tools().await;
-
-        let mut agent = Agent::new(provider, registry);
-        agent.set_canary("self-dev");
-        let agent = Arc::new(AsyncMutex::new(agent));
-
-        let debug_jobs = Arc::new(RwLock::new(HashMap::new()));
-        let started = Instant::now();
-        let ack_task = tokio::spawn(async move {
-            loop {
-                if let Some(signal) = reload_rx.borrow_and_update().clone() {
-                    crate::server::acknowledge_reload_signal(&signal);
-                    return;
-                }
-                reload_rx
-                    .changed()
-                    .await
-                    .expect("reload signal channel should remain open");
-            }
-        });
-        let output = tokio::time::timeout(
-            Duration::from_secs(2),
-            execute_debug_command(
-                agent,
-                r#"tool:selfdev {"action":"reload"}"#,
-                debug_jobs,
-                None,
-                None,
-            ),
-        )
-        .await
-        .expect("debug selfdev reload should not hang")
-        .expect("debug selfdev reload should succeed");
-        // Bound the ack wait: the reload must have emitted a signal for the
-        // acker to observe. If a regression makes `do_reload` short-circuit
-        // before `send_reload_signal` (e.g. the old "No binary found" path),
-        // this would otherwise hang forever instead of failing the test.
-        tokio::time::timeout(Duration::from_secs(2), ack_task)
-            .await
-            .expect("reload signal was never emitted (ack task hung)")
-            .expect("reload ack task should complete");
-
-        assert!(
-            started.elapsed() < Duration::from_secs(2),
-            "debug selfdev reload took too long"
-        );
-        assert!(
-            output.contains("Reload acknowledged") || output.contains("Server is restarting now"),
-            "expected reload acknowledgement output, got: {}",
-            output
-        );
     }
 
     #[tokio::test]

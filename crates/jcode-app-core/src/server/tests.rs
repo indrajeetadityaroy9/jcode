@@ -343,7 +343,7 @@ async fn background_task_wake_runs_live_session_immediately_when_idle() {
     )])));
     let task = BackgroundTaskCompleted {
         task_id: "bgwake".to_string(),
-        tool_name: "selfdev-build".to_string(),
+        tool_name: "bash".to_string(),
         display_name: None,
         session_id: session_id.clone(),
         status: BackgroundTaskStatus::Completed,
@@ -661,7 +661,6 @@ async fn startup_recovery_resumes_interrupted_headless_sessions_after_reload() -
     }
 
     let mut initiator = crate::session::Session::create(None, Some("initiator".to_string()));
-    initiator.set_canary("self-dev");
     initiator.add_message(
         Role::User,
         vec![crate::message::ContentBlock::ToolResult {
@@ -698,7 +697,7 @@ async fn startup_recovery_resumes_interrupted_headless_sessions_after_reload() -
         None,
         None,
         &[
-            persisted_headless_member(&initiator.id, swarm_id, "running", "selfdev reload"),
+            persisted_headless_member(&initiator.id, swarm_id, "running", "server reload"),
             persisted_headless_member(&peer.id, swarm_id, "running", "bash tool"),
         ],
     );

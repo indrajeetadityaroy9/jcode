@@ -706,7 +706,6 @@ pub enum RuntimeKey {
     Copilot,
     Gemini,
     Cursor,
-    Bedrock,
     Antigravity,
     CodeAssistOAuth,
     RemoteCatalog,
@@ -728,7 +727,6 @@ impl RuntimeKey {
             },
             ModelRouteApiMethod::Copilot => Self::Copilot,
             ModelRouteApiMethod::Cursor => Self::Cursor,
-            ModelRouteApiMethod::Bedrock => Self::Bedrock,
             ModelRouteApiMethod::CodeAssistOAuth => Self::CodeAssistOAuth,
             ModelRouteApiMethod::AntigravityHttps => Self::Antigravity,
             ModelRouteApiMethod::RemoteCatalog => Self::RemoteCatalog,
@@ -752,7 +750,6 @@ impl RuntimeKey {
             Self::Copilot => "copilot".to_string(),
             Self::Gemini => "gemini".to_string(),
             Self::Cursor => "cursor".to_string(),
-            Self::Bedrock => "bedrock".to_string(),
             Self::Antigravity => "antigravity".to_string(),
             Self::CodeAssistOAuth => "code-assist-oauth".to_string(),
             Self::RemoteCatalog => "remote-catalog".to_string(),
@@ -824,7 +821,6 @@ impl RouteSelection {
             }
             RuntimeKey::Copilot => format!("copilot:{model}"),
             RuntimeKey::Cursor => format!("cursor:{model}"),
-            RuntimeKey::Bedrock => format!("bedrock:{model}"),
             RuntimeKey::Antigravity => format!("antigravity:{model}"),
             RuntimeKey::Gemini
             | RuntimeKey::CodeAssistOAuth
@@ -864,7 +860,6 @@ pub enum ModelRouteApiMethod {
     OpenAiCompatible { profile_id: Option<String> },
     Copilot,
     Cursor,
-    Bedrock,
     CodeAssistOAuth,
     AntigravityHttps,
     RemoteCatalog,
@@ -899,7 +894,6 @@ impl ModelRouteApiMethod {
             "openai-compatible" => Self::OpenAiCompatible { profile_id: None },
             "copilot" => Self::Copilot,
             "cursor" => Self::Cursor,
-            "bedrock" => Self::Bedrock,
             "code-assist-oauth" => Self::CodeAssistOAuth,
             "https" => Self::AntigravityHttps,
             "remote-catalog" => Self::RemoteCatalog,
@@ -942,10 +936,6 @@ impl ModelRouteApiMethod {
         matches!(self, Self::Cursor)
     }
 
-    pub fn is_bedrock(&self) -> bool {
-        matches!(self, Self::Bedrock)
-    }
-
     pub fn matches_openai_compatible_profile(&self, provider_id: &str) -> bool {
         self.profile_id()
             .is_some_and(|profile_id| profile_id.eq_ignore_ascii_case(provider_id))
@@ -969,7 +959,6 @@ impl ModelRouteApiMethod {
             Self::OpenRouter => "openrouter".to_string(),
             Self::Copilot => "copilot".to_string(),
             Self::Cursor => "cursor".to_string(),
-            Self::Bedrock => "bedrock".to_string(),
             Self::AntigravityHttps => "https".to_string(),
             Self::RemoteCatalog => "remote-catalog".to_string(),
             Self::Current => "current".to_string(),
@@ -1010,7 +999,6 @@ pub fn model_route_provider_labels_match(route_provider: &str, current_provider:
                 "copilot" | "githubcopilot"
             )
             | ("cursor", "cursor")
-            | ("bedrock" | "awsbedrock", "bedrock" | "awsbedrock")
             | ("openrouter", "openrouter" | "auto")
     )
 }
@@ -1400,7 +1388,6 @@ mod tests {
             "GitHub Copilot",
             "Copilot"
         ));
-        assert!(model_route_provider_labels_match("AWS Bedrock", "Bedrock"));
         assert!(!model_route_provider_labels_match(
             "OpenRouter/OpenAI",
             "OpenAI"

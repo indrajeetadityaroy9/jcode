@@ -40,7 +40,7 @@ for m in "${MODELS[@]}"; do
   echo "JCODE_PROGRESS {\"current\":$i,\"total\":$total,\"unit\":\"models\",\"message\":\"$m\"}" >&2
 
   # --- chat smoke ---
-  chat_out=$(timeout "$CHAT_TIMEOUT" "$JC" run --provider antigravity -m "$m" --no-update --no-selfdev "$CHAT_PROMPT" 2>&1)
+  chat_out=$(timeout "$CHAT_TIMEOUT" "$JC" run --provider antigravity -m "$m" --no-update "$CHAT_PROMPT" 2>&1)
   chat_rc=$?
   if [[ $chat_rc -ne 0 ]]; then
     chat="FAIL"
@@ -52,7 +52,7 @@ for m in "${MODELS[@]}"; do
 
   # --- tool smoke (multi-turn) ---
   note=""
-  tool_out=$(timeout "$TOOL_TIMEOUT" "$JC" run --provider antigravity -m "$m" --no-update --no-selfdev "$TOOL_PROMPT" 2>&1)
+  tool_out=$(timeout "$TOOL_TIMEOUT" "$JC" run --provider antigravity -m "$m" --no-update "$TOOL_PROMPT" 2>&1)
   tool_rc=$?
   if [[ $tool_rc -ne 0 ]]; then
     tool="FAIL"

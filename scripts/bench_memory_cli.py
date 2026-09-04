@@ -93,14 +93,14 @@ def build_specs() -> dict[str, ToolSpec]:
     specs = {
         "jcode_memory_off": ToolSpec(
             name="jcode_memory_off",
-            argv=[jcode, "--no-update", "--no-selfdev"],
+            argv=[jcode, "--no-update"],
             version_argv=[jcode, "version"],
             env={"JCODE_MEMORY_ENABLED": "0"},
             jcode=True,
         ),
         "jcode_memory_on": ToolSpec(
             name="jcode_memory_on",
-            argv=[jcode, "--no-update", "--no-selfdev"],
+            argv=[jcode, "--no-update"],
             version_argv=[jcode, "version"],
             env={"JCODE_MEMORY_ENABLED": "1"},
             jcode=True,
@@ -381,7 +381,7 @@ def run_tool(spec: ToolSpec, sessions: int, cwd: Path, timeout_s: float, settle_
                     bench_models.symlink_to(real_models)
             socket_path = os.path.join(env["JCODE_RUNTIME_DIR"], "bench.sock")
             server_proc = subprocess.Popen(
-                [spec.argv[0], "--no-update", "--no-selfdev", "serve", "--socket", socket_path],
+                [spec.argv[0], "--no-update", "serve", "--socket", socket_path],
                 cwd=str(cwd),
                 env=env,
                 stdin=subprocess.DEVNULL,
@@ -398,7 +398,7 @@ def run_tool(spec: ToolSpec, sessions: int, cwd: Path, timeout_s: float, settle_
             for _ in range(sessions):
                 launches.append(
                     launch_interactive(
-                        [spec.argv[0], "--no-update", "--no-selfdev", "--socket", socket_path],
+                        [spec.argv[0], "--no-update", "--socket", socket_path],
                         cwd,
                         env,
                         timeout_s,

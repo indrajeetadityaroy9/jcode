@@ -1,7 +1,6 @@
 //! Save/restore record for daemon reload and client reconnect recovery.
 //!
-//! This is *not* self-development machinery, despite having lived under
-//! `tool/selfdev/` until the tool was removed. [`ReloadContext`] is written
+//! [`ReloadContext`] is written
 //! before the daemon `exec()`s onto a new binary and read back by the
 //! reconnecting client, so it is on the hot path for `jcode server reload`
 //! (which `docs/FORK_WORKFLOW.md` §5 runs after every install) and for every

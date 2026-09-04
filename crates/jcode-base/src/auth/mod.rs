@@ -136,7 +136,7 @@ fn browser_unusable_here() -> bool {
 
 /// True when the current process is a Rust test binary (`cargo test` /
 /// `cargo nextest`). Test binaries always run from `target/**/deps/`, a
-/// location no installed or self-dev jcode binary ever runs from.
+/// location no installed or locally built jcode binary ever runs from.
 ///
 /// Used to keep tests from opening real browser windows (OAuth login pages,
 /// files) on the developer's desktop: many login/onboarding flows are
@@ -203,7 +203,6 @@ fn log_auth_status_snapshot(event: &str, status: &AuthStatus) {
             ("azure", auth_state_label(status.azure)),
             ("azure_api_auth", bool_label(status.azure_has_api_key)),
             ("azure_entra", bool_label(status.azure_uses_entra)),
-            ("bedrock", auth_state_label(status.bedrock)),
             ("copilot", auth_state_label(status.copilot)),
             ("antigravity", auth_state_label(status.antigravity)),
             ("gemini", auth_state_label(status.gemini)),
@@ -395,7 +394,6 @@ impl AuthStatus {
             || self.openai == AuthState::Available
             || self.openrouter == AuthState::Available
             || self.azure == AuthState::Available
-            || self.bedrock == AuthState::Available
             || self.copilot == AuthState::Available
             || self.antigravity == AuthState::Available
             || self.gemini == AuthState::Available
@@ -430,7 +428,6 @@ impl AuthStatus {
                 ("azure", self.azure.label().to_string()),
                 ("azure_api", self.azure_has_api_key.to_string()),
                 ("azure_entra", self.azure_uses_entra.to_string()),
-                ("bedrock", self.bedrock.label().to_string()),
                 ("copilot", self.copilot.label().to_string()),
                 ("copilot_cred", self.copilot_has_api_token.to_string()),
                 ("antigravity", self.antigravity.label().to_string()),
@@ -463,7 +460,6 @@ impl AuthStatus {
             LoginProviderAuthStateKey::Anthropic => self.anthropic.state,
             LoginProviderAuthStateKey::OpenAi => self.openai,
             LoginProviderAuthStateKey::Azure => self.azure,
-            LoginProviderAuthStateKey::Bedrock => self.bedrock,
             LoginProviderAuthStateKey::OpenRouterLike => self.openrouter,
             LoginProviderAuthStateKey::Copilot => self.copilot,
             LoginProviderAuthStateKey::Antigravity => self.antigravity,
@@ -527,13 +523,6 @@ impl AuthStatus {
             // Same split for OpenAI: `openai` is the ChatGPT/Codex OAuth login,
             // `openai-api` (handled above) is the API-key login.
             crate::provider_catalog::LoginProviderTarget::OpenAi => self.openai_oauth_state,
-            crate::provider_catalog::LoginProviderTarget::Bedrock => {
-                if crate::provider::bedrock::BedrockProvider::has_credentials() {
-                    AuthState::Available
-                } else {
-                    AuthState::NotConfigured
-                }
-            }
             crate::provider_catalog::LoginProviderTarget::GrokBuild => self.grok_build,
             crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
                 if crate::provider_catalog::openai_compatible_profile_is_configured(profile) {
@@ -589,19 +578,6 @@ impl AuthStatus {
             crate::provider_catalog::LoginProviderTarget::ClaudeApiKey => {
                 if self.state_for_provider(provider) == AuthState::Available {
                     "API key (`ANTHROPIC_API_KEY`)".to_string()
-                } else {
-                    "not configured".to_string()
-                }
-            }
-            crate::provider_catalog::LoginProviderTarget::Bedrock => {
-                if self.state_for_provider(provider) == AuthState::Available {
-                    if crate::provider::bedrock::BedrockProvider::configured_bearer_token()
-                        .is_some()
-                    {
-                        "Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`)".to_string()
-                    } else {
-                        "AWS credential chain".to_string()
-                    }
                 } else {
                     "not configured".to_string()
                 }
@@ -819,26 +795,6 @@ impl AuthStatus {
                     AuthValidationMethod::ConfigurationCheck,
                 )
             }
-            crate::provider_catalog::LoginProviderTarget::Bedrock => {
-                let (source, detail) = summarize_sources(vec![
-                    env_source(crate::provider::bedrock::API_KEY_ENV),
-                    config_source(
-                        crate::provider::bedrock::API_KEY_ENV,
-                        crate::provider::bedrock::ENV_FILE,
-                        "~/.config/jcode/bedrock.env",
-                    ),
-                    env_source("AWS_PROFILE"),
-                    env_source("JCODE_BEDROCK_PROFILE"),
-                    env_source("AWS_ACCESS_KEY_ID"),
-                ]);
-                (
-                    source,
-                    detail,
-                    AuthExpiryConfidence::Unknown,
-                    AuthRefreshSupport::ExternalManaged,
-                    AuthValidationMethod::PresenceCheck,
-                )
-            }
             crate::provider_catalog::LoginProviderTarget::GrokBuild => (
                 if state == AuthState::Available {
                     AuthCredentialSource::LocalCliSession
@@ -972,9 +928,6 @@ fn build_auth_status_uncached(mode: AuthProbeMode) -> (AuthStatus, Vec<(&'static
         probe_openrouter_status(&mut status)
     });
     record_auth_probe_step(&mut timings, "azure", || probe_azure_status(&mut status));
-    record_auth_probe_step(&mut timings, "bedrock", || {
-        probe_bedrock_status(&mut status)
-    });
     record_auth_probe_step(&mut timings, "openai", || probe_openai_status(&mut status));
     record_auth_probe_step(&mut timings, "copilot", || {
         probe_copilot_status(&mut status)
@@ -1107,12 +1060,6 @@ fn probe_azure_status(status: &mut AuthStatus) {
     status.azure_uses_entra = crate::auth::azure::uses_entra_id();
     if crate::auth::azure::has_configuration() {
         status.azure = AuthState::Available;
-    }
-}
-
-fn probe_bedrock_status(status: &mut AuthStatus) {
-    if crate::provider::bedrock::BedrockProvider::has_credentials() {
-        status.bedrock = AuthState::Available;
     }
 }
 
@@ -1348,7 +1295,6 @@ fn assessment_for_key(
         }
         LoginProviderAuthStateKey::Jcode
         | LoginProviderAuthStateKey::Azure
-        | LoginProviderAuthStateKey::Bedrock
         | LoginProviderAuthStateKey::OpenRouterLike
         | LoginProviderAuthStateKey::ExternalImport => (
             AuthCredentialSource::None,

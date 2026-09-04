@@ -8,7 +8,7 @@ pub struct TerminalCommand {
     pub args: Vec<String>,
     pub title: Option<String>,
     pub fresh_spawn: bool,
-    /// What this spawn is for (e.g. "resume", "selfdev", "swarm-agent").
+    /// What this spawn is for (e.g. "resume", "swarm-agent").
     /// Exported as `JCODE_SPAWN_KIND` to spawn hooks and spawned terminals.
     pub kind: Option<String>,
     /// The jcode session this terminal will run, when known.
@@ -562,8 +562,8 @@ pub fn expand_home(program: &str) -> PathBuf {
 /// The `JCODE_SPAWN_*` metadata env exported to spawn hooks and to terminals
 /// launched by the built-in fallback:
 ///
-/// - `JCODE_SPAWN_KIND`: why this spawn happened ("resume", "selfdev",
-///   "swarm-agent", ...), when known.
+/// - `JCODE_SPAWN_KIND`: why this spawn happened ("resume", "swarm-agent",
+///   ...), when known.
 /// - `JCODE_SPAWN_SESSION_ID`: the jcode session the window will run.
 /// - `JCODE_SPAWN_TITLE`: the suggested window/tab title.
 /// - `JCODE_SPAWN_CWD`: the working directory for the session.
@@ -1429,7 +1429,7 @@ mod tests {
     fn windows_cmd_fallback_runs_jcode_under_cmd_k() {
         let command = TerminalCommand::new(
             std::path::PathBuf::from(r"C:\Program Files\jcode\jcode.exe"),
-            vec!["self-dev".to_string()],
+            vec!["--continue".to_string()],
         )
         .title("jcode");
         let cmd = build_spawn_command("cmd", &command, Path::new(r"C:\Users\me")).unwrap();
@@ -1439,7 +1439,7 @@ mod tests {
             .collect();
         assert_eq!(&args[..5], ["/C", "start", "jcode", "cmd.exe", "/K"]);
         assert!(args[5].contains(r#""C:\Program Files\jcode\jcode.exe""#));
-        assert!(args[5].contains("self-dev"));
+        assert!(args[5].contains("--continue"));
     }
 
     #[test]

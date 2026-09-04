@@ -30,7 +30,7 @@ where
 
 /// Whether a picker route's runtime can apply a per-request reasoning effort.
 /// Effort rows are only rendered for these routes; other routes (Copilot,
-/// Bedrock, Antigravity CLI, remote-catalog placeholders, ...) get one plain
+/// Antigravity CLI, remote-catalog placeholders, ...) get one plain
 /// row per model because a picked effort could not actually be applied.
 pub(super) fn route_supports_reasoning_effort(api_method: &str) -> bool {
     use crate::provider::ModelRouteApiMethod as Method;
@@ -46,7 +46,6 @@ pub(super) fn route_supports_reasoning_effort(api_method: &str) -> bool {
         Method::JcodeSubscription
         | Method::Copilot
         | Method::Cursor
-        | Method::Bedrock
         | Method::CodeAssistOAuth
         | Method::AntigravityHttps
         | Method::RemoteCatalog

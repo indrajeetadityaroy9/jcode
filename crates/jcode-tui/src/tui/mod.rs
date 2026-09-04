@@ -347,8 +347,6 @@ pub trait TuiState {
     // ---- Session / server ----
     /// Whether running in remote (client-server) mode
     fn is_remote_mode(&self) -> bool;
-    /// Whether running in canary/self-dev mode
-    fn is_canary(&self) -> bool;
     /// Whether running in replay mode
     fn is_replay(&self) -> bool;
     /// Diff display mode (off/inline/full-inline/pinned/file)
@@ -1481,39 +1479,18 @@ pub struct PickerOption {
     pub estimated_reference_cost_micros: Option<u64>,
 }
 
-pub(crate) fn subscribe_metadata(
-    remote_working_dir: Option<&str>,
-) -> (Option<String>, Option<bool>) {
+pub(crate) fn subscribe_metadata(remote_working_dir: Option<&str>) -> Option<String> {
     let working_dir = std::env::current_dir().ok();
-    resolve_subscribe_metadata(
-        working_dir.as_deref(),
-        remote_working_dir,
-        jcode_dev_types::client_selfdev_requested(),
-    )
+    resolve_subscribe_metadata(working_dir.as_deref(), remote_working_dir)
 }
 
 pub(crate) fn resolve_subscribe_metadata(
     client_working_dir: Option<&std::path::Path>,
     remote_working_dir: Option<&str>,
-    client_selfdev_requested: bool,
-) -> (Option<String>, Option<bool>) {
-    let working_dir_str = remote_working_dir
+) -> Option<String> {
+    remote_working_dir
         .map(str::to_string)
-        .or_else(|| client_working_dir.map(|p| p.display().to_string()));
-
-    let mut selfdev = client_selfdev_requested;
-    if !selfdev && let Some(dir) = client_working_dir {
-        let mut current = Some(dir);
-        while let Some(path) = current {
-            if crate::build::is_jcode_repo(path) {
-                selfdev = true;
-                break;
-            }
-            current = path.parent();
-        }
-    }
-
-    (working_dir_str, if selfdev { Some(true) } else { None })
+        .or_else(|| client_working_dir.map(|p| p.display().to_string()))
 }
 
 /// Public wrapper to render a single frame (used by benchmarks/tools).
@@ -1633,17 +1610,15 @@ mod tests {
     #[test]
     fn subscribe_metadata_prefers_remote_working_dir_override() {
         let local_dir = std::path::Path::new("/client/project");
-        let (working_dir, selfdev) =
-            resolve_subscribe_metadata(Some(local_dir), Some("/server/project"), false);
+        let working_dir = resolve_subscribe_metadata(Some(local_dir), Some("/server/project"));
 
         assert_eq!(working_dir.as_deref(), Some("/server/project"));
-        assert_eq!(selfdev, None);
     }
 
     #[test]
     fn subscribe_metadata_uses_client_cwd_without_override() {
         let local_dir = std::path::Path::new("/client/project");
-        let (working_dir, _selfdev) = resolve_subscribe_metadata(Some(local_dir), None, false);
+        let working_dir = resolve_subscribe_metadata(Some(local_dir), None);
 
         assert_eq!(working_dir.as_deref(), Some("/client/project"));
     }

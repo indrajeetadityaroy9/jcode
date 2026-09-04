@@ -98,7 +98,7 @@ def build_tool_specs() -> list[ToolSpec]:
     specs = [
         ToolSpec(
             name="jcode",
-            argv=["jcode", "--no-update", "--no-selfdev"],
+            argv=["jcode", "--no-update"],
             no_telem_env={},
             disable_selfdev=True,
         ),

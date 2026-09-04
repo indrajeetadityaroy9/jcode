@@ -93,7 +93,7 @@ fn format_session_menu_item_title_with_display(
 ) -> String {
     let display = crate::id::extract_session_name(session_id).unwrap_or(session_id);
     let icon = crate::id::session_icon(display);
-    let label = crate::process_title::terminal_window_title(icon, display_title, None, false);
+    let label = crate::process_title::terminal_window_title(icon, display_title, None);
     if streaming {
         format!("{label} · streaming")
     } else {
@@ -143,7 +143,7 @@ pub fn run_menubar_command(once: bool, json: bool) -> Result<()> {
 /// Failures are silently ignored so they never disrupt normal session startup.
 ///
 /// The macOS menu bar is a single per-login-session resource, so this guards
-/// hard against sandboxed jcode processes (tests, self-dev, onboarding) ever
+/// hard against sandboxed jcode processes (tests, onboarding) ever
 /// spawning a helper: each such process runs with a throwaway `$JCODE_HOME`,
 /// and without this guard every distinct sandbox home spawned its own helper
 /// and drew its own duplicate status item into the one real menu bar.
@@ -157,7 +157,7 @@ pub fn ensure_menubar_helper_running() {
         return;
     }
 
-    // Sandboxed jcode (tests / self-dev / onboarding, anything with a throwaway
+    // Sandboxed jcode (tests / onboarding, anything with a throwaway
     // `$JCODE_HOME`) must never manage the real user's global menu bar.
     if running_in_menubar_sandbox() {
         return;
@@ -209,7 +209,7 @@ pub fn ensure_menubar_helper_running() {}
 ///
 /// The macOS menu bar is a single per-login-session resource shared by every
 /// jcode process for this user, so this state must live at a fixed location
-/// that does **not** depend on `$JCODE_HOME`. Sandboxes (tests, self-dev,
+/// that does **not** depend on `$JCODE_HOME`. Sandboxes (tests,
 /// onboarding) override `$JCODE_HOME` with throwaway temp dirs; anchoring to
 /// the real home (`$HOME/.jcode`) gives every process the same lock inode so
 /// the singleton actually holds across them. For a normal (non-sandboxed)
@@ -446,7 +446,7 @@ mod macos {
 
         // Enforce a single live menu bar helper. The pid-file fast path in
         // `ensure_menubar_helper_running` is best-effort and can race or be
-        // bypassed entirely (e.g. a self-dev `target/.../jcode` and the
+        // bypassed entirely (e.g. a local `target/.../jcode` and the
         // installed `~/.local/bin/jcode` both spawn helpers, or a reload
         // re-runs startup). Without a hard guard each extra helper creates its
         // own NSStatusItem, so the user ends up with a duplicate menu bar item
@@ -969,7 +969,7 @@ mod tests {
         assert!(is_menubar_sandbox(true, false, None, Some(real)));
         assert!(is_menubar_sandbox(false, true, None, Some(real)));
 
-        // A throwaway sandbox home (e2e / self-dev / onboarding) is a sandbox.
+        // A throwaway sandbox home (e2e / onboarding) is a sandbox.
         assert!(is_menubar_sandbox(
             false,
             false,

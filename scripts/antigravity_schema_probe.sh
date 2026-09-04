@@ -26,7 +26,7 @@ printf -- "---------------------------------------------------------------------
 
 for strip in "${STRIPS[@]}"; do
   out=$(JCODE_SCHEMA_STRIP="$strip" timeout "$TIMEOUT" \
-    "$JC" run --provider antigravity -m "$MODEL" --no-update --no-selfdev "$PROMPT" 2>&1)
+    "$JC" run --provider antigravity -m "$MODEL" --no-update "$PROMPT" 2>&1)
   rc=$?
   label="${strip:-<none>}"
   if [[ $rc -eq 124 ]]; then

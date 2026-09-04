@@ -225,8 +225,7 @@ def launch(binary: str, env: dict, session_id: str,
     cenv["JCODE_DEBUG_RESPONSE_PATH"] = str(resp_path)
     cenv["TERM"] = "xterm-256color"
     proc = subprocess.Popen(
-        [binary, "--no-update", "--no-selfdev",
-         "--socket", env["JCODE_SOCKET"], "--resume", session_id],
+        [binary, "--no-update",         "--socket", env["JCODE_SOCKET"], "--resume", session_id],
         stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
         env=cenv, preexec_fn=os.setsid,
     )
@@ -362,7 +361,7 @@ def main() -> int:
     log_fh = (root / "server.log").open("wb")
     server = subprocess.Popen(
         [binary, "serve", "--socket", env["JCODE_SOCKET"], "--debug-socket",
-         "--no-update", "--no-selfdev"],
+         "--no-update"],
         env=env, stdout=log_fh, stderr=subprocess.STDOUT, preexec_fn=os.setsid)
 
     client: Client | None = None

@@ -40,8 +40,6 @@ impl Liveness {
 const RESTART_REQUIRED_SECTIONS: &[&str] = &[
     // ACP adapter settings are consumed when the adapter process starts.
     "acp",
-    // Launch hotkeys are baked into the desktop/launcher registration once.
-    "launch_hotkeys",
 ];
 
 /// Liveness of a dotted config key such as `keybindings.scroll_up`.

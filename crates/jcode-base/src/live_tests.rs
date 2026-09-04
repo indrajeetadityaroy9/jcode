@@ -288,13 +288,6 @@ const ISSUE_DRIVEN_LIVE_PROVIDER_TARGETS: &[IssueDrivenLiveProviderTarget] = &[
         issue_refs: &["#156", "#161", "#177"],
     },
     IssueDrivenLiveProviderTarget {
-        provider_id: "bedrock",
-        provider_label: "AWS Bedrock",
-        model: None,
-        reason: "AWS Bedrock bearer auth plus Application Inference Profile ARN support",
-        issue_refs: &["#107", "#192"],
-    },
-    IssueDrivenLiveProviderTarget {
         provider_id: "copilot",
         provider_label: "GitHub Copilot",
         model: Some("gpt-5.4"),
@@ -3063,10 +3056,6 @@ mod tests {
             ),
             (
                 "  openai-compatible    API key  untested            yes      yes   0/0",
-                Dim,
-            ),
-            (
-                "  bedrock              API key  needs native suite  no       -     0/0",
                 Dim,
             ),
             ("  [#223] xiaomi-mimo / mimo-v2.5: READY", Pass),

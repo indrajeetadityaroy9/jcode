@@ -1183,8 +1183,6 @@ struct SessionSummary {
     #[serde(default)]
     model: Option<String>,
     #[serde(default)]
-    is_canary: bool,
-    #[serde(default)]
     is_debug: bool,
     #[serde(default)]
     saved: bool,
@@ -1485,8 +1483,6 @@ struct SessionJournalSummaryMeta {
     #[serde(default)]
     model: Option<String>,
     #[serde(default)]
-    is_canary: bool,
-    #[serde(default)]
     is_debug: bool,
     #[serde(default)]
     saved: Option<bool>,
@@ -1531,7 +1527,6 @@ fn load_session_summary(path: &Path) -> Result<SessionSummary> {
                     summary.short_name = entry.meta.short_name;
                     summary.provider_key = entry.meta.provider_key;
                     summary.model = entry.meta.model;
-                    summary.is_canary = entry.meta.is_canary;
                     summary.is_debug = entry.meta.is_debug;
                     if let Some(saved) = entry.meta.saved {
                         summary.saved = saved;
@@ -1693,7 +1688,6 @@ fn parse_jcode_session_info(
         working_dir: session.working_dir,
         model: session.model,
         provider_key: session.provider_key,
-        is_canary: session.is_canary,
         is_debug: session.is_debug,
         saved: session.saved,
         save_label: session.save_label,
@@ -1771,8 +1765,8 @@ pub fn load_sessions() -> Result<Vec<SessionInfo>> {
         // crosses `scan_limit`) can over-parse, so wasted work is bounded to a
         // single window's worth of candidates while still parallelizing widely.
         let mut sessions: Vec<SessionInfo> = Vec::new();
-        // Debug/canary sessions are hidden in the default picker view. Do not let a
-        // burst of self-dev or swarm workers consume the entire recency budget and
+        // Debug sessions are hidden in the default picker view. Do not let a
+        // burst of swarm workers consume the entire recency budget and
         // crowd out ordinary sessions. Keep a separate bounded debug budget so the
         // test-session toggle still has useful recent entries without making the
         // default list appear to jump from a handful of Jcode rows straight to old
@@ -1920,7 +1914,6 @@ fn load_external_claude_code_sessions(scan_limit: usize) -> Vec<SessionInfo> {
                 working_dir,
                 model: None,
                 provider_key: Some("claude-code".to_string()),
-                is_canary: false,
                 is_debug: false,
                 saved: false,
                 save_label: None,
@@ -2074,7 +2067,6 @@ fn load_codex_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         working_dir,
         model: None,
         provider_key: Some("openai-codex".to_string()),
-        is_canary: false,
         is_debug: false,
         saved: false,
         save_label: None,
@@ -2271,7 +2263,6 @@ fn load_pi_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         working_dir,
         model: None,
         provider_key: Some("pi".to_string()),
-        is_canary: false,
         is_debug: false,
         saved: false,
         save_label: None,
@@ -2435,7 +2426,6 @@ fn load_pi_session_info(path: &Path) -> Result<Option<SessionInfo>> {
         working_dir,
         model,
         provider_key,
-        is_canary: false,
         is_debug: false,
         saved: false,
         save_label: None,
@@ -2544,7 +2534,6 @@ fn load_opencode_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         working_dir,
         model: None,
         provider_key: Some("opencode".to_string()),
-        is_canary: false,
         is_debug: false,
         saved: false,
         save_label: None,
@@ -2694,7 +2683,6 @@ fn load_opencode_session_info(path: &Path) -> Result<Option<SessionInfo>> {
         working_dir,
         model,
         provider_key,
-        is_canary: false,
         is_debug: false,
         saved: false,
         save_label: None,
@@ -2869,7 +2857,6 @@ fn load_cursor_session_stub(path: &Path) -> Result<Option<SessionInfo>> {
         working_dir,
         model: None,
         provider_key: Some("cursor".to_string()),
-        is_canary: false,
         is_debug: false,
         saved: false,
         save_label: None,

@@ -308,7 +308,7 @@ fn install_main_source_update_blocking(latest_sha: &str) -> Result<PathBuf> {
     build::install_binary_at_version(&path, &channel_version)
         .context("Failed to install built binary")?;
     // Carry the long-lived daemon's reload target forward too, but only when it
-    // was tracking stable. A deliberately-promoted self-dev shared-server build
+    // was tracking stable. A deliberately-promoted shared-server build
     // is left untouched so the update never silently wipes it out.
     if let Err(error) = build::advance_shared_server_if_tracking_stable(&channel_version) {
         crate::logging::warn(&format!(

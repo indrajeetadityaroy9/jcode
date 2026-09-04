@@ -93,7 +93,6 @@ async fn handle_clear_session_replaces_runtime_handles_and_updates_shutdown_regi
     let mut client_session_id = old_session_id.to_string();
     handle_clear_session(
         7,
-        false,
         &mut client_session_id,
         "conn_clear",
         &agent,

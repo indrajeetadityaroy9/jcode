@@ -544,7 +544,7 @@ pub async fn run_provider_e2e(
 /// whose live path is not OpenAI-compatible and so cannot be exercised by
 /// [`run_provider_e2e`]). Today this is the Claude OAuth/subscription provider,
 /// the Antigravity (Google OAuth Cloud Code) provider, and the generic
-/// native-runtime providers (OpenAI, Gemini, Cursor, Copilot, Bedrock).
+/// native-runtime providers (OpenAI, Gemini, Cursor, Copilot).
 ///
 /// The predicate itself lives in `jcode_base::auth::doctor` so base-internal
 /// code (`live_tests` roster annotation) can call it without depending on this
@@ -617,7 +617,7 @@ pub async fn run_claude_native_e2e(
     // exactly what the agent would. We never log or surface the token itself.
     //
     // The `claude` login provider is specifically the OAuth/subscription path,
-    // so pin OAuth mode before resolving: otherwise a self-dev session with
+    // so pin OAuth mode before resolving: otherwise a session with
     // `JCODE_RUNTIME_PROVIDER=claude-api` would silently test the API-key path
     // and mislabel the credential. Pinning also points any provider instances
     // the probes build afterwards at the same OAuth path.
@@ -1283,7 +1283,7 @@ async fn run_native_antigravity_api_checks(
 // because their credential/catalog stories are unusual (OAuth-vs-API-key mode
 // pinning for Claude; Google project resolution + thought-signature replay for
 // Antigravity). The remaining native-runtime providers (OpenAI OAuth, Gemini
-// Code Assist, Cursor, GitHub Copilot, AWS Bedrock) share the same shape:
+// Code Assist, Cursor, GitHub Copilot) share the same shape:
 // resolve a credential, fetch the live catalog through the production runtime,
 // then run the shared wiring + API probes. `run_generic_native_e2e` drives all
 // of them from a single [`NativeProviderSpec`] so adding a provider is a small,
@@ -1297,7 +1297,6 @@ pub enum NativeProviderKind {
     Gemini,
     Cursor,
     Copilot,
-    Bedrock,
     Jcode,
     Azure,
 }
@@ -1310,7 +1309,6 @@ impl NativeProviderKind {
             "gemini" => Some(Self::Gemini),
             "cursor" => Some(Self::Cursor),
             "copilot" => Some(Self::Copilot),
-            "bedrock" => Some(Self::Bedrock),
             "jcode" => Some(Self::Jcode),
             "azure-openai" => Some(Self::Azure),
             _ => None,
@@ -1374,20 +1372,6 @@ impl NativeProviderKind {
                 auth_source: "GitHub Copilot device-flow token via hosts.json",
                 auth_env_key: None,
                 login_hint: "jcode login --provider copilot",
-            },
-            Self::Bedrock => NativeProviderSpec {
-                provider_id: "bedrock",
-                label: "AWS Bedrock",
-                contract: WiringContract {
-                    api_method: "bedrock".to_string(),
-                    route_provider: "AWS Bedrock".to_string(),
-                    expected_runtime: "bedrock",
-                    expected_namespace: None,
-                    switch_prefix: "bedrock:".to_string(),
-                },
-                auth_source: "AWS Bedrock API key / AWS credentials",
-                auth_env_key: Some("AWS_BEARER_TOKEN_BEDROCK"),
-                login_hint: "jcode login --provider bedrock",
             },
             Self::Jcode => NativeProviderSpec {
                 provider_id: "jcode",
@@ -1477,9 +1461,6 @@ impl NativeProviderKind {
                 };
                 std::sync::Arc::new(runtime)
             }
-            Self::Bedrock => {
-                std::sync::Arc::new(jcode_base::provider::bedrock::BedrockProvider::new())
-            }
             Self::Jcode => std::sync::Arc::new(jcode_base::provider::jcode::JcodeProvider::new()),
             Self::Azure => {
                 // Azure OpenAI is the OpenRouter transport configured via Azure
@@ -1540,15 +1521,6 @@ impl NativeProviderKind {
                 }
                 Ok("GitHub Copilot token resolved".to_string())
             }
-            Self::Bedrock => {
-                if !jcode_base::provider::bedrock::BedrockProvider::has_credentials() {
-                    anyhow::bail!(
-                        "no AWS Bedrock credentials found (set AWS_BEARER_TOKEN_BEDROCK, AWS_PROFILE, \
-                         or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)"
-                    );
-                }
-                Ok("AWS Bedrock credential resolved".to_string())
-            }
             Self::Jcode => {
                 if !jcode_base::subscription_catalog::has_credentials() {
                     anyhow::bail!(
@@ -1587,7 +1559,6 @@ impl NativeProviderKind {
             Self::Gemini => &["flash"],
             Self::Cursor => &["composer", "fast", "mini"],
             Self::Copilot => &["mini", "haiku", "flash", "fast"],
-            Self::Bedrock => &["haiku", "micro", "lite", "mini", "flash"],
             Self::Jcode => &["mini", "flash", "haiku", "lite", "nano"],
             Self::Azure => &["mini", "nano", "flash", "haiku"],
         };
@@ -1621,7 +1592,7 @@ struct NativeProviderSpec {
 }
 
 /// Run the strict provider/model diagnostic for a generic native-runtime
-/// provider (OpenAI, Gemini, Cursor, Copilot, Bedrock).
+/// provider (OpenAI, Gemini, Cursor, Copilot).
 ///
 /// Drives the production runtime end to end: credential resolution, the live
 /// model catalog (via the runtime's own `prefetch_models`), the shared
@@ -2429,7 +2400,6 @@ mod tests {
             ("gemini", NativeProviderKind::Gemini),
             ("cursor", NativeProviderKind::Cursor),
             ("copilot", NativeProviderKind::Copilot),
-            ("bedrock", NativeProviderKind::Bedrock),
             ("jcode", NativeProviderKind::Jcode),
             ("azure-openai", NativeProviderKind::Azure),
         ] {
@@ -2450,7 +2420,6 @@ mod tests {
             NativeProviderKind::Gemini,
             NativeProviderKind::Cursor,
             NativeProviderKind::Copilot,
-            NativeProviderKind::Bedrock,
             NativeProviderKind::Jcode,
             NativeProviderKind::Azure,
         ] {
@@ -2555,7 +2524,6 @@ mod tests {
             NativeProviderKind::Gemini,
             NativeProviderKind::Cursor,
             NativeProviderKind::Copilot,
-            NativeProviderKind::Bedrock,
             NativeProviderKind::Jcode,
             NativeProviderKind::Azure,
         ] {

@@ -18,9 +18,6 @@ fn generic_credential_paths_for_provider(
         crate::provider_catalog::LoginProviderTarget::Azure => {
             vec![config_dir.join(crate::auth::azure::ENV_FILE)]
         }
-        crate::provider_catalog::LoginProviderTarget::Bedrock => {
-            vec![config_dir.join(crate::provider::bedrock::ENV_FILE)]
-        }
         crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
             // When a named config profile is active (selected via
             // `--provider-profile`), its credentials come from the profile's

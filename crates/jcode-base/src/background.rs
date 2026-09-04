@@ -544,7 +544,7 @@ impl BackgroundTaskManager {
             // persisted. Order matters: pruning only after the status-file
             // write keeps "in the live map while the status file says Running"
             // equivalent to "a task future is actually executing", which the
-            // run_plan duplicate-driver guard and self-dev build reconciliation
+            // run_plan duplicate-driver guard and build reconciliation
             // rely on. Awaiting registration first means a task that finishes
             // instantly cannot race the insert below and leave a permanent
             // phantom entry in the map.
@@ -1217,7 +1217,7 @@ impl BackgroundTaskManager {
     /// process's reconcile sweep happens to notice. Aborting the handles here
     /// drops the futures (killing children) and persisting a terminal
     /// `Failed` status makes the interruption deterministic and immediately
-    /// visible to `bg wait`/`bg status` and self-dev queue reconciliation.
+    /// visible to `bg wait`/`bg status` and queue reconciliation.
     ///
     /// Returns the number of tasks finalized.
     pub async fn abort_live_tasks_for_reload(&self) -> usize {
@@ -1401,7 +1401,7 @@ impl BackgroundTaskManager {
     /// Best-effort synchronous lookup of detached tasks that are still running
     /// for a specific session.
     ///
-    /// This is primarily used during self-dev reload recovery, where the new
+    /// This is primarily used during reload recovery, where the new
     /// process needs to remind the agent that a previous `bash` command was
     /// persisted into the background instead of being interrupted.
     pub fn persisted_detached_running_tasks_for_session(

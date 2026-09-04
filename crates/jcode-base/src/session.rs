@@ -144,13 +144,7 @@ pub struct Session {
     /// Whether automatic end-of-turn judging is enabled for this session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub autojudge_enabled: Option<bool>,
-    /// Whether this session is a canary session (testing new builds)
-    #[serde(default)]
-    pub is_canary: bool,
-    /// Build hash this session is testing (if canary)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub testing_build: Option<String>,
-    /// Working directory (for self-dev detection)
+    /// Working directory this session was created in
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_dir: Option<String>,
     /// Memorable short name (e.g., "fox", "oak")
@@ -230,10 +224,6 @@ struct SessionStartupStub {
     autoreview_enabled: Option<bool>,
     #[serde(default)]
     autojudge_enabled: Option<bool>,
-    #[serde(default)]
-    is_canary: bool,
-    #[serde(default)]
-    testing_build: Option<String>,
     #[serde(default)]
     working_dir: Option<String>,
     #[serde(default)]
@@ -334,8 +324,6 @@ impl Session {
         session.improve_mode = stub.improve_mode;
         session.autoreview_enabled = stub.autoreview_enabled;
         session.autojudge_enabled = stub.autojudge_enabled;
-        session.is_canary = stub.is_canary;
-        session.testing_build = stub.testing_build;
         session.working_dir = stub.working_dir;
         session.short_name = stub.short_name;
         session.status = stub.status;
@@ -369,8 +357,6 @@ impl Session {
         session.improve_mode = snapshot.improve_mode;
         session.autoreview_enabled = snapshot.autoreview_enabled;
         session.autojudge_enabled = snapshot.autojudge_enabled;
-        session.is_canary = snapshot.is_canary;
-        session.testing_build = snapshot.testing_build;
         session.working_dir = snapshot.working_dir;
         session.short_name = snapshot.short_name;
         session.status = snapshot.status;
@@ -506,8 +492,6 @@ impl Session {
             improve_mode: self.improve_mode,
             autoreview_enabled: self.autoreview_enabled,
             autojudge_enabled: self.autojudge_enabled,
-            is_canary: self.is_canary,
-            testing_build: self.testing_build.clone(),
             working_dir: self.working_dir.clone(),
             short_name: self.short_name.clone(),
             status: self.status.clone(),
@@ -707,8 +691,6 @@ impl Session {
         self.improve_mode = meta.improve_mode;
         self.autoreview_enabled = meta.autoreview_enabled;
         self.autojudge_enabled = meta.autojudge_enabled;
-        self.is_canary = meta.is_canary;
-        self.testing_build = meta.testing_build;
         self.working_dir = meta.working_dir;
         self.short_name = meta.short_name;
         self.status = meta.status;
@@ -747,8 +729,6 @@ impl Session {
             improve_mode: None,
             autoreview_enabled: None,
             autojudge_enabled: None,
-            is_canary: false,
-            testing_build: None,
             working_dir: current_working_dir_string(),
             short_name,
             status: SessionStatus::Active,
@@ -801,8 +781,6 @@ impl Session {
             improve_mode: None,
             autoreview_enabled: None,
             autojudge_enabled: None,
-            is_canary: false,
-            testing_build: None,
             working_dir: current_working_dir_string(),
             short_name: Some(short_name),
             status: SessionStatus::Active,
@@ -1007,18 +985,6 @@ request in this new forked session, using the inherited conversation only as con
         );
     }
 
-    /// Mark this session as a canary tester
-    pub fn set_canary(&mut self, build_hash: &str) {
-        self.is_canary = true;
-        self.testing_build = Some(build_hash.to_string());
-    }
-
-    /// Clear canary status
-    pub fn clear_canary(&mut self) {
-        self.is_canary = false;
-        self.testing_build = None;
-    }
-
     /// Set the session status
     pub fn set_status(&mut self, status: SessionStatus) {
         self.status = status;
@@ -1097,21 +1063,6 @@ request in this new forked session, using the inherited conversation only as con
         }
 
         false
-    }
-
-    /// Check if this session is working on the jcode repository
-    pub fn is_self_dev(&self) -> bool {
-        if let Some(ref dir) = self.working_dir {
-            // Check if working dir contains jcode source
-            let path = std::path::Path::new(dir);
-            path.join("Cargo.toml").exists()
-                && path.join("src/main.rs").exists()
-                && std::fs::read_to_string(path.join("Cargo.toml"))
-                    .map(|s| s.contains("name = \"jcode\""))
-                    .unwrap_or(false)
-        } else {
-            false
-        }
     }
 
     pub fn redacted_for_export(&self) -> Self {
@@ -1627,10 +1578,6 @@ struct RemoteStartupSessionSnapshot {
     autoreview_enabled: Option<bool>,
     #[serde(default)]
     autojudge_enabled: Option<bool>,
-    #[serde(default)]
-    is_canary: bool,
-    #[serde(default)]
-    testing_build: Option<String>,
     #[serde(default)]
     working_dir: Option<String>,
     #[serde(default)]

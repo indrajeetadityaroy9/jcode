@@ -75,17 +75,15 @@ pub fn terminal_window_title(
     icon: &str,
     display_title: Option<&str>,
     fallback_label: Option<&str>,
-    is_selfdev: bool,
 ) -> String {
     let display_title = display_title
         .and_then(normalized_display_title)
         .map(|title| truncate_chars(&title, 48));
-    let suffix = if is_selfdev { " [self-dev]" } else { "" };
     let title = match display_title {
-        Some(title) => format!("{icon} {title}{suffix}"),
+        Some(title) => format!("{icon} {title}"),
         None => match fallback_label.and_then(normalized_display_title) {
-            Some(label) => format!("{icon} {label}{suffix}"),
-            None => format!("{icon}{suffix}"),
+            Some(label) => format!("{icon} {label}"),
+            None => icon.to_string(),
         },
     };
     crate::output_style::terminal_text(&title).into_owned()
@@ -120,31 +118,24 @@ pub fn set_server_title(server_name: &str) {
     set_title(compact_process_title("jcode:s:", Some(server_name)));
 }
 
-pub fn set_client_generic_title(is_selfdev: bool) {
-    let prefix = if is_selfdev {
-        "jcode:selfdev"
-    } else {
-        "jcode:client"
-    };
-    set_title(compact_process_title(prefix, None));
+pub fn set_client_generic_title() {
+    set_title(compact_process_title("jcode:client", None));
 }
 
-pub fn set_client_session_title(session_id: &str, is_selfdev: bool) {
-    set_client_display_title(&session_name(session_id), is_selfdev);
+pub fn set_client_session_title(session_id: &str) {
+    set_client_display_title(&session_name(session_id));
 }
 
-pub fn set_client_display_title(session_name: &str, is_selfdev: bool) {
-    let prefix = if is_selfdev { "jcode:d:" } else { "jcode:c:" };
-    set_title(compact_process_title(prefix, Some(session_name)));
+pub fn set_client_display_title(session_name: &str) {
+    set_title(compact_process_title("jcode:c:", Some(session_name)));
 }
 
-pub fn set_client_remote_display_title(server_name: &str, session_name: &str, is_selfdev: bool) {
+pub fn set_client_remote_display_title(server_name: &str, session_name: &str) {
     if server_name.is_empty() || server_name.eq_ignore_ascii_case("jcode") {
-        set_client_display_title(session_name, is_selfdev);
+        set_client_display_title(session_name);
         return;
     }
-    let prefix = if is_selfdev { "jcode:d:" } else { "jcode:c:" };
-    set_title(format!("{prefix}{server_name}/{session_name}"));
+    set_title(format!("jcode:c:{server_name}/{session_name}"));
 }
 
 #[cfg(test)]
@@ -165,27 +156,14 @@ mod tests {
     #[test]
     fn terminal_window_title_omits_product_and_animal_names() {
         assert_eq!(
-            terminal_window_title(
-                "🐙",
-                Some("resume window title"),
-                Some("jcode Octopus"),
-                false
-            ),
+            terminal_window_title("🐙", Some("resume window title"), Some("jcode Octopus")),
             "🐙 resume window title"
         );
         assert_eq!(
-            terminal_window_title("🐙", None, Some("jcode Octopus"), false),
+            terminal_window_title("🐙", None, Some("jcode Octopus")),
             "🐙 jcode Octopus"
         );
-        assert_eq!(
-            terminal_window_title(
-                "🐙",
-                Some("resume window title"),
-                Some("jcode Octopus"),
-                true
-            ),
-            "🐙 resume window title [self-dev]"
-        );
+        assert_eq!(terminal_window_title("🐙", None, None), "🐙");
     }
 
     #[test]

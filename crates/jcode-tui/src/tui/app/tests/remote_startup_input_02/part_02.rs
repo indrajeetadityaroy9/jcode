@@ -45,7 +45,7 @@ fn test_handle_background_task_completed_with_wake_starts_pending_turn() {
     let mut app = create_test_app();
     let event = BusEvent::BackgroundTaskCompleted(BackgroundTaskCompleted {
         task_id: "bgwake".to_string(),
-        tool_name: "selfdev-build".to_string(),
+        tool_name: "cargo-build".to_string(),
         display_name: None,
         session_id: app.session.id.clone(),
         status: BackgroundTaskStatus::Completed,

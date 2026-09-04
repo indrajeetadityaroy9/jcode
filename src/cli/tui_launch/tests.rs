@@ -1,7 +1,6 @@
 #[cfg(unix)]
 use super::{
     resumed_window_title, should_show_server_spawning, spawn_resume_in_new_terminal,
-    spawn_selfdev_in_new_terminal,
 };
 #[cfg(unix)]
 use crate::platform::set_permissions_executable;
@@ -109,7 +108,12 @@ fn spawn_resume_in_new_terminal_uses_handterm_exec_mode() {
     assert!(launched);
 
     let lines = wait_for_lines(&output_path, 5);
-    assert_eq!(lines[0], cwd.to_string_lossy());
+    // The child reports its resolved cwd; on macOS `/var` is a symlink to
+    // `/private/var`, so compare canonicalized paths.
+    assert_eq!(
+        std::path::Path::new(&lines[0]),
+        fs::canonicalize(&cwd).expect("canonicalize cwd")
+    );
     assert_eq!(lines[1], "--backend");
     assert_eq!(lines[2], "gpu");
     assert_eq!(lines[3], "--exec");
@@ -155,38 +159,6 @@ fn resumed_window_title_includes_server_name_when_registry_matches_socket() {
 }
 
 #[cfg(unix)]
-#[test]
-fn spawn_selfdev_in_new_terminal_uses_handterm_exec_mode() {
-    let _env_lock = ENV_LOCK.lock().expect("env lock");
-    let temp = tempfile::tempdir().expect("temp dir");
-    let output_path = temp.path().join("selfdev-launch.txt");
-    write_fake_handterm(&temp, &output_path);
-    let path = format!(
-        "{}:{}",
-        temp.path().display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    let _path_guard = EnvVarGuard::set_value("PATH", &path);
-    let _term_guard = EnvVarGuard::set_value("JCODE_TERMINAL", "handterm");
-
-    let exe = temp.path().join("jcode-bin");
-    let cwd = temp.path().join("cwd");
-    fs::create_dir_all(&cwd).expect("create cwd");
-
-    let launched =
-        spawn_selfdev_in_new_terminal(&exe, "ses_selfdev_123", &cwd).expect("spawn should work");
-    assert!(launched);
-
-    let lines = wait_for_lines(&output_path, 5);
-    assert_eq!(lines[0], cwd.to_string_lossy());
-    assert_eq!(lines[1], "--backend");
-    assert_eq!(lines[2], "gpu");
-    assert_eq!(lines[3], "--exec");
-    assert!(lines[4].contains("--resume"));
-    assert!(lines[4].contains("ses_selfdev_123"));
-    assert!(lines[4].contains("self-dev"));
-    assert!(lines[4].contains(exe.to_string_lossy().as_ref()));
-}
 
 #[cfg(unix)]
 #[tokio::test]

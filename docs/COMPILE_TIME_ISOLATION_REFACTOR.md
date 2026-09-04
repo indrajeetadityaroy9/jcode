@@ -97,7 +97,7 @@ graph TD
 Rules:
 
 - TUI and CLI depend on client API, protocol, view models, and small type crates, not full server/provider/tool implementations.
-- Provider implementations are leaf crates. AWS/Bedrock dependencies live only in the Bedrock provider crate.
+- Provider implementations are leaf crates. Heavy vendor SDK dependencies live only in the provider crate that needs them.
 - Tool implementations are leaf crates. Heavy tools like PDF/browser/Gmail/search are isolated behind tool-core interfaces.
 - Shared bottom crates are small and stable. Avoid putting high-churn behavior in protocol/type crates.
 - Avoid broad `pub use whole_crate::*` compatibility ladders in final architecture.
@@ -130,7 +130,7 @@ Likely first splits:
   - `jcode-auth-core`
   - `jcode-session-core`
   - `jcode-memory-core`
-  - provider implementation crates, especially Bedrock/AWS as a leaf
+  - provider implementation crates, each a leaf
 - From `jcode-app-core`:
   - `jcode-server`
   - `jcode-agent`
