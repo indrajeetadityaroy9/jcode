@@ -6,9 +6,9 @@
 //! API crate, and the gap only shows up when someone tries to build a real
 //! client and finds they cannot switch models.
 //!
-//! So the reference clients are the specification. The TUI and desktop2 are
-//! complete, shipping clients of the same daemon; every request they send is
-//! by definition something a client needs. This test diffs that set against
+//! So the reference client is the specification. The TUI is a complete,
+//! shipping client of the same daemon; every request it sends is by
+//! definition something a client needs. This test diffs that set against
 //! the API surface and fails when an unreviewed gap appears.
 //!
 //! The ledger below is the reviewed answer for each one. Adding a request to
@@ -78,24 +78,11 @@ const LEDGER: &[(&str, Disposition)] = &[
     ("TriggerMemoryExtraction", ClientInternal),
 ];
 
-/// Requests the reference clients (TUI, desktop2) send to the daemon.
+/// Requests the reference client (the TUI) sends to the daemon.
 fn reference_client_requests() -> BTreeSet<String> {
     let mut found = BTreeSet::new();
-    for dir in ["../jcode-tui/src", "../jcode-desktop2/src"] {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(dir);
-        collect_requests(&root, &mut found);
-    }
-    // The desktop2 client speaks the *API*, so its `ApiRequest::` uses are
-    // covered by construction and would otherwise pollute the diff.
-    for api_only in [
-        "CreateSession",
-        "AttachSession",
-        "ListSessions",
-        "PeekSession",
-        "SendMessage",
-    ] {
-        found.remove(api_only);
-    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../jcode-tui/src");
+    collect_requests(&root, &mut found);
     found
 }
 

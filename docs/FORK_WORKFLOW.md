@@ -61,9 +61,10 @@ file we kept.
 | **Telemetry** | `crates/jcode-telemetry-core`, `telemetry-worker/`, `TELEMETRY.md`, all `record_*` call sites, `/telemetry`, the onboarding consent screen, **and the independent shell telemetry in `scripts/install.sh`** |
 | **Ambient permissions** | `crates/jcode-tui-permissions`, `jcode permissions`, `request_permission` tool, permission half of `safety.rs`, remote approve/deny over Telegram/Discord/email/Jade |
 | **CI** | `.github/` |
-| **Self-development tool** | `jcode-app-core/src/tool/selfdev/` (canary build queue, clone/setup/status/launch), `src/cli/selfdev.rs`, `jcode self-dev`, `/selfdev`, the `selfdev` agent tool, and its prompt files. **Kept:** `[profile.selfdev]` (a cargo build profile `dev_cargo.sh` uses), `jcode-build-support`, `jcode-desktop2/src/selfdev_reload.rs` (desktop2's own hot reload), and the `selfdev` wire field. `ReloadContext` was extracted to `server/reload_context.rs` first — it is the reconnect path, not self-dev. See `docs/plans/SELFDEV_EXTRACTION.md`. |
+| **Self-development tool** | `jcode-app-core/src/tool/selfdev/` (canary build queue, clone/setup/status/launch), `src/cli/selfdev.rs`, `jcode self-dev`, `/selfdev`, the `selfdev` agent tool, and its prompt files. **Kept:** `[profile.selfdev]` (a cargo build profile `dev_cargo.sh` uses), `jcode-build-support`, and the `selfdev` wire field. `ReloadContext` was extracted to `server/reload_context.rs` first — it is the reconnect path, not self-dev. See `docs/plans/SELFDEV_EXTRACTION.md`. |
 | **Support / feedback commands** | `/support` (mailto to upstream carrying account id, email, tier) and `/feedback` (a no-op since the telemetry purge removed `record_feedback`) |
 | **Windows launcher port** | `jcode-setup-hints/src/windows_{setup,hotkeys}.rs`, `jcode-transport/src/windows.rs` (named-pipe IPC), all six `scripts/*.ps1`, `docs/WINDOWS.md`, `--listen-windows-hotkey`, the Windows branch of `scripts/install.sh`, and Section D of `setup_friction_eval.sh` |
+| **Desktop app** | `crates/jcode-desktop2` (winit + wgpu + Vello + Parley GPU client, ~42k lines) and `crates/jcode-math` (its TeX layout engine, no other consumer). Also `SelfDevBuildTarget::Desktop2` in `jcode-dev-types` + its routing in `jcode-build-support/src/paths.rs`, the `vello`/`wgpu`/`parley`/`fontique`/`skrifa`/`read-fonts`/`font-types`/`harfrust`/`peniko`/`color`/`zeno`/`naga` `[profile.*.package.*]` pins in the root `Cargo.toml`, the already-dead legacy-desktop pins (`cosmic-text`, `swash`, `yazi`, `unicode-linebreak`), `scripts/{check_desktop2_reload.py,desktop2_mutation_sweep.sh,desktop2_visual_check.sh}`, the desktop2 frame-budget gate in `check_guardrails.sh`, `captures/` in `.gitignore`, and all `docs/DESKTOP*.md`. **Kept:** `jcode-harness-api`, `jcode-harness-api-server` (`jcode api-bridge`) and `jcode-sdk` — a general programmatic surface, not desktop-only; `jcode-render-core` (shared with the TUI); and the `kurbo`/`rustybuzz`/`ttf-parser`/`fontdb` pins, which the TUI's mermaid SVG rasterizer still needs. `docs/HARNESS_API_AND_DESKTOP_REWRITE.md` was trimmed to Part 1 and renamed `docs/HARNESS_API.md`. |
 
 **Deliberately *not* removed** (easy to delete by mistake):
 
@@ -71,7 +72,7 @@ file we kept.
 - `jcode-base/src/session/load_telemetry.rs` — session-load burst detection, **not** analytics
 - Provider KV-cache "telemetry" in `info_widget.rs` / `state_ui.rs` — the cold-cache warning
 - `subscription_api.rs` / `subscription_catalog.rs` / `/subscription` / `jcode login --provider jcode` — provider auth
-- `ApiEvent::PermissionRequest` in `jcode-harness-api` / `jcode-sdk` — desktop wire protocol
+- `ApiEvent::PermissionRequest` in `jcode-harness-api` / `jcode-sdk` — harness API wire protocol
 - All 20 `jcode-provider-*` crates and every OAuth flow
 
 **Also excluded by choice** (not purged, just not merged from upstream):

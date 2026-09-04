@@ -4,7 +4,7 @@
 //! (TUI, desktop, web, scripts). It is deliberately smaller than the internal
 //! `jcode-protocol`: only curated, stable surface lives here.
 //!
-//! Design rules (see docs/HARNESS_API_AND_DESKTOP_REWRITE.md):
+//! Design rules (see docs/HARNESS_API.md):
 //! - Every frame is one JSON object on one line (NDJSON).
 //! - Every frame carries `v`, the protocol major version.
 //! - Clients must ignore unknown fields and skip unknown event kinds
