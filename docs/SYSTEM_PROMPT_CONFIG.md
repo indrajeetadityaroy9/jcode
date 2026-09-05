@@ -3,6 +3,10 @@
 jcode builds its system prompt from several layers. Two of them are user-editable
 files, so you can tune agent behavior without rebuilding.
 
+For the assembly mechanics behind these layers — exact composition order, the
+static/dynamic cache split, and what each provider prepends on the wire — see
+[`SYSTEM_PROMPT_ASSEMBLY.md`](./SYSTEM_PROMPT_ASSEMBLY.md).
+
 ## Layers (in order)
 
 1. **Base system prompt** — built-in `crates/jcode-base/src/prompt/system_prompt.md`,

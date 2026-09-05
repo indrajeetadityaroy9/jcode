@@ -6,14 +6,12 @@ mod batch;
 mod bg;
 mod communicate;
 #[cfg(target_os = "macos")]
-mod computer;
 mod config_edit_notice;
 mod conversation_search;
 mod edit;
 mod goal;
 pub mod inflight;
 mod invalid;
-mod jcode_docs;
 mod ls;
 pub mod mcp;
 mod memory;
@@ -219,13 +217,6 @@ impl Registry {
             Self::insert_tool_timed(&mut m, &mut timings, "ls", ls::LsTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "bash", bash::BashTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "open", open::OpenTool::new);
-            #[cfg(target_os = "macos")]
-            Self::insert_tool_timed(
-                &mut m,
-                &mut timings,
-                "macos_computer_use",
-                computer::ComputerTool::new,
-            );
             Self::insert_tool_timed(
                 &mut m,
                 &mut timings,
@@ -239,12 +230,6 @@ impl Registry {
                 websearch::WebSearchTool::new,
             );
             Self::insert_tool_timed(&mut m, &mut timings, "invalid", invalid::InvalidTool::new);
-            Self::insert_tool_timed(
-                &mut m,
-                &mut timings,
-                "jcode_docs",
-                jcode_docs::JcodeDocsTool::new,
-            );
             Self::insert_tool_timed(&mut m, &mut timings, "todo", todo::TodoTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "bg", bg::BgTool::new);
             Self::insert_tool_timed(

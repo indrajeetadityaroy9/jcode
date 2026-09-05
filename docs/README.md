@@ -19,6 +19,8 @@ Reference documentation for the jcode codebase.
 - Architecture: `SERVER_ARCHITECTURE.md`, `MODULAR_ARCHITECTURE_RFC.md`, `CRATE_OWNERSHIP_BOUNDARIES.md`
 - Swarm: `SWARM_ARCHITECTURE.md`, `SWARM_TASK_GRAPH.md`
 - Memory: `MEMORY_ARCHITECTURE.md`, `MEMORY_BUDGET.md`, `MEMORY_INCIDENT_RUNBOOK.md`
+- System prompt: `SYSTEM_PROMPT_ASSEMBLY.md` (how it is built), `SYSTEM_PROMPT_CONFIG.md`
+  (how to change it)
 - Refactoring and quality: `REFACTORING.md`, `plans/CODE_QUALITY_10_10_PLAN.md`, and the live
   ratchet baselines in `scripts/*_budget.json`
 - Harness API / SDK: `HARNESS_API.md`

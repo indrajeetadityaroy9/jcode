@@ -6,7 +6,6 @@ use crate::{logging, util};
 use ::agentgrep::cli::{FindArgs, FullRegionMode, GrepArgs, OutlineArgs, SmartArgs};
 use ::agentgrep::find::{FindResult, run_find};
 use ::agentgrep::outline::run_outline;
-use ::agentgrep::search::{GrepResult, run_grep};
 use ::agentgrep::smart_dsl::{SmartQuery, parse_smart_query};
 use ::agentgrep::smart_engine::{SmartResult, run_smart};
 use anyhow::Result;
@@ -21,6 +20,7 @@ use std::sync::OnceLock;
 
 mod args;
 mod context;
+mod rg;
 
 #[cfg(test)]
 use self::args::trace_or_smart_terms_owned;
@@ -33,9 +33,7 @@ use self::context::maybe_write_context_json;
 use self::context::{
     collect_bash_exposure, collect_trace_exposure, tune_known_file, tune_known_region,
 };
-use ::agentgrep::render::{
-    render_find_output, render_grep_output, render_outline_output, render_smart_output,
-};
+use ::agentgrep::render::{render_find_output, render_outline_output, render_smart_output};
 
 #[derive(Debug, Deserialize)]
 struct AgentGrepInput {
@@ -316,8 +314,8 @@ fn execute_linked_agentgrep(
         "grep" => {
             let args = build_grep_args(params, ctx)?;
             let root = resolve_search_root(ctx, args.path.as_deref())?;
-            let result = filter_grep_result_to_exact_file(
-                run_grep(&root, &args).map_err(anyhow::Error::msg)?,
+            let result = rg::filter_to_exact_file(
+                rg::run_grep(&root, &args).map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),
             );
             // Bound the rendered matches by default. `find` and `outline` already
@@ -328,10 +326,8 @@ fn execute_linked_agentgrep(
             // header still reports the true total, so the caller sees that more
             // matches exist and can raise the cap deliberately.
             let max_regions = params.max_regions.or(Some(DEFAULT_GREP_MAX_REGIONS));
-            Ok(
-                ToolOutput::new(render_grep_output(&result, &args, max_regions))
-                    .with_title("agentgrep grep"),
-            )
+            Ok(ToolOutput::new(rg::render(&result, &args, max_regions))
+                .with_title("agentgrep grep"))
         }
         "find" => {
             let args = build_find_args(params, ctx)?;
@@ -376,20 +372,6 @@ fn exact_search_file_path(ctx: &ToolContext, path: Option<&str>) -> Option<Strin
     resolved
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-}
-
-fn filter_grep_result_to_exact_file(
-    mut result: GrepResult,
-    exact_file: Option<&str>,
-) -> GrepResult {
-    let Some(exact_file) = exact_file else {
-        return result;
-    };
-
-    result.files.retain(|file| file.path == exact_file);
-    result.total_files = result.files.len();
-    result.total_matches = result.files.iter().map(|file| file.matches.len()).sum();
-    result
 }
 
 fn filter_find_result_to_exact_file(

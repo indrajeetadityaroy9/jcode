@@ -81,7 +81,7 @@ fn tui_openai_compatible_api_base_accepts_localhost_override() -> anyhow::Result
 }
 
 #[test]
-fn tui_openai_compatible_api_base_keeps_jcode_docs_and_remote_endpoint() -> anyhow::Result<()> {
+fn tui_openai_compatible_api_base_keeps_setup_url_and_remote_endpoint() -> anyhow::Result<()> {
     with_temp_jcode_home(|| {
         let resolved = save_tui_openai_compatible_api_base("https://api.deepseek.com/")?;
         assert_eq!(resolved.api_base, "https://api.deepseek.com");
