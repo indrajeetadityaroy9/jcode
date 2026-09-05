@@ -110,6 +110,10 @@ agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.6" 
 grep-matcher = "0.1"
 grep-regex = "0.1"
 grep-searcher = "0.1"
+# PCRE2 backend for the patterns Rust's regex deliberately lacks: lookaround
+# and backreferences. `pcre2-sys` vendors the C sources and builds them, so
+# there is no system PCRE2 requirement.
+grep-pcre2 = "0.1"
 ignore = "0.4"
 globset = "0.4"
 regex-syntax = "0.8"

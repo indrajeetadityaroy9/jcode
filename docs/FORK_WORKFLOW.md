@@ -164,12 +164,21 @@ because the symbol upstream expects still exists somewhere in the tree.
 
 | Subsystem | Upstream | This fork |
 |---|---|---|
-| `agentgrep` **grep mode** | `agentgrep::search::run_grep` spawns an `rg` subprocess and silently falls back to a hand-rolled walker when the binary is absent; results render through `agentgrep::render::render_grep_output` | `crates/jcode-app-core/src/tool/agentgrep/rg.rs` links ripgrep's own crates (`grep-searcher`, `grep-regex`, `grep-matcher`, `ignore`, `globset` — all published from `BurntSushi/ripgrep/crates/*`) and searches in-process with no subprocess, no `PATH` lookup, and no fallback. Grouping and rendering are reimplemented here because upstream's `MatchGroup::match_indices` is private with no public constructor, so an external caller cannot build a grouped result. `find`/`outline`/`trace` still route through the upstream crate. |
+| `agentgrep` **grep mode** | `agentgrep::search::run_grep` spawns an `rg` subprocess and silently falls back to a hand-rolled walker when the binary is absent; results render through `agentgrep::render::render_grep_output`; the tool schema exposes no search options beyond query/path/glob/type/hidden/no_ignore/paths_only | `crates/jcode-app-core/src/tool/agentgrep/rg.rs` links ripgrep's own crates (`grep-searcher`, `grep-regex`, `grep-pcre2`, `grep-matcher`, `ignore`, `globset` — all published from `BurntSushi/ripgrep/crates/*`) and searches in-process with no subprocess, no `PATH` lookup, and no walker fallback. Grouping and rendering are reimplemented here because upstream's `MatchGroup::match_indices` is private with no public constructor, so an external caller cannot build a grouped result. Six engine options are layered on top: `case` (smart by default, so an all-lowercase query is case-insensitive — upstream is always case-sensitive), `word`, `multiline`, `context_lines` (0-5), `max_matches_per_file` (default 1000), and `engine` (`rust` by default, `pcre2` opt-in for look-around and backreferences). Engine selection is never inferred; a Rust-engine refusal that PCRE2 could take appends `retry with engine="pcre2"`, gated on `regex-syntax`'s structured `ErrorKind::UnsupportedLookAround`/`UnsupportedBackreference` so a merely malformed pattern is not redirected to an engine that would accept it and match nothing. `find`/`outline`/`trace` still route through the upstream crate. |
 
 **What a sync must check:** if `execute_linked_agentgrep`'s `"grep"` arm goes back to calling
-`run_grep`/`render_grep_output`, the subprocess dependency and the silent fallback return.
-Parity is verifiable — `rg.rs`'s tests use an installed `rg` as an oracle where present, and
-one test runs with `PATH=/nonexistent` specifically to prove the engine is in-process.
+`run_grep`/`render_grep_output`, the subprocess dependency and the silent walker fallback
+return, and the six options above vanish from the tool surface (`AgentGrepInput` carries the
+fields, but only `build_grep_request` reads them). Parity is verifiable — `rg.rs`'s tests use an
+installed `rg` as an oracle where present, and one test runs with `PATH=/nonexistent` to prove
+the search path is in-process.
+
+PCRE2 costs three crates (`grep-pcre2`, `pcre2`, `pcre2-sys`) and a C build step, and it has no
+linear-time guarantee, which is why it is opt-in per call and never the default.
+`pcre2-sys` links Homebrew's `libpcre2-8.dylib` whenever
+pkg-config finds one, which would make the installed binary depend on a brew formula, so
+`.cargo/config.toml` sets `PCRE2_SYS_STATIC = "1"` to force the vendored static build. Check a
+built binary with `otool -L target/<profile>/jcode | grep pcre` — it must print nothing.
 
 ---
 

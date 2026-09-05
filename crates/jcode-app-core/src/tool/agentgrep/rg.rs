@@ -7,9 +7,15 @@
 //! ripgrep, and nothing in the output said which engine had answered.
 //!
 //! This module removes both problems by owning grep mode: file discovery runs
-//! through `ignore` (ripgrep's walker), matching runs through `grep-searcher` +
-//! `grep-regex` (ripgrep's search core), and there is no fallback path to
-//! diverge from. No subprocess, no `PATH` lookup.
+//! through `ignore` (ripgrep's walker) and matching runs through
+//! `grep-searcher`. No subprocess, no `PATH` lookup, no silent walker swap.
+//!
+//! Two matchers are wired in: `grep-regex` (Rust's `regex`, linear time, the
+//! default) and `grep-pcre2` (backtracking, with look-around and
+//! backreferences). Which one runs is the caller's explicit choice and nothing
+//! here infers it — that is the whole point, given what this module replaced.
+//! A Rust-engine refusal PCRE2 could take names `engine="pcre2"` in its error,
+//! so the second engine costs one retry to reach and never runs unasked.
 //!
 //! `MatchGroup`'s `match_indices` field is private upstream and the struct has
 //! no public constructor, so a caller that produces its own matches cannot
@@ -25,12 +31,14 @@ use ::agentgrep::render::compact_rendered_match_line;
 use ::agentgrep::structure::{StructureItem, extract_file_structure};
 use ::agentgrep::workspace::{normalize_display_path, normalize_file_type};
 use globset::{Glob, GlobSetBuilder};
-use grep_matcher::Matcher as _;
-use grep_regex::RegexMatcherBuilder;
-use grep_searcher::sinks::UTF8;
-use grep_searcher::{BinaryDetection, SearcherBuilder};
+use grep_matcher::Matcher;
+use grep_pcre2::{RegexMatcher as Pcre2Matcher, RegexMatcherBuilder as Pcre2MatcherBuilder};
+use grep_regex::{RegexMatcher, RegexMatcherBuilder};
+use grep_searcher::{
+    BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch,
+};
 use ignore::{WalkBuilder, WalkState};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -51,10 +59,57 @@ const MAX_MATCH_LINE_CHARS: usize = 240;
 const MATCH_LINE_PREFIX_CONTEXT_CHARS: usize = 80;
 const MAX_NON_CODE_MATCH_LINES_PER_FILE: usize = 3;
 
+/// Per-file match cap. Collecting every hit in a large data file costs time and
+/// memory for matches the renderer then discards.
+pub(super) const DEFAULT_MAX_MATCHES_PER_FILE: usize = 1000;
+
+/// How the query's letter case is treated. `Smart` is ripgrep's `-S`: a pattern
+/// whose literals are all lowercase matches case-insensitively, and a pattern
+/// containing any uppercase literal stays case-sensitive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum CaseMode {
+    Sensitive,
+    Insensitive,
+    #[default]
+    Smart,
+}
+
+/// Which regex engine compiles the pattern.
+///
+/// Rust's `regex` is the default: linear time, no backtracking. PCRE2 is
+/// opt-in for the two features the Rust engine refuses by design, look-around
+/// and backreferences. The choice is always the caller's — a Rust-engine
+/// refusal that PCRE2 could take names `engine="pcre2"` in its error, so
+/// nothing here switches engines on its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum EngineMode {
+    #[default]
+    Rust,
+    Pcre2,
+}
+
+/// A grep-mode search: upstream's argument struct plus the ripgrep engine
+/// options the tool schema exposes on top of it.
+#[derive(Debug, Clone)]
+pub(super) struct GrepRequest {
+    pub base: GrepArgs,
+    pub case: CaseMode,
+    pub word: bool,
+    pub multiline: bool,
+    /// Lines of context on each side of a match; already clamped by the caller.
+    pub context_lines: usize,
+    /// Per-file match cap enforced by the searcher itself.
+    pub max_matches_per_file: usize,
+    /// Regex engine; the caller's choice, never inferred.
+    pub engine: EngineMode,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct LineMatch {
     pub line_number: usize,
     pub line_text: String,
+    /// Lines the match covers; always 1 unless a multiline match spans several.
+    pub line_span: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,6 +153,85 @@ pub(super) struct FileMatches {
     pub matched_symbol_count: usize,
     pub other_symbols: Vec<StructureItem>,
     pub other_symbols_omitted_count: usize,
+    /// Context lines keyed by line number; empty unless context was requested.
+    pub context: BTreeMap<usize, String>,
+    /// Whether the per-file match cap stopped the search early.
+    pub matches_truncated: bool,
+}
+
+/// Raw per-file search output, before symbol grouping.
+struct FileHits {
+    matches: Vec<LineMatch>,
+    context: BTreeMap<usize, String>,
+    truncated: bool,
+}
+
+/// Collects matches and, when context is requested, the surrounding lines.
+///
+/// `grep_searcher::sinks::UTF8` implements only `Sink::matched`, so it silently
+/// drops the context lines the searcher reports; this sink keeps both.
+struct MatchSink<'a, M> {
+    matcher: &'a M,
+    multiline: bool,
+    matches: Vec<LineMatch>,
+    context: BTreeMap<usize, String>,
+}
+
+impl<M: Matcher> Sink for MatchSink<'_, M> {
+    type Error = std::io::Error;
+
+    fn matched(
+        &mut self,
+        _searcher: &Searcher,
+        mat: &SinkMatch<'_>,
+    ) -> Result<bool, Self::Error> {
+        let bytes = mat.bytes();
+        let raw = String::from_utf8_lossy(bytes);
+        let trimmed = raw.trim_end_matches(['\n', '\r']);
+        // A multiline match arrives as a block. Join it onto one line so the
+        // renderer's line-oriented layout still holds.
+        let text = if self.multiline && trimmed.contains('\n') {
+            trimmed
+                .split('\n')
+                .map(|line| line.trim_end_matches('\r'))
+                .collect::<Vec<_>>()
+                .join(" ⏎ ")
+        } else {
+            trimmed.to_string()
+        };
+        // Ask the matcher where the hit is so a truncated line keeps context
+        // around the match. A matcher error here can only mean the engine gave
+        // up on this one line, in which case truncation falls back to the head.
+        let span = match self.matcher.find(text.as_bytes()) {
+            Ok(Some(found)) => Some((found.start(), found.end())),
+            Ok(None) | Err(_) => None,
+        };
+        let line_span = bytes.iter().filter(|byte| **byte == b'\n').count()
+            + usize::from(!bytes.ends_with(b"\n"));
+        self.matches.push(LineMatch {
+            line_number: mat.line_number().unwrap_or(0) as usize,
+            line_text: compact_match_line(&text, span),
+            line_span: line_span.max(1),
+        });
+        Ok(true)
+    }
+
+    fn context(
+        &mut self,
+        _searcher: &Searcher,
+        context: &SinkContext<'_>,
+    ) -> Result<bool, Self::Error> {
+        // Keyed by line number, so a line that is context for two nearby
+        // matches is stored once. `kind()` is not needed: before/after is
+        // implied by position relative to the match being rendered.
+        let raw = String::from_utf8_lossy(context.bytes());
+        let trimmed = raw.trim_end_matches(['\n', '\r']);
+        self.context.insert(
+            context.line_number().unwrap_or(0) as usize,
+            compact_match_line(trimmed, None),
+        );
+        Ok(true)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,11 +248,28 @@ pub(super) struct GrepResult {
 /// Semantics follow `rg`'s defaults: ignore files are honored (`.gitignore`
 /// only inside a git repository, matching `rg`'s `--no-require-git` default),
 /// hidden entries are skipped, binary files quit early, and the query is a
-/// literal unless `args.regex` is set.
-pub(super) fn run_grep(root: &Path, args: &GrepArgs) -> Result<GrepResult, String> {
-    let matcher = build_matcher(args)?;
-    let glob_set = build_glob_set(args)?;
-    let file_type = args
+/// literal unless `request.base.regex` is set.
+pub(super) fn run_grep(root: &Path, request: &GrepRequest) -> Result<GrepResult, String> {
+    match request.engine {
+        EngineMode::Rust => search_with_matcher(root, request, build_rust_matcher(request)?),
+        EngineMode::Pcre2 => search_with_matcher(root, request, build_pcre2_matcher(request)?),
+    }
+}
+
+/// The search itself, generic over which of ripgrep's two matchers compiled the
+/// pattern. `grep-searcher` is generic over `Matcher`, so nothing below this
+/// point knows or cares which engine is running.
+fn search_with_matcher<M>(
+    root: &Path,
+    request: &GrepRequest,
+    matcher: M,
+) -> Result<GrepResult, String>
+where
+    M: Matcher + Clone + Send + Sync,
+{
+    let glob_set = build_glob_set(&request.base)?;
+    let file_type = request
+        .base
         .file_type
         .as_deref()
         .map(normalize_file_type)
@@ -128,15 +279,23 @@ pub(super) fn run_grep(root: &Path, args: &GrepArgs) -> Result<GrepResult, Strin
     // ~4x slower than the `rg` subprocess it replaced on this repo, which would
     // have made "use ripgrep's engine" a regression; `build_parallel` closes
     // that gap because the walker and the per-file search share the thread pool.
-    let matches_by_path: Mutex<BTreeMap<String, Vec<LineMatch>>> = Mutex::new(BTreeMap::new());
-    let sink = &matches_by_path;
-    build_walker(root, args).build_parallel().run(|| {
+    let hits_by_path: Mutex<BTreeMap<String, FileHits>> = Mutex::new(BTreeMap::new());
+    let collected = &hits_by_path;
+    let match_cap = request.max_matches_per_file;
+    build_walker(root, &request.base).build_parallel().run(|| {
         let matcher = matcher.clone();
         let glob_set = glob_set.clone();
         let file_type = file_type.clone();
+        let multiline = request.multiline;
         let mut searcher = SearcherBuilder::new()
             .line_number(true)
             .binary_detection(BinaryDetection::quit(b'\x00'))
+            .before_context(request.context_lines)
+            .after_context(request.context_lines)
+            .multi_line(request.multiline)
+            // One past the cap, so hitting it is distinguishable from a file
+            // that happens to contain exactly `cap` matches.
+            .max_matches(Some(match_cap as u64 + 1))
             .build();
 
         Box::new(move |entry| {
@@ -151,39 +310,39 @@ pub(super) fn run_grep(root: &Path, args: &GrepArgs) -> Result<GrepResult, Strin
                 return WalkState::Continue;
             }
 
-            let mut file_matches: Vec<LineMatch> = Vec::new();
-            let outcome = searcher.search_path(
-                &matcher,
-                path,
-                UTF8(|line_number, line| {
-                    let line = line.trim_end_matches(['\n', '\r']);
-                    // Ask the matcher where the hit is so a truncated line
-                    // keeps context around the match. A matcher error here can
-                    // only mean the engine gave up on this one line, in which
-                    // case truncation falls back to the head of the line.
-                    let span = match matcher.find(line.as_bytes()) {
-                        Ok(Some(found)) => Some((found.start(), found.end())),
-                        Ok(None) | Err(_) => None,
-                    };
-                    file_matches.push(LineMatch {
-                        line_number: line_number as usize,
-                        line_text: compact_match_line(line, span),
-                    });
-                    Ok(true)
-                }),
-            );
+            let mut sink = MatchSink {
+                matcher: &matcher,
+                multiline,
+                matches: Vec::new(),
+                context: BTreeMap::new(),
+            };
+            let outcome = searcher.search_path(&matcher, path, &mut sink);
             // A single unreadable or non-UTF-8 file must not fail the whole
             // search; ripgrep skips it and continues, so mirror that.
-            if outcome.is_ok() && !file_matches.is_empty() {
-                sink.lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .insert(normalize_display_path(root, path), file_matches);
+            if outcome.is_err() || sink.matches.is_empty() {
+                return WalkState::Continue;
             }
+
+            let truncated = sink.matches.len() > match_cap;
+            if truncated {
+                sink.matches.truncate(match_cap);
+            }
+            collected
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .insert(
+                    normalize_display_path(root, path),
+                    FileHits {
+                        matches: sink.matches,
+                        context: sink.context,
+                        truncated,
+                    },
+                );
             WalkState::Continue
         })
     });
 
-    let matched = matches_by_path
+    let matched = hits_by_path
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .into_iter()
@@ -196,7 +355,7 @@ pub(super) fn run_grep(root: &Path, args: &GrepArgs) -> Result<GrepResult, Strin
     let total_matches = files.iter().map(|file| file.matches.len()).sum();
 
     Ok(GrepResult {
-        query: args.query.clone(),
+        query: request.base.query.clone(),
         root: root.to_string_lossy().into_owned(),
         total_files: files.len(),
         total_matches,
@@ -211,7 +370,7 @@ pub(super) fn run_grep(root: &Path, args: &GrepArgs) -> Result<GrepResult, Strin
 /// look like it found less than it did.
 fn enrich_files(
     root: &Path,
-    matched: Vec<(String, Vec<LineMatch>)>,
+    matched: Vec<(String, FileHits)>,
 ) -> Result<Vec<FileMatches>, String> {
     let worker_count = std::thread::available_parallelism()
         .map(|parallelism| parallelism.get())
@@ -221,12 +380,25 @@ fn enrich_files(
     if worker_count <= 1 || matched.len() <= 8 {
         return Ok(matched
             .into_iter()
-            .map(|(path, matches)| build_file_matches(root, path, matches))
+            .map(|(path, hits)| build_file_matches(root, path, hits))
             .collect());
     }
 
     let chunk_size = matched.len().div_ceil(worker_count);
-    let chunks: Vec<&[(String, Vec<LineMatch>)]> = matched.chunks(chunk_size).collect();
+    let mut chunks: Vec<Vec<(String, FileHits)>> = Vec::new();
+    let mut current: Vec<(String, FileHits)> = Vec::with_capacity(chunk_size);
+    for entry in matched {
+        current.push(entry);
+        if current.len() == chunk_size {
+            chunks.push(std::mem::replace(
+                &mut current,
+                Vec::with_capacity(chunk_size),
+            ));
+        }
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
     let mut per_chunk: Vec<Vec<FileMatches>> = Vec::with_capacity(chunks.len());
 
     std::thread::scope(|scope| {
@@ -235,10 +407,8 @@ fn enrich_files(
             .map(|chunk| {
                 scope.spawn(move || {
                     chunk
-                        .iter()
-                        .map(|(path, matches)| {
-                            build_file_matches(root, path.clone(), matches.clone())
-                        })
+                        .into_iter()
+                        .map(|(path, hits)| build_file_matches(root, path, hits))
                         .collect::<Vec<_>>()
                 })
             })
@@ -255,16 +425,106 @@ fn enrich_files(
     Ok(per_chunk.into_iter().flatten().collect())
 }
 
-fn build_matcher(args: &GrepArgs) -> Result<grep_regex::RegexMatcher, String> {
-    let pattern = if args.regex {
-        args.query.clone()
+/// Whether PCRE2 could run a pattern the Rust engine refused, i.e. whether the
+/// refusal should tell the caller about `engine="pcre2"`.
+///
+/// `grep_regex::Error` flattens every syntax failure into one
+/// `ErrorKind::Regex(String)` variant, so the engine's own error carries no
+/// machine-readable cause. Re-parsing the pattern with `regex-syntax` — the
+/// same parser the Rust engine uses, already a direct dependency for `escape`
+/// — recovers the structured kind. Both arms are unsupported-*feature* errors,
+/// never malformed input: pointing a caller at PCRE2 for a pattern that is
+/// simply invalid would send them to an engine that often *accepts* it and
+/// then matches nothing, turning a clear error into a silent empty result.
+fn pcre2_can_take_over(pattern: &str) -> bool {
+    use regex_syntax::ast::ErrorKind;
+
+    match regex_syntax::ast::parse::Parser::new().parse(pattern) {
+        Ok(_) => false,
+        Err(err) => matches!(
+            err.kind(),
+            ErrorKind::UnsupportedLookAround | ErrorKind::UnsupportedBackreference
+        ),
+    }
+}
+
+/// The pattern handed to the Rust engine: the query verbatim in regex mode,
+/// escaped otherwise.
+fn rust_pattern(request: &GrepRequest) -> String {
+    if request.base.regex {
+        request.base.query.clone()
     } else {
-        regex_syntax::escape(&args.query)
-    };
-    RegexMatcherBuilder::new()
-        .line_terminator(Some(b'\n'))
-        .build(&pattern)
+        regex_syntax::escape(&request.base.query)
+    }
+}
+
+/// PCRE2 has no linear-time guarantee: a pathological pattern can backtrack for
+/// a long time on one line. The per-file match cap bounds how many matches are
+/// collected, not how long a single match attempt runs, which is why PCRE2 is
+/// opt-in rather than the default.
+fn build_pcre2_matcher(request: &GrepRequest) -> Result<Pcre2Matcher, String> {
+    let mut builder = Pcre2MatcherBuilder::new();
+    // `fixed_strings` escapes the pattern with PCRE2's own rules, which is why
+    // the literal path does not reuse `regex_syntax::escape` here.
+    builder.fixed_strings(!request.base.regex);
+    match request.case {
+        CaseMode::Sensitive => {}
+        CaseMode::Insensitive => {
+            builder.caseless(true);
+        }
+        CaseMode::Smart => {
+            builder.case_smart(true);
+        }
+    }
+    builder.word(request.word);
+    // Match the Rust engine's Unicode semantics for `\w`, `\b`, `\d` and `.`;
+    // `ucp` implies UTF mode. JIT is a pure speedup, so take it when the build
+    // of PCRE2 we linked has it and carry on when it does not.
+    builder.ucp(true).utf(true).jit_if_available(true);
+    if request.multiline {
+        builder.multi_line(true);
+    }
+
+    builder
+        .build(&request.base.query)
         .map_err(|err| format!("invalid search pattern: {err}"))
+}
+
+fn build_rust_matcher(request: &GrepRequest) -> Result<RegexMatcher, String> {
+    let pattern = rust_pattern(request);
+
+    let mut builder = RegexMatcherBuilder::new();
+    match request.case {
+        CaseMode::Sensitive => {}
+        CaseMode::Insensitive => {
+            builder.case_insensitive(true);
+        }
+        CaseMode::Smart => {
+            builder.case_smart(true);
+        }
+    }
+    builder.word(request.word);
+
+    if request.multiline {
+        // Pinning a line terminator tells the searcher the matcher can never
+        // match across one, and `Searcher::multi_line_with_matcher` then
+        // silently downgrades to single-line search. Leave it unset here, and
+        // enable the regex `m` flag so `^`/`$` anchor to lines.
+        builder.multi_line(true);
+    } else {
+        builder.line_terminator(Some(b'\n'));
+    }
+
+    builder.build(&pattern).map_err(|err| {
+        // A caller who pinned `engine: "rust"`, or who hit this under `Auto`
+        // for a pattern the parser could not classify, would otherwise have to
+        // know the second engine exists. Say so, once, on the failure itself.
+        if pcre2_can_take_over(&pattern) {
+            format!("invalid search pattern: {err}; retry with engine=\"pcre2\"")
+        } else {
+            format!("invalid search pattern: {err}")
+        }
+    })
 }
 
 fn build_glob_set(args: &GrepArgs) -> Result<Option<globset::GlobSet>, String> {
@@ -326,7 +586,12 @@ fn passes_filters(
 /// — a permissions change or a rewrite between the search and this pass — the
 /// matches are still reported under file scope rather than the file being
 /// dropped from the result, which would understate what the search found.
-fn build_file_matches(root: &Path, path: String, matches: Vec<LineMatch>) -> FileMatches {
+fn build_file_matches(root: &Path, path: String, hits: FileHits) -> FileMatches {
+    let FileHits {
+        matches,
+        context,
+        truncated,
+    } = hits;
     let absolute_path = root.join(&path);
 
     let structure = if matches.len() >= DENSE_MATCH_SKIP_STRUCTURE_THRESHOLD {
@@ -350,6 +615,8 @@ fn build_file_matches(root: &Path, path: String, matches: Vec<LineMatch>) -> Fil
             matched_symbol_count: 0,
             other_symbols: Vec::new(),
             other_symbols_omitted_count: 0,
+            context,
+            matches_truncated: truncated,
         };
     };
 
@@ -364,6 +631,8 @@ fn build_file_matches(root: &Path, path: String, matches: Vec<LineMatch>) -> Fil
         matched_symbol_count: grouping.matched_symbol_count,
         other_symbols: grouping.other_symbols,
         other_symbols_omitted_count: grouping.other_symbols_omitted_count,
+        context,
+        matches_truncated: truncated,
     }
 }
 
@@ -571,8 +840,12 @@ pub(super) fn filter_to_exact_file(result: GrepResult, exact_file: Option<&str>)
 }
 
 /// Render the result in the same layout the upstream renderer produces.
-pub(super) fn render(result: &GrepResult, args: &GrepArgs, max_matches: Option<usize>) -> String {
-    if args.paths_only {
+pub(super) fn render(
+    result: &GrepResult,
+    request: &GrepRequest,
+    max_matches: Option<usize>,
+) -> String {
+    if request.base.paths_only {
         return result
             .files
             .iter()
@@ -596,7 +869,7 @@ pub(super) fn render(result: &GrepResult, args: &GrepArgs, max_matches: Option<u
         if limit_reached(displayed_matches) {
             break;
         }
-        render_file(file, args, max_matches, &mut displayed_matches, &mut lines);
+        render_file(file, request, max_matches, &mut displayed_matches, &mut lines);
     }
 
     if let Some(max) = max_matches
@@ -615,7 +888,7 @@ pub(super) fn render(result: &GrepResult, args: &GrepArgs, max_matches: Option<u
 
 fn render_file(
     file: &FileMatches,
-    args: &GrepArgs,
+    request: &GrepRequest,
     max_matches: Option<usize>,
     displayed_matches: &mut usize,
     lines: &mut Vec<String>,
@@ -635,6 +908,21 @@ fn render_file(
 
     let non_code_cap = non_code_match_cap(file);
     let mut file_displayed_matches = 0usize;
+
+    // Lines a match itself occupies. A multiline match's own trailing lines can
+    // arrive through `Sink::context`, because the searcher computes context
+    // from the match's start line; skipping them avoids printing them twice.
+    let covered: HashSet<usize> = if request.context_lines > 0 {
+        file.matches
+            .iter()
+            .flat_map(|line_match| {
+                line_match.line_number..line_match.line_number + line_match.line_span
+            })
+            .collect()
+    } else {
+        HashSet::new()
+    };
+    let mut printed_context: HashSet<usize> = HashSet::new();
 
     for group in &file.groups {
         let remaining_global = max_matches
@@ -667,13 +955,31 @@ fn render_file(
             _ => lines.push(format!("    - {}", group.label)),
         }
         for line_match in visible {
-            let line_text = compact_rendered_match_line(&line_match.line_text, args);
+            push_context_lines(
+                file,
+                request,
+                line_match.line_number.saturating_sub(request.context_lines)
+                    ..line_match.line_number,
+                &covered,
+                &mut printed_context,
+                lines,
+            );
+            let line_text = compact_rendered_match_line(&line_match.line_text, &request.base);
             lines.push(format!(
                 "      - @ {} {}",
                 line_match.line_number, line_text
             ));
             file_displayed_matches += 1;
             *displayed_matches += 1;
+            let after_start = line_match.line_number + line_match.line_span;
+            push_context_lines(
+                file,
+                request,
+                after_start..after_start + request.context_lines,
+                &covered,
+                &mut printed_context,
+                lines,
+            );
         }
     }
 
@@ -705,6 +1011,39 @@ fn render_file(
             summary.push_str(&format!("... {} more", file.other_symbols_omitted_count));
         }
         lines.push(format!("    - other: {summary}"));
+    }
+
+    if file.matches_truncated {
+        lines.push(format!(
+            "    - ... per-file cap of {} matches reached; this file has more",
+            file.matches.len()
+        ));
+    }
+}
+
+/// Emit stored context lines for `range`, skipping lines a match already
+/// occupies and lines this file has printed for an earlier, nearby match.
+///
+/// Context lines deliberately do not count against the match caps: they are
+/// framing for a match that was already counted.
+fn push_context_lines(
+    file: &FileMatches,
+    request: &GrepRequest,
+    range: std::ops::Range<usize>,
+    covered: &HashSet<usize>,
+    printed: &mut HashSet<usize>,
+    lines: &mut Vec<String>,
+) {
+    if request.context_lines == 0 {
+        return;
+    }
+    for line in range {
+        if covered.contains(&line) || !printed.insert(line) {
+            continue;
+        }
+        if let Some(text) = file.context.get(&line) {
+            lines.push(format!("        ~ @ {line} {text}"));
+        }
     }
 }
 

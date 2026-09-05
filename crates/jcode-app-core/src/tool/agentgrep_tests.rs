@@ -41,6 +41,7 @@ fn grep_input(query: &str, max_regions: Option<usize>) -> AgentGrepInput {
         debug_plan: None,
         debug_score: None,
         paths_only: None,
+        ..Default::default()
     }
 }
 
@@ -153,7 +154,7 @@ fn grep_caps_non_code_file_match_excerpts_by_default() {
 }
 
 #[test]
-fn build_grep_args_includes_scope_flags() {
+fn build_grep_request_includes_scope_flags() {
     let ctx = test_ctx(Path::new("/tmp/root"));
     let params = AgentGrepInput {
         mode: "grep".to_string(),
@@ -172,21 +173,136 @@ fn build_grep_args_includes_scope_flags() {
         debug_plan: None,
         debug_score: None,
         paths_only: Some(true),
+        ..Default::default()
     };
 
-    let args = build_grep_args(&params, &ctx).unwrap();
-    assert_eq!(args.query, "auth_status");
-    assert!(args.regex);
-    assert_eq!(args.file_type.as_deref(), Some("rs"));
-    assert!(args.paths_only);
-    assert!(args.hidden);
-    assert!(args.no_ignore);
-    assert_eq!(args.path.as_deref(), Some("/tmp/root/src"));
-    assert_eq!(args.glob.as_deref(), Some("src/**/*.rs"));
+    let args = build_grep_request(&params, &ctx).unwrap();
+    assert_eq!(args.base.query, "auth_status");
+    assert!(args.base.regex);
+    assert_eq!(args.base.file_type.as_deref(), Some("rs"));
+    assert!(args.base.paths_only);
+    assert!(args.base.hidden);
+    assert!(args.base.no_ignore);
+    assert_eq!(args.base.path.as_deref(), Some("/tmp/root/src"));
+    assert_eq!(args.base.glob.as_deref(), Some("src/**/*.rs"));
+    // Defaults for the options the schema exposes on top of GrepArgs.
+    assert_eq!(args.case, super::rg::CaseMode::Smart);
+    assert!(!args.word);
+    assert!(!args.multiline);
+    assert_eq!(args.context_lines, 0);
+    assert_eq!(args.max_matches_per_file, super::rg::DEFAULT_MAX_MATCHES_PER_FILE);
 }
 
 #[test]
-fn build_grep_args_drops_match_all_glob() {
+fn build_grep_request_parses_options_and_clamps_context() {
+    let ctx = test_ctx(Path::new("/tmp/root"));
+    let params = AgentGrepInput {
+        mode: "grep".to_string(),
+        query: Some("id".to_string()),
+        case: Some("  Insensitive ".to_string()),
+        word: Some(true),
+        multiline: Some(true),
+        context_lines: Some(99),
+        max_matches_per_file: Some(7),
+        ..Default::default()
+    };
+
+    let args = build_grep_request(&params, &ctx).unwrap();
+    assert_eq!(args.case, super::rg::CaseMode::Insensitive);
+    assert!(args.word);
+    assert!(args.multiline);
+    assert_eq!(
+        args.context_lines, MAX_CONTEXT_LINES,
+        "an out-of-range context request must clamp, not be rejected"
+    );
+    assert_eq!(args.max_matches_per_file, 7);
+
+    // A zero cap would search nothing; treat it as "unset".
+    let zeroed = AgentGrepInput {
+        mode: "grep".to_string(),
+        query: Some("id".to_string()),
+        max_matches_per_file: Some(0),
+        ..Default::default()
+    };
+    assert_eq!(
+        build_grep_request(&zeroed, &ctx)
+            .unwrap()
+            .max_matches_per_file,
+        super::rg::DEFAULT_MAX_MATCHES_PER_FILE
+    );
+}
+
+#[test]
+fn build_grep_request_rejects_an_unknown_case_mode() {
+    let ctx = test_ctx(Path::new("/tmp/root"));
+    let params = AgentGrepInput {
+        mode: "grep".to_string(),
+        query: Some("id".to_string()),
+        case: Some("ignore-case".to_string()),
+        ..Default::default()
+    };
+
+    let err = build_grep_request(&params, &ctx)
+        .expect_err("an unknown case mode must fail rather than silently defaulting")
+        .to_string();
+    assert!(
+        err.contains("sensitive, insensitive, smart"),
+        "the error must list the accepted values: {err}"
+    );
+}
+
+#[test]
+fn build_grep_request_parses_the_engine_selection() {
+    let ctx = test_ctx(Path::new("/tmp/root"));
+    let engine_of = |value: Option<&str>| {
+        build_grep_request(
+            &AgentGrepInput {
+                mode: "grep".to_string(),
+                query: Some("id".to_string()),
+                engine: value.map(str::to_string),
+                ..Default::default()
+            },
+            &ctx,
+        )
+        .map(|request| request.engine)
+    };
+
+    assert_eq!(
+        engine_of(None).unwrap(),
+        super::rg::EngineMode::Rust,
+        "the linear-time engine is the default; PCRE2 is opt-in"
+    );
+    assert_eq!(engine_of(Some(" Rust ")).unwrap(), super::rg::EngineMode::Rust);
+    assert_eq!(engine_of(Some("pcre2")).unwrap(), super::rg::EngineMode::Pcre2);
+
+    for rejected in ["pcre", "auto"] {
+        let err = engine_of(Some(rejected))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("rust, pcre2"),
+            "{rejected:?} must fail with the accepted engines listed: {err}"
+        );
+    }
+}
+
+#[test]
+fn context_lines_scale_down_the_default_render_cap() {
+    // Each match renders 1 + 2 * context_lines lines, so the default cap has to
+    // shrink or a context search blows the tool-output guard instead of being
+    // rendered. An explicit cap is the caller's business and is left alone.
+    assert_eq!(effective_max_regions(None, 0), DEFAULT_GREP_MAX_REGIONS);
+    assert_eq!(effective_max_regions(None, 1), DEFAULT_GREP_MAX_REGIONS / 3);
+    assert_eq!(
+        effective_max_regions(None, MAX_CONTEXT_LINES),
+        MIN_CONTEXT_ADJUSTED_MAX_REGIONS,
+        "the floor keeps a heavily-contexted search from returning almost nothing"
+    );
+    assert_eq!(effective_max_regions(Some(1_000), 5), 1_000);
+}
+
+#[test]
+fn build_grep_request_drops_match_all_glob() {
     let ctx = test_ctx(Path::new("/tmp/root"));
     let params = AgentGrepInput {
         mode: "grep".to_string(),
@@ -205,17 +321,18 @@ fn build_grep_args_drops_match_all_glob() {
         debug_plan: None,
         debug_score: None,
         paths_only: None,
+        ..Default::default()
     };
 
-    let args = build_grep_args(&params, &ctx).unwrap();
-    assert_eq!(args.query, "agentgrep");
-    assert_eq!(args.file_type.as_deref(), Some("rs"));
-    assert_eq!(args.path.as_deref(), Some("/tmp/root/."));
-    assert_eq!(args.glob, None);
+    let args = build_grep_request(&params, &ctx).unwrap();
+    assert_eq!(args.base.query, "agentgrep");
+    assert_eq!(args.base.file_type.as_deref(), Some("rs"));
+    assert_eq!(args.base.path.as_deref(), Some("/tmp/root/."));
+    assert_eq!(args.base.glob, None);
 }
 
 #[test]
-fn build_grep_args_scopes_file_path_to_parent_and_exact_glob() {
+fn build_grep_request_scopes_file_path_to_parent_and_exact_glob() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::create_dir_all(temp.path().join("src")).expect("mkdir");
     fs::write(temp.path().join("src/app.rs"), "fn auth_status() {}\n").expect("write file");
@@ -238,18 +355,19 @@ fn build_grep_args_scopes_file_path_to_parent_and_exact_glob() {
         debug_plan: None,
         debug_score: None,
         paths_only: None,
+        ..Default::default()
     };
 
-    let args = build_grep_args(&params, &ctx).unwrap();
+    let args = build_grep_request(&params, &ctx).unwrap();
     assert_eq!(
-        args.path.as_deref(),
+        args.base.path.as_deref(),
         Some(temp.path().join("src").to_string_lossy().as_ref())
     );
-    assert_eq!(args.glob.as_deref(), Some("app.rs"));
+    assert_eq!(args.base.glob.as_deref(), Some("app.rs"));
 }
 
 #[test]
-fn build_grep_and_find_args_scope_file_field_to_exact_file() {
+fn build_grep_request_and_find_args_scope_file_field_to_exact_file() {
     let temp = tempfile::tempdir().expect("tempdir");
     fs::create_dir_all(temp.path().join("src")).expect("mkdir");
     fs::write(temp.path().join("src/app.rs"), "fn auth_status() {}\n").expect("write file");
@@ -272,13 +390,14 @@ fn build_grep_and_find_args_scope_file_field_to_exact_file() {
         debug_plan: None,
         debug_score: None,
         paths_only: None,
+        ..Default::default()
     };
 
-    let grep = build_grep_args(&params, &ctx).unwrap();
+    let grep = build_grep_request(&params, &ctx).unwrap();
     let find = build_find_args(&params, &ctx).unwrap();
     let expected_parent = temp.path().join("src").to_string_lossy().into_owned();
-    assert_eq!(grep.path.as_deref(), Some(expected_parent.as_str()));
-    assert_eq!(grep.glob.as_deref(), Some("app.rs"));
+    assert_eq!(grep.base.path.as_deref(), Some(expected_parent.as_str()));
+    assert_eq!(grep.base.glob.as_deref(), Some("app.rs"));
     assert_eq!(find.path.as_deref(), Some(expected_parent.as_str()));
     assert_eq!(find.glob.as_deref(), Some("app.rs"));
 }
@@ -303,6 +422,7 @@ fn build_find_args_allows_glob_only_search() {
         debug_plan: None,
         debug_score: None,
         paths_only: Some(true),
+        ..Default::default()
     };
 
     let args = build_find_args(&params, &ctx).expect("glob-only find should be valid");
@@ -333,6 +453,7 @@ fn build_find_args_still_rejects_unscoped_empty_query() {
         debug_plan: None,
         debug_score: None,
         paths_only: None,
+        ..Default::default()
     };
 
     let error = build_find_args(&params, &ctx).unwrap_err();
@@ -366,6 +487,7 @@ fn build_smart_args_uses_terms() {
         debug_plan: Some(true),
         debug_score: Some(true),
         paths_only: None,
+        ..Default::default()
     };
 
     let (args, query) = build_smart_args_and_query(&params, &ctx, None).unwrap();
@@ -407,6 +529,7 @@ fn build_smart_args_falls_back_to_query_terms() {
         debug_plan: Some(true),
         debug_score: Some(true),
         paths_only: None,
+        ..Default::default()
     };
 
     let (args, _query) = build_smart_args_and_query(&params, &ctx, None).unwrap();
@@ -440,6 +563,7 @@ fn build_args_for_trace_still_requires_terms() {
         debug_plan: None,
         debug_score: None,
         paths_only: None,
+        ..Default::default()
     };
 
     let error = trace_or_smart_terms_owned(&params).unwrap_err();
@@ -523,6 +647,7 @@ fn build_outline_args_accepts_file_field() {
         debug_plan: None,
         debug_score: None,
         paths_only: None,
+        ..Default::default()
     };
 
     let args = build_outline_args(&params, &ctx, None).unwrap();
@@ -564,6 +689,7 @@ fn build_outline_args_treats_file_valued_path_as_outline_target() {
         debug_plan: None,
         debug_score: None,
         paths_only: None,
+        ..Default::default()
     };
 
     let args = build_outline_args(&params, &ctx, None).unwrap();
@@ -601,6 +727,7 @@ fn build_outline_args_does_not_duplicate_file_valued_path_when_file_is_also_set(
         debug_plan: None,
         debug_score: None,
         paths_only: None,
+        ..Default::default()
     };
 
     let args = build_outline_args(&params, &ctx, None).unwrap();
@@ -964,9 +1091,9 @@ fn grep_defaults_to_a_bounded_match_count() {
     // the compiler would fold away: this repo's own uses of a common internal
     // symbol must fit under the cap.
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let args = build_grep_args(&grep_input("guard_context_overflow", None), &test_ctx(root))
+    let args = build_grep_request(&grep_input("guard_context_overflow", None), &test_ctx(root))
         .expect("grep args");
-    let result = ::agentgrep::search::run_grep(root, &args).expect("grep should run");
+    let result = super::rg::run_grep(root, &args).expect("grep should run");
     assert!(
         result.total_matches > 0,
         "sanity: the probe symbol should exist in this crate"

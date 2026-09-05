@@ -16,3 +16,11 @@
 # memory-safe on a ~15 GiB machine while staying parallel. The adaptive
 # dev_cargo.sh path uses more cores when memory allows.
 jobs = 4
+
+[env]
+# `pcre2-sys`'s build script links Homebrew's `libpcre2-8.dylib` whenever
+# pkg-config finds one, which silently turns the grep tool's PCRE2 engine into
+# a runtime dependency on a Homebrew formula. Force the vendored static build so
+# the installed binary keeps working across `brew upgrade` and on machines
+# without the formula. Verify with `otool -L <binary> | grep pcre` -> no match.
+PCRE2_SYS_STATIC = "1"

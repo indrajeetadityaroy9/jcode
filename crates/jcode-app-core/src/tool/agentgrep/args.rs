@@ -1,3 +1,4 @@
+use super::rg::{CaseMode, EngineMode, GrepRequest};
 use super::*;
 
 struct ResolvedSearchScope {
@@ -42,7 +43,10 @@ fn resolved_search_scope(
     }
 }
 
-pub(super) fn build_grep_args(params: &AgentGrepInput, ctx: &ToolContext) -> Result<GrepArgs> {
+pub(super) fn build_grep_request(
+    params: &AgentGrepInput,
+    ctx: &ToolContext,
+) -> Result<GrepRequest> {
     let query = params
         .query
         .clone()
@@ -53,16 +57,60 @@ pub(super) fn build_grep_args(params: &AgentGrepInput, ctx: &ToolContext) -> Res
         params.file.as_deref(),
         params.glob.as_deref(),
     );
-    Ok(GrepArgs {
-        query,
-        regex: params.regex.unwrap_or(false),
-        file_type: params.file_type.clone(),
-        json: false,
-        paths_only: params.paths_only.unwrap_or(false),
-        hidden: params.hidden.unwrap_or(false),
-        no_ignore: params.no_ignore.unwrap_or(false),
-        path: scope.root,
-        glob: scope.glob,
+    let case = match params
+        .case
+        .as_deref()
+        .map(|value| value.trim().to_ascii_lowercase())
+    {
+        None => CaseMode::Smart,
+        Some(value) => match value.as_str() {
+            "sensitive" => CaseMode::Sensitive,
+            "insensitive" => CaseMode::Insensitive,
+            "smart" => CaseMode::Smart,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "agentgrep grep 'case' must be one of: sensitive, insensitive, smart"
+                ));
+            }
+        },
+    };
+    let engine = match params
+        .engine
+        .as_deref()
+        .map(|value| value.trim().to_ascii_lowercase())
+    {
+        None => EngineMode::Rust,
+        Some(value) => match value.as_str() {
+            "rust" => EngineMode::Rust,
+            "pcre2" => EngineMode::Pcre2,
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "agentgrep grep 'engine' must be one of: rust, pcre2"
+                ));
+            }
+        },
+    };
+    Ok(GrepRequest {
+        base: GrepArgs {
+            query,
+            regex: params.regex.unwrap_or(false),
+            file_type: params.file_type.clone(),
+            json: false,
+            paths_only: params.paths_only.unwrap_or(false),
+            hidden: params.hidden.unwrap_or(false),
+            no_ignore: params.no_ignore.unwrap_or(false),
+            path: scope.root,
+            glob: scope.glob,
+        },
+        case,
+        word: params.word.unwrap_or(false),
+        multiline: params.multiline.unwrap_or(false),
+        context_lines: params.context_lines.unwrap_or(0).min(MAX_CONTEXT_LINES),
+        max_matches_per_file: params
+            .max_matches_per_file
+            .filter(|count| *count > 0)
+            .unwrap_or(rg::DEFAULT_MAX_MATCHES_PER_FILE),
+        engine,
     })
 }
 
@@ -266,6 +314,24 @@ pub(super) fn summarize_agentgrep_request(
     }
     if params.paths_only.unwrap_or(false) {
         parts.push("paths_only=true".to_string());
+    }
+    if let Some(case) = params.case.as_deref() {
+        parts.push(format!("case={case}"));
+    }
+    if let Some(engine) = params.engine.as_deref() {
+        parts.push(format!("engine={engine}"));
+    }
+    if params.word.unwrap_or(false) {
+        parts.push("word=true".to_string());
+    }
+    if params.multiline.unwrap_or(false) {
+        parts.push("multiline=true".to_string());
+    }
+    if let Some(context_lines) = params.context_lines.filter(|count| *count > 0) {
+        parts.push(format!("context_lines={context_lines}"));
+    }
+    if let Some(cap) = params.max_matches_per_file {
+        parts.push(format!("max_matches_per_file={cap}"));
     }
     if context_json_path.is_some() {
         parts.push("context_json=true".to_string());

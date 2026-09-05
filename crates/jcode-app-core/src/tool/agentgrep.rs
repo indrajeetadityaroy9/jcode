@@ -25,7 +25,7 @@ mod rg;
 #[cfg(test)]
 use self::args::trace_or_smart_terms_owned;
 use self::args::{
-    build_find_args, build_grep_args, build_outline_args, build_smart_args_and_query,
+    build_find_args, build_grep_request, build_outline_args, build_smart_args_and_query,
     resolve_search_root, summarize_agentgrep_request,
 };
 use self::context::maybe_write_context_json;
@@ -35,7 +35,7 @@ use self::context::{
 };
 use ::agentgrep::render::{render_find_output, render_outline_output, render_smart_output};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct AgentGrepInput {
     #[serde(default = "default_agentgrep_mode")]
     mode: String,
@@ -72,6 +72,18 @@ struct AgentGrepInput {
     debug_score: Option<bool>,
     #[serde(default)]
     paths_only: Option<bool>,
+    #[serde(default)]
+    case: Option<String>,
+    #[serde(default)]
+    word: Option<bool>,
+    #[serde(default)]
+    multiline: Option<bool>,
+    #[serde(default)]
+    context_lines: Option<usize>,
+    #[serde(default)]
+    max_matches_per_file: Option<usize>,
+    #[serde(default)]
+    engine: Option<String>,
 }
 
 /// Default cap on rendered grep matches.
@@ -81,6 +93,26 @@ struct AgentGrepInput {
 /// data files. The match header always reports the true total, so a caller who
 /// needs more can raise `max_regions` knowing what they are asking for.
 const DEFAULT_GREP_MAX_REGIONS: usize = 200;
+
+/// Hard ceiling on `context_lines`, so one call cannot multiply its own output
+/// by an unbounded factor.
+const MAX_CONTEXT_LINES: usize = 5;
+/// Floor for the context-adjusted render cap.
+const MIN_CONTEXT_ADJUSTED_MAX_REGIONS: usize = 20;
+
+/// Lower the default match cap when context is requested: each match then
+/// renders up to `1 + 2 * context_lines` lines, and the tool-output guard
+/// refuses an oversized result rather than truncating it. An explicit
+/// `max_regions` is always honored unchanged.
+fn effective_max_regions(explicit: Option<usize>, context_lines: usize) -> usize {
+    if let Some(explicit) = explicit {
+        return explicit;
+    }
+    if context_lines == 0 {
+        return DEFAULT_GREP_MAX_REGIONS;
+    }
+    (DEFAULT_GREP_MAX_REGIONS / (1 + 2 * context_lines)).max(MIN_CONTEXT_ADJUSTED_MAX_REGIONS)
+}
 
 fn default_agentgrep_mode() -> String {
     "grep".to_string()
@@ -225,6 +257,32 @@ impl Tool for AgentGrepTool {
                     "type": "string",
                     "description": "Optional ripgrep file type filter, such as rs, py, js, ts, or md."
                 },
+                "case": {
+                    "type": "string",
+                    "enum": ["sensitive", "insensitive", "smart"],
+                    "description": "Grep case: smart (default) ignores case unless the query has an uppercase letter."
+                },
+                "engine": {
+                    "type": "string",
+                    "enum": ["rust", "pcre2"],
+                    "description": "Grep engine: rust (default); pcre2 only for lookaround or backreferences."
+                },
+                "word": {
+                    "type": "boolean",
+                    "description": "Grep: match whole words only. Use for short identifiers like id. Default false."
+                },
+                "multiline": {
+                    "type": "boolean",
+                    "description": "Grep with regex=true: let a match span lines via a class like [\\s\\S]. Default false."
+                },
+                "context_lines": {
+                    "type": "integer",
+                    "description": "Grep: context lines on each side of a match, 0-5 (clamped). Default 0."
+                },
+                "max_matches_per_file": {
+                    "type": "integer",
+                    "description": "Grep: stop after this many matches per file. Default 1000; capped files say so."
+                },
                 "max_files": {
                     "type": "integer",
                     "description": "Maximum number of files to return for find/trace-style modes."
@@ -312,10 +370,10 @@ fn execute_linked_agentgrep(
     let exact_file = exact_search_file_path(ctx, params.path.as_deref());
     match params.mode.as_str() {
         "grep" => {
-            let args = build_grep_args(params, ctx)?;
-            let root = resolve_search_root(ctx, args.path.as_deref())?;
+            let request = build_grep_request(params, ctx)?;
+            let root = resolve_search_root(ctx, request.base.path.as_deref())?;
             let result = rg::filter_to_exact_file(
-                rg::run_grep(&root, &args).map_err(anyhow::Error::msg)?,
+                rg::run_grep(&root, &request).map_err(anyhow::Error::msg)?,
                 exact_file.as_deref(),
             );
             // Bound the rendered matches by default. `find` and `outline` already
@@ -325,8 +383,11 @@ fn execute_linked_agentgrep(
             // benchmark transcripts produced 923k chars in a single call. The
             // header still reports the true total, so the caller sees that more
             // matches exist and can raise the cap deliberately.
-            let max_regions = params.max_regions.or(Some(DEFAULT_GREP_MAX_REGIONS));
-            Ok(ToolOutput::new(rg::render(&result, &args, max_regions))
+            let max_regions = Some(effective_max_regions(
+                params.max_regions,
+                request.context_lines,
+            ));
+            Ok(ToolOutput::new(rg::render(&result, &request, max_regions))
                 .with_title("agentgrep grep"))
         }
         "find" => {
