@@ -22,6 +22,7 @@ fn test_file_diff_cache_reuses_entry_when_signature_matches() {
                     prefix: String::new(),
                     text: "cached".to_string(),
                     kind: file_diff_ui::FileDiffDisplayRowKind::Placeholder,
+                    emphasis: Vec::new(),
                 }],
                 rendered_rows: vec![Some(Line::from("cached"))],
                 first_change_line: 0,
@@ -231,10 +232,21 @@ fn test_copy_badge_reserves_right_margin_for_info_widgets() {
     };
     let copy_badge_ui = crate::tui::app::CopyBadgeUiState::default();
 
-    reserve_copy_badge_margins(&mut margins, 10, 13, &[(11, 'a')], &copy_badge_ui, Instant::now());
+    reserve_copy_badge_margins(
+        &mut margins,
+        10,
+        13,
+        &[(11, 'a')],
+        &copy_badge_ui,
+        Instant::now(),
+    );
 
+    // The reservation is the badge's rendered width, and the Alt keycap differs
+    // per platform (`[⌥]` is two columns narrower than `[Alt]`), so derive the
+    // expectation from the same helper the renderer uses.
+    let reserved = copy_badge_reserved_width('a', &copy_badge_ui, Instant::now());
     assert_eq!(margins.right_widths[0], 30);
-    assert_eq!(margins.right_widths[1], 16);
+    assert_eq!(margins.right_widths[1], 30 - reserved as u16);
     assert_eq!(margins.right_widths[2], 30);
 }
 
@@ -271,7 +283,8 @@ fn test_copy_badge_truncates_full_width_line_before_appending_shortcut() {
     truncate_copy_badge_line_to_width(&mut line, viewport_width.saturating_sub(reserved));
     // Matches the render path: one separator space, then the shortcut badges.
     line.spans.push(Span::raw(" "));
-    line.spans.push(Span::raw("[Alt] [⇧] [A]"));
+    line.spans
+        .push(Span::raw(format!("{} [⇧] [A]", copy_badge_alt_badge())));
 
     assert_eq!(line.width(), viewport_width);
     assert!(line.width() <= viewport_width);
@@ -305,7 +318,10 @@ fn test_copy_badge_truncation_marks_cut_content_with_ellipsis() {
         .iter()
         .map(|span| span.content.as_ref())
         .collect();
-    assert!(text.ends_with('…'), "cut content must show ellipsis: {text:?}");
+    assert!(
+        text.ends_with('…'),
+        "cut content must show ellipsis: {text:?}"
+    );
     assert!(line.width() <= 10);
 
     // Content that fits is left intact (trailing spaces trimmed only).

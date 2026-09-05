@@ -1822,8 +1822,7 @@ fn handle_disconnected_local_command(app: &mut App, trimmed: &str) -> bool {
     let handled = super::commands_dispatch::dispatch_local_command(app, trimmed);
 
     if handled {
-        if trimmed.starts_with('/') {
-        }
+        if trimmed.starts_with('/') {}
         app.input.clear();
         app.cursor_pos = 0;
         app.reset_tab_completion();
@@ -1886,7 +1885,7 @@ fn handle_disconnected_key_internal(
 ) -> Result<()> {
     let mut code = code;
     let mut modifiers = modifiers;
-    ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
+    ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers, app.diagram_available());
 
     if handle_ctrl_kill_to_end(app, code, modifiers) {
         return Ok(());

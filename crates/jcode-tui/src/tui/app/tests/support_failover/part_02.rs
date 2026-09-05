@@ -108,7 +108,7 @@ impl Provider for SwitchableMockProvider {
 }
 
 fn create_switchable_test_app(initial_provider: &str) -> (App, StdArc<StdMutex<String>>) {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -240,7 +240,7 @@ impl Provider for AsyncAuthRefreshingMockProvider {
 }
 
 fn create_auth_refresh_test_app() -> App {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -323,7 +323,7 @@ impl Provider for AntigravityMockProvider {
 }
 
 fn create_antigravity_picker_test_app() -> App {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -436,7 +436,7 @@ impl Provider for LoginSmokeModelProvider {
 }
 
 fn create_login_smoke_model_app() -> App {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -493,7 +493,7 @@ impl Provider for FailingModelSwitchProvider {
 }
 
 fn create_failing_model_switch_test_app() -> App {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -630,7 +630,7 @@ impl Provider for DualMethodMockProvider {
 }
 
 fn create_dual_method_test_app() -> (App, StdArc<StdMutex<Option<String>>>) {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -676,9 +676,7 @@ fn test_apply_fallback_offer_switches_route_and_resends() {
     with_temp_jcode_home(|| {
         let (mut app, applied) = create_dual_method_test_app();
 
-        app.handle_turn_error(
-            "Anthropic API error (401 Unauthorized): invalid x-api-key",
-        );
+        app.handle_turn_error("Anthropic API error (401 Unauthorized): invalid x-api-key");
         assert!(app.pending_fallback_offer.is_some());
 
         let consumed = app.apply_pending_fallback_offer();

@@ -34,9 +34,7 @@ use globset::{Glob, GlobSetBuilder};
 use grep_matcher::Matcher;
 use grep_pcre2::{RegexMatcher as Pcre2Matcher, RegexMatcherBuilder as Pcre2MatcherBuilder};
 use grep_regex::{RegexMatcher, RegexMatcherBuilder};
-use grep_searcher::{
-    BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch,
-};
+use grep_searcher::{BinaryDetection, Searcher, SearcherBuilder, Sink, SinkContext, SinkMatch};
 use ignore::{WalkBuilder, WalkState};
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
@@ -180,11 +178,7 @@ struct MatchSink<'a, M> {
 impl<M: Matcher> Sink for MatchSink<'_, M> {
     type Error = std::io::Error;
 
-    fn matched(
-        &mut self,
-        _searcher: &Searcher,
-        mat: &SinkMatch<'_>,
-    ) -> Result<bool, Self::Error> {
+    fn matched(&mut self, _searcher: &Searcher, mat: &SinkMatch<'_>) -> Result<bool, Self::Error> {
         let bytes = mat.bytes();
         let raw = String::from_utf8_lossy(bytes);
         let trimmed = raw.trim_end_matches(['\n', '\r']);
@@ -368,10 +362,7 @@ where
 /// A worker panic is surfaced rather than absorbed: silently returning an
 /// empty chunk would drop matched files from the result and make the search
 /// look like it found less than it did.
-fn enrich_files(
-    root: &Path,
-    matched: Vec<(String, FileHits)>,
-) -> Result<Vec<FileMatches>, String> {
+fn enrich_files(root: &Path, matched: Vec<(String, FileHits)>) -> Result<Vec<FileMatches>, String> {
     let worker_count = std::thread::available_parallelism()
         .map(|parallelism| parallelism.get())
         .unwrap_or(1)
@@ -531,8 +522,7 @@ fn build_glob_set(args: &GrepArgs) -> Result<Option<globset::GlobSet>, String> {
     let Some(pattern) = args.glob.as_deref().filter(|glob| !glob.is_empty()) else {
         return Ok(None);
     };
-    let glob =
-        Glob::new(pattern).map_err(|err| format!("invalid glob {pattern:?}: {err}"))?;
+    let glob = Glob::new(pattern).map_err(|err| format!("invalid glob {pattern:?}: {err}"))?;
     let mut builder = GlobSetBuilder::new();
     builder.add(glob);
     builder
@@ -649,12 +639,12 @@ struct Grouping {
 /// number, so a single forward cursor over `items` is enough: no per-match
 /// scan of the symbol table.
 fn group_matches(items: &[StructureItem], matches: &[LineMatch]) -> Grouping {
-    let (max_groups, other_symbols_limit) = if matches.len() >= DENSE_MATCH_LIMITED_GROUPING_THRESHOLD
-    {
-        (DENSE_GROUPS_LIMIT, DENSE_OTHER_SYMBOLS_LIMIT)
-    } else {
-        (usize::MAX, OTHER_SYMBOLS_LIMIT)
-    };
+    let (max_groups, other_symbols_limit) =
+        if matches.len() >= DENSE_MATCH_LIMITED_GROUPING_THRESHOLD {
+            (DENSE_GROUPS_LIMIT, DENSE_OTHER_SYMBOLS_LIMIT)
+        } else {
+            (usize::MAX, OTHER_SYMBOLS_LIMIT)
+        };
 
     let mut symbol_groups: Vec<MatchGroup> = Vec::new();
     let mut matched_indices: Vec<usize> = Vec::new();
@@ -799,7 +789,9 @@ fn compact_match_line(line: &str, match_span: Option<(usize, usize)>) -> String 
     if end_char > char_count {
         end_char = char_count;
     }
-    let start_char = end_char.saturating_sub(MAX_MATCH_LINE_CHARS).min(start_char);
+    let start_char = end_char
+        .saturating_sub(MAX_MATCH_LINE_CHARS)
+        .min(start_char);
 
     let omitted_prefix = start_char;
     let omitted_suffix = char_count.saturating_sub(end_char);
@@ -869,7 +861,13 @@ pub(super) fn render(
         if limit_reached(displayed_matches) {
             break;
         }
-        render_file(file, request, max_matches, &mut displayed_matches, &mut lines);
+        render_file(
+            file,
+            request,
+            max_matches,
+            &mut displayed_matches,
+            &mut lines,
+        );
     }
 
     if let Some(max) = max_matches
@@ -984,7 +982,9 @@ fn render_file(
     }
 
     let global_limit_reached = max_matches.is_some_and(|max| *displayed_matches >= max);
-    if non_code_cap.is_some() && !global_limit_reached && file.matches.len() > file_displayed_matches
+    if non_code_cap.is_some()
+        && !global_limit_reached
+        && file.matches.len() > file_displayed_matches
     {
         lines.push(format!(
             "    - ... {} more non-code matches omitted; narrow path/glob/type or use paths_only for full file list",

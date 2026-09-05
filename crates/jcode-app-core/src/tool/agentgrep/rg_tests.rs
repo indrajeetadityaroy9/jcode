@@ -82,7 +82,12 @@ fn matched_paths(result: &GrepResult) -> Vec<String> {
 fn rg_oracle_paths(root: &std::path::Path, extra: &[&str], query: &str) -> Option<Vec<String>> {
     let output = Command::new("rg")
         .current_dir(root)
-        .args(["--files-with-matches", "--color", "never", "--fixed-strings"])
+        .args([
+            "--files-with-matches",
+            "--color",
+            "never",
+            "--fixed-strings",
+        ])
         .args(extra)
         .args(["-e", query, "."])
         .output()
@@ -117,7 +122,8 @@ fn literal_search_matches_ripgrep_file_set() {
 
     if let Some(oracle) = rg_oracle_paths(dir.path(), &[], "marker") {
         assert_eq!(
-            matched_paths(&result), oracle,
+            matched_paths(&result),
+            oracle,
             "our engine disagreed with the installed ripgrep"
         );
     }
@@ -258,7 +264,10 @@ fn dense_files_skip_structure_and_fall_back_to_file_scope() {
 
     let result = run_grep(dir.path(), &request("marker")).expect("grep");
     let file = &result.files[0];
-    assert_eq!(file.total_symbols, 0, "structure extraction must be skipped");
+    assert_eq!(
+        file.total_symbols, 0,
+        "structure extraction must be skipped"
+    );
     assert_eq!(file.groups.len(), 1);
     assert_eq!(file.groups[0].label, "<file scope>");
     assert_eq!(file.language, "rust", "language still comes from the path");
@@ -437,7 +446,8 @@ fn word_boundaries_exclude_substring_hits() {
 
     if let Some(oracle) = rg_oracle_paths(dir.path(), &["-w"], "id") {
         assert_eq!(
-            matched_paths(&result), oracle,
+            matched_paths(&result),
+            oracle,
             "our word-boundary file set disagreed with the installed ripgrep"
         );
     }
@@ -480,7 +490,9 @@ fn context_lines_surround_matches_without_duplication() {
         "context text must be rendered:\n{rendered}"
     );
     assert_eq!(
-        render(&result, &request("marker_"), Some(200)).matches("        ~ @ ").count(),
+        render(&result, &request("marker_"), Some(200))
+            .matches("        ~ @ ")
+            .count(),
         0,
         "context is only rendered when the request asked for it"
     );
@@ -724,13 +736,18 @@ fn pcre2_engine_honors_case_word_and_per_file_cap() {
     // characters in it stay literal.
     let mut literal = request("MARKER_id = 1;");
     literal.engine = EngineMode::Pcre2;
-    assert_eq!(run_grep(dir.path(), &literal).expect("pcre2").total_matches, 1);
+    assert_eq!(
+        run_grep(dir.path(), &literal).expect("pcre2").total_matches,
+        1
+    );
 
     let mut insensitive = request("marker_ID");
     insensitive.engine = EngineMode::Pcre2;
     insensitive.case = CaseMode::Insensitive;
     assert_eq!(
-        run_grep(dir.path(), &insensitive).expect("pcre2").total_matches,
+        run_grep(dir.path(), &insensitive)
+            .expect("pcre2")
+            .total_matches,
         1
     );
 

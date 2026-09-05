@@ -644,7 +644,12 @@ mod tests {
         assert!(binding.matches(KeyCode::Enter, KeyModifiers::ALT));
         assert!(!binding.matches(KeyCode::Enter, KeyModifiers::empty()));
         assert!(!binding.matches(KeyCode::Enter, KeyModifiers::SHIFT));
-        assert_eq!(format_binding(&binding), "Alt+Enter");
+        // The Alt label is a keycap - `⌥` on macOS - so assert the platform's
+        // spelling instead of pinning one platform's literal.
+        assert_eq!(
+            format_binding(&binding),
+            jcode_tui_core::keybind::alt_chord("Enter")
+        );
     }
 
     #[test]

@@ -14,7 +14,8 @@ use super::info_widget;
 use super::markdown;
 use super::ui_diff::{
     DiffLineKind, ParsedDiffLine, collect_diff_lines, diff_add_color, diff_change_counts_for_tool,
-    diff_del_color, generate_diff_lines_from_tool_input, tint_span_with_diff_color,
+    diff_del_color, emphasize_diff_spans, generate_diff_lines_from_tool_input,
+    tint_span_with_diff_color,
 };
 use super::visual_debug::{
     self, FrameCaptureBuilder, ImageRegionCapture, InfoWidgetCapture, MarginsCapture,
@@ -160,8 +161,8 @@ use viewport::draw_messages;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use viewport::{
-    copy_badge_reserved_width, expand_badge_reserved_width, pick_copy_badge_line,
-    reserve_copy_badge_margins, truncate_line_for_copy_badge,
+    copy_badge_alt_badge, copy_badge_reserved_width, expand_badge_reserved_width,
+    pick_copy_badge_line, reserve_copy_badge_margins, truncate_line_for_copy_badge,
     truncate_line_in_place_to_width as truncate_copy_badge_line_to_width,
 };
 /// Last known max scroll value from the renderer. Updated each frame.
@@ -1451,68 +1452,33 @@ pub fn last_layout_snapshot() -> Option<LayoutSnapshot> {
 /// lock, which serialized nothing between them and produced failures that
 /// appeared only under parallelism (same root cause as issue #593). Both now
 /// delegate here.
+///
+/// The mutex itself is `jcode_base::storage::lock_test_env`, shared with the
+/// environment/`JCODE_HOME` tests rather than private to this module. A private
+/// lock deadlocked the suite: a test that swapped `JCODE_HOME` and then built
+/// an app locked env-then-render, while a rendering test that swapped
+/// `JCODE_HOME` mid-flight locked render-then-env, and a parallel run stalled
+/// permanently at the first interleaving. That lock is reentrant per thread, so
+/// nesting in either direction is safe.
 #[cfg(test)]
 pub(crate) fn render_state_test_lock() -> RenderStateTestGuard {
-    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-    let guard = LOCK
-        .get_or_init(|| std::sync::Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    RENDER_STATE_LOCK_HELD.with(|held| held.set(true));
-    RenderStateTestGuard { _guard: guard }
+    RenderStateTestGuard {
+        _guard: crate::storage::lock_test_env(),
+    }
 }
 
-/// Guard for [`render_state_test_lock`] that also records ownership on this
-/// thread, so a nested `clear_test_render_state_for_tests` can tell it is
-/// already inside the lock instead of deadlocking on it.
+/// Guard for [`render_state_test_lock`].
 #[cfg(test)]
 pub(crate) struct RenderStateTestGuard {
-    _guard: std::sync::MutexGuard<'static, ()>,
-}
-
-#[cfg(test)]
-impl Drop for RenderStateTestGuard {
-    fn drop(&mut self) {
-        RENDER_STATE_LOCK_HELD.with(|held| held.set(false));
-    }
-}
-
-/// Take the render-state lock unless this thread already holds it.
-///
-/// `clear_test_render_state_for_tests` mutates the same globals the lock
-/// protects, but it is called from both locked contexts (rendering tests) and
-/// unlocked ones (`create_test_app`, used by ~570 tests). Acquiring
-/// unconditionally would deadlock the former; not acquiring at all lets the
-/// latter wipe state from under the former, which is the race behind
-/// jcode-tui's intermittent layout failures.
-///
-/// Tracking ownership per thread lets one function serve both: the outermost
-/// holder owns the guard, and nested calls become no-ops.
-#[cfg(test)]
-fn with_render_state_lock<T>(body: impl FnOnce() -> T) -> T {
-    if render_state_lock_held() {
-        return body();
-    }
-
-    let _guard = render_state_test_lock();
-    body()
-}
-
-#[cfg(test)]
-thread_local! {
-    /// Whether this thread currently holds the render-state lock. Set by
-    /// [`render_state_test_lock`]'s guard so nested clears can detect it.
-    static RENDER_STATE_LOCK_HELD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-#[cfg(test)]
-fn render_state_lock_held() -> bool {
-    RENDER_STATE_LOCK_HELD.with(|held| held.get())
+    _guard: crate::storage::TestEnvGuard,
 }
 
 #[cfg(test)]
 pub(crate) fn clear_test_render_state_for_tests() {
-    with_render_state_lock(clear_test_render_state_locked)
+    // Reentrant, so this is correct whether the caller already holds the lock
+    // (a rendering test) or not (`create_test_app`, used by ~570 tests).
+    let _guard = render_state_test_lock();
+    clear_test_render_state_locked()
 }
 
 /// The actual reset, run with the render-state lock held.

@@ -478,6 +478,20 @@ fn get_cached_context_limit(model: &str) -> Option<usize> {
     cache.get(model).copied()
 }
 
+/// Drop every dynamically cached context limit.
+///
+/// [`CONTEXT_LIMIT_CACHE`] is process-global and gets seeded as a *side effect*
+/// of ordinary work - building `MultiProvider::model_routes()` publishes the
+/// active provider's catalog, for example - so one test can silently change
+/// what another test's static-classification assertions resolve to. A test that
+/// depends on the static tables must state that precondition by clearing it.
+#[cfg(any(test, feature = "test-support"))]
+pub fn clear_context_limit_cache() {
+    if let Ok(mut cache) = CONTEXT_LIMIT_CACHE.write() {
+        cache.clear();
+    }
+}
+
 /// Populate the context limit cache from API-provided model data.
 /// Called once at startup when OpenAI OAuth credentials are available.
 pub fn populate_context_limits(models: HashMap<String, usize>) {

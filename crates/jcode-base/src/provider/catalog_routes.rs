@@ -79,46 +79,46 @@ pub fn simplified_model_routes_for_picker(
         }
 
         let (provider, api_method, available, detail) = if model.contains('/') {
-                (
+            (
+                "auto".to_string(),
+                "openrouter".to_string(),
+                auth.openrouter != AuthState::NotConfigured,
+                "simplified catalog".to_string(),
+            )
+        } else {
+            match provider_for_model(&model) {
+                Some("claude") => {
+                    append_simplified_anthropic_model_routes(&mut routes, model, &auth);
+                    continue;
+                }
+                Some("openai") => unreachable!("OpenAI models are handled above"),
+                Some("gemini") => (
+                    "Gemini".to_string(),
+                    "code-assist-oauth".to_string(),
+                    auth.gemini != AuthState::NotConfigured,
+                    String::new(),
+                ),
+                Some("cursor") => (
+                    "Cursor".to_string(),
+                    "cursor".to_string(),
+                    auth.cursor != AuthState::NotConfigured,
+                    String::new(),
+                ),
+                Some("openrouter") => (
                     "auto".to_string(),
                     "openrouter".to_string(),
                     auth.openrouter != AuthState::NotConfigured,
                     "simplified catalog".to_string(),
-                )
-            } else {
-                match provider_for_model(&model) {
-                    Some("claude") => {
-                        append_simplified_anthropic_model_routes(&mut routes, model, &auth);
-                        continue;
-                    }
-                    Some("openai") => unreachable!("OpenAI models are handled above"),
-                    Some("gemini") => (
-                        "Gemini".to_string(),
-                        "code-assist-oauth".to_string(),
-                        auth.gemini != AuthState::NotConfigured,
-                        String::new(),
-                    ),
-                    Some("cursor") => (
-                        "Cursor".to_string(),
-                        "cursor".to_string(),
-                        auth.cursor != AuthState::NotConfigured,
-                        String::new(),
-                    ),
-                    Some("openrouter") => (
-                        "auto".to_string(),
-                        "openrouter".to_string(),
-                        auth.openrouter != AuthState::NotConfigured,
-                        "simplified catalog".to_string(),
-                    ),
-                    Some(other) => (other.to_string(), other.to_string(), true, String::new()),
-                    None => (
-                        current_provider_name.to_string(),
-                        "current".to_string(),
-                        true,
-                        String::new(),
-                    ),
-                }
-            };
+                ),
+                Some(other) => (other.to_string(), other.to_string(), true, String::new()),
+                None => (
+                    current_provider_name.to_string(),
+                    "current".to_string(),
+                    true,
+                    String::new(),
+                ),
+            }
+        };
 
         routes.push(ModelRoute {
             model,
@@ -1218,7 +1218,7 @@ mod tests {
     struct EnvGuard {
         vars: Vec<(&'static str, Option<std::ffi::OsString>)>,
         _temp: tempfile::TempDir,
-        _lock: std::sync::MutexGuard<'static, ()>,
+        _lock: crate::storage::TestEnvGuard,
     }
 
     impl EnvGuard {

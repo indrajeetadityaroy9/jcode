@@ -296,6 +296,9 @@ pub fn set_model_with_auth_refresh(provider: &dyn Provider, model: &str) -> Resu
 }
 
 use self::dispatch::CompletionMode;
+/// Test-only: see [`models::clear_context_limit_cache`].
+#[cfg(any(test, feature = "test-support"))]
+pub use self::models::clear_context_limit_cache;
 pub use self::models::{
     AccountModelAvailability, AccountModelAvailabilityState, AnthropicModelCatalog,
     ModelCatalogHttpStatus, OpenAIModelCatalog, begin_anthropic_model_catalog_refresh,
@@ -323,7 +326,6 @@ pub use self::selection::DefaultModelSelection;
 use self::selection::{ActiveProvider, ProviderAvailability};
 use self::state::ProviderState;
 pub use self::state::{ProviderModelSelectionSource, ProviderRuntimeState, ProviderStateEvent};
-
 
 /// MultiProvider wraps multiple providers and allows seamless model switching
 pub struct MultiProvider {

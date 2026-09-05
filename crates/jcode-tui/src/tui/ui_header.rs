@@ -1023,23 +1023,27 @@ mod tests {
         }
     }
 
-    fn ensure_test_jcode_home_if_unset() {
-        static TEST_HOME: OnceLock<std::path::PathBuf> = OnceLock::new();
+    /// Lock the shared test-state mutex and pin JCODE_HOME to a per-process
+    /// temp dir, so header tests never read the developer's real `~/.jcode`.
+    #[must_use = "hold the guard while the app is built and asserted on"]
+    fn ensure_test_jcode_home_if_unset() -> crate::storage::TestEnvGuard {
+        static TEST_HOME: std::sync::LazyLock<std::path::PathBuf> =
+            std::sync::LazyLock::new(|| {
+                let path =
+                    std::env::temp_dir().join(format!("jcode-test-home-{}", std::process::id()));
+                let _ = std::fs::create_dir_all(&path);
+                path
+            });
 
-        if std::env::var_os("JCODE_HOME").is_some() {
-            return;
+        let guard = crate::storage::lock_test_env();
+        if std::env::var_os("JCODE_HOME").is_none() {
+            crate::env::set_var("JCODE_HOME", &*TEST_HOME);
         }
-
-        let path = TEST_HOME.get_or_init(|| {
-            let path = std::env::temp_dir().join(format!("jcode-test-home-{}", std::process::id()));
-            let _ = std::fs::create_dir_all(&path);
-            path
-        });
-        crate::env::set_var("JCODE_HOME", path);
+        guard
     }
 
     fn create_test_app() -> crate::tui::app::App {
-        ensure_test_jcode_home_if_unset();
+        let _test_env = ensure_test_jcode_home_if_unset();
 
         let provider: Arc<dyn Provider> = Arc::new(MockProvider);
         let rt = tokio::runtime::Runtime::new().expect("test runtime");

@@ -209,8 +209,22 @@ pub(super) fn partition_queued_messages(
     (user_messages, reminder, display_system_messages)
 }
 
+/// Normalize legacy tty control encodings that terminals report as digits.
+///
+/// `Ctrl+]` arrives as byte 0x1D, which crossterm decodes as `Ctrl+5`, so the
+/// two chords are indistinguishable on macOS terminals. `']'` has exactly one
+/// consumer - diagram zoom - while `Ctrl+5` is the fifth slot of the
+/// `Ctrl+<digit>` prompt-recency jump, so the rewrite only applies when a
+/// diagram is on screen to receive it. Rewriting unconditionally made
+/// `Ctrl+5` dead on the only platform this fork supports: it never reached
+/// `ctrl_prompt_rank`, and the key fell through to the input handler, which
+/// snapped the transcript back to the bottom.
 #[cfg(target_os = "macos")]
-pub(super) fn ctrl_bracket_fallback_to_esc(code: &mut KeyCode, modifiers: &mut KeyModifiers) {
+pub(super) fn ctrl_bracket_fallback_to_esc(
+    code: &mut KeyCode,
+    modifiers: &mut KeyModifiers,
+    diagram_available: bool,
+) {
     if !modifiers.contains(KeyModifiers::CONTROL) {
         return;
     }
@@ -218,8 +232,7 @@ pub(super) fn ctrl_bracket_fallback_to_esc(code: &mut KeyCode, modifiers: &mut K
         KeyCode::Esc => {
             *code = KeyCode::Char('[');
         }
-        KeyCode::Char('5') => {
-            // Legacy tty mapping for Ctrl+]
+        KeyCode::Char('5') if diagram_available => {
             *code = KeyCode::Char(']');
         }
         _ => {}
@@ -227,7 +240,12 @@ pub(super) fn ctrl_bracket_fallback_to_esc(code: &mut KeyCode, modifiers: &mut K
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(super) fn ctrl_bracket_fallback_to_esc(_code: &mut KeyCode, _modifiers: &mut KeyModifiers) {}
+pub(super) fn ctrl_bracket_fallback_to_esc(
+    _code: &mut KeyCode,
+    _modifiers: &mut KeyModifiers,
+    _diagram_available: bool,
+) {
+}
 
 /// Debug command file path
 pub(super) fn debug_cmd_path() -> PathBuf {
@@ -788,7 +806,11 @@ fn resumed_window_title(session_id: &str) -> String {
     } else {
         format!("jcode {}", session_label)
     };
-    crate::process_title::terminal_window_title(icon, display_title.as_deref(), Some(&fallback_label))
+    crate::process_title::terminal_window_title(
+        icon,
+        display_title.as_deref(),
+        Some(&fallback_label),
+    )
 }
 
 /// Open `session_id` in a new terminal window.

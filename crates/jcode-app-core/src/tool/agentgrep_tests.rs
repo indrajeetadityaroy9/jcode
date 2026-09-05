@@ -190,7 +190,10 @@ fn build_grep_request_includes_scope_flags() {
     assert!(!args.word);
     assert!(!args.multiline);
     assert_eq!(args.context_lines, 0);
-    assert_eq!(args.max_matches_per_file, super::rg::DEFAULT_MAX_MATCHES_PER_FILE);
+    assert_eq!(
+        args.max_matches_per_file,
+        super::rg::DEFAULT_MAX_MATCHES_PER_FILE
+    );
 }
 
 #[test]
@@ -272,13 +275,17 @@ fn build_grep_request_parses_the_engine_selection() {
         super::rg::EngineMode::Rust,
         "the linear-time engine is the default; PCRE2 is opt-in"
     );
-    assert_eq!(engine_of(Some(" Rust ")).unwrap(), super::rg::EngineMode::Rust);
-    assert_eq!(engine_of(Some("pcre2")).unwrap(), super::rg::EngineMode::Pcre2);
+    assert_eq!(
+        engine_of(Some(" Rust ")).unwrap(),
+        super::rg::EngineMode::Rust
+    );
+    assert_eq!(
+        engine_of(Some("pcre2")).unwrap(),
+        super::rg::EngineMode::Pcre2
+    );
 
     for rejected in ["pcre", "auto"] {
-        let err = engine_of(Some(rejected))
-            .unwrap_err()
-            .to_string();
+        let err = engine_of(Some(rejected)).unwrap_err().to_string();
         assert!(
             err.contains("rust, pcre2"),
             "{rejected:?} must fail with the accepted engines listed: {err}"

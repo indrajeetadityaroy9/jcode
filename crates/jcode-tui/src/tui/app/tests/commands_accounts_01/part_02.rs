@@ -97,10 +97,7 @@ fn test_alignment_command_persists_and_applies_immediately() {
 
         let last = app.display_messages().last().expect("missing response");
         assert_eq!(last.role, "system");
-        assert!(
-            last.content
-                .contains("Saved default alignment: centered")
-        );
+        assert!(last.content.contains("Saved default alignment: centered"));
     });
 }
 
@@ -117,13 +114,13 @@ fn test_alignment_status_shows_current_and_saved_defaults() {
 
         let last = app.display_messages().last().expect("missing response");
         assert_eq!(last.role, "system");
-        assert!(
-            last.content
-                .contains("Alignment is currently centered.")
-        );
+        assert!(last.content.contains("Alignment is currently centered."));
         assert!(last.content.contains("Saved default: left-aligned."));
         assert!(last.content.contains("/alignment centered"));
-        assert!(last.content.contains("Alt+C"));
+        assert!(
+            last.content
+                .contains(&jcode_tui_core::keybind::alt_chord("C"))
+        );
     });
 }
 
@@ -239,7 +236,10 @@ fn test_subscription_command_shows_jcode_status_scaffold() {
     assert!(msg.content.contains("GPT-5.6 Sol"));
     assert!(!msg.content.contains("$10/mo"));
     assert!(!msg.content.contains("usable inference budget"));
-    assert!(!msg.content.contains("Claude Fable 5 - claude-fable-5 [Ultra]"));
+    assert!(
+        !msg.content
+            .contains("Claude Fable 5 - claude-fable-5 [Ultra]")
+    );
 }
 
 #[test]

@@ -317,10 +317,7 @@ fn initial_session_context_preserves_explicitly_bound_cwd_when_inserted() -> Res
         assert!(session.ensure_initial_session_context_message());
         let first = session.messages[0].content_preview();
         assert!(
-            first.contains(&format!(
-                "Working directory: {}",
-                first_path.display()
-            )),
+            first.contains(&format!("Working directory: {}", first_path.display())),
             "session context should preserve the bound cwd, got: {first}"
         );
         assert_eq!(
@@ -363,25 +360,20 @@ fn initial_session_context_can_refresh_before_real_conversation() -> Result<()> 
             Some("Remote cwd refresh".to_string()),
         );
         assert!(session.ensure_initial_session_context_message());
-        assert!(session.messages[0].content_preview().contains(&format!(
-            "Working directory: {}",
-            first_path.display()
-        )));
+        assert!(
+            session.messages[0]
+                .content_preview()
+                .contains(&format!("Working directory: {}", first_path.display()))
+        );
 
         session.working_dir = Some(second_path.display().to_string());
         assert!(session.refresh_initial_session_context_message());
         let refreshed = session.messages[0].content_preview();
         assert!(
-            refreshed.contains(&format!(
-                "Working directory: {}",
-                second_path.display()
-            )),
+            refreshed.contains(&format!("Working directory: {}", second_path.display())),
             "session context should refresh to subscribed cwd, got: {refreshed}"
         );
-        assert!(!refreshed.contains(&format!(
-            "Working directory: {}",
-            first_path.display()
-        )));
+        assert!(!refreshed.contains(&format!("Working directory: {}", first_path.display())));
         Ok(())
     })();
     std::env::set_current_dir(original_cwd).map_err(|e| anyhow!(e))?;
@@ -429,14 +421,8 @@ fn initial_session_context_does_not_refresh_after_real_conversation() -> Result<
         session.working_dir = Some(second_path.display().to_string());
         assert!(!session.refresh_initial_session_context_message());
         let original = session.messages[0].content_preview();
-        assert!(original.contains(&format!(
-            "Working directory: {}",
-            first_path.display()
-        )));
-        assert!(!original.contains(&format!(
-            "Working directory: {}",
-            second_path.display()
-        )));
+        assert!(original.contains(&format!("Working directory: {}", first_path.display())));
+        assert!(!original.contains(&format!("Working directory: {}", second_path.display())));
         Ok(())
     })();
     std::env::set_current_dir(original_cwd).map_err(|e| anyhow!(e))?;

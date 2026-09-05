@@ -12,6 +12,7 @@ mod edit;
 mod goal;
 pub mod inflight;
 mod invalid;
+mod locate_hint;
 mod ls;
 pub mod mcp;
 mod memory;

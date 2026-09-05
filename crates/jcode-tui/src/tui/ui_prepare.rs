@@ -650,11 +650,7 @@ fn prepare_active_batch_progress(
 /// Extracted from [`prepare_messages`] so the header-identity coupling is
 /// testable: a prepared frame carries the rendered header, so this key must
 /// change whenever [`header_prep_signature`] would.
-pub(super) fn full_prep_cache_key(
-    app: &dyn TuiState,
-    width: u16,
-    height: u16,
-) -> FullPrepCacheKey {
+pub(super) fn full_prep_cache_key(app: &dyn TuiState, width: u16, height: u16) -> FullPrepCacheKey {
     FullPrepCacheKey {
         width,
         height,

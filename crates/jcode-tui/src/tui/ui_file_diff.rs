@@ -1,6 +1,7 @@
 use super::*;
 
 use super::selection_highlight::highlight_line_selection;
+use crate::tui::ui_diff::{WordEmphasis, emphasize_diff_spans, word_emphasis};
 
 fn apply_side_selection_highlight(
     app: &dyn TuiState,
@@ -65,6 +66,10 @@ pub(super) struct FileDiffDisplayRow {
     pub(super) prefix: String,
     pub(super) text: String,
     pub(super) kind: FileDiffDisplayRowKind,
+    /// Byte ranges into `text` that changed relative to the row this one
+    /// replaced. Only populated for a one-for-one replacement, where the
+    /// pairing is unambiguous; empty everywhere else.
+    pub(super) emphasis: Vec<(usize, usize)>,
 }
 
 pub(super) struct FileDiffViewCacheEntry {
@@ -133,9 +138,15 @@ fn render_file_diff_row(row: &FileDiffDisplayRow, file_ext: Option<&str>) -> Lin
                 row.prefix.clone(),
                 Style::default().fg(diff_add_color()),
             )];
-            for span in markdown::highlight_line(&row.text, file_ext) {
-                spans.push(tint_span_with_diff_color(span, diff_add_color()));
-            }
+            let highlighted = markdown::highlight_line(&row.text, file_ext)
+                .into_iter()
+                .map(|span| tint_span_with_diff_color(span, diff_add_color()))
+                .collect();
+            spans.extend(emphasize_diff_spans(
+                highlighted,
+                &row.emphasis,
+                row.text.len(),
+            ));
             Line::from(spans)
         }
         FileDiffDisplayRowKind::Del => {
@@ -143,9 +154,15 @@ fn render_file_diff_row(row: &FileDiffDisplayRow, file_ext: Option<&str>) -> Lin
                 row.prefix.clone(),
                 Style::default().fg(diff_del_color()),
             )];
-            for span in markdown::highlight_line(&row.text, file_ext) {
-                spans.push(tint_span_with_diff_color(span, diff_del_color()));
-            }
+            let highlighted = markdown::highlight_line(&row.text, file_ext)
+                .into_iter()
+                .map(|span| tint_span_with_diff_color(span, diff_del_color()))
+                .collect();
+            spans.extend(emphasize_diff_spans(
+                highlighted,
+                &row.emphasis,
+                row.text.len(),
+            ));
             Line::from(spans)
         }
     }
@@ -288,6 +305,15 @@ fn build_file_diff_cache_entry(
         let line_num = i + 1;
 
         if let Some(dels) = add_to_dels.get(&i) {
+            // A single line replaced by a single line is the case worth
+            // highlighting: the pairing is certain, so the word-level ranges
+            // are too. Multi-line hunks keep whole-line colouring.
+            let paired = if dels.len() == 1 && used_file_lines.contains(&i) {
+                word_emphasis(&dels[0], line_text)
+            } else {
+                WordEmphasis::default()
+            };
+
             for del_text in dels {
                 if first_change_line == usize::MAX {
                     first_change_line = rows.len();
@@ -297,7 +323,22 @@ fn build_file_diff_cache_entry(
                     prefix: format!("{} │-", gutter_pad),
                     text: del_text.clone(),
                     kind: FileDiffDisplayRowKind::Del,
+                    emphasis: paired.deleted.clone(),
                 });
+            }
+
+            if used_file_lines.contains(&i) {
+                if first_change_line == usize::MAX {
+                    first_change_line = rows.len();
+                }
+                add_count += 1;
+                rows.push(FileDiffDisplayRow {
+                    prefix: format!("{:>width$} │+", line_num, width = line_num_width),
+                    text: (*line_text).to_string(),
+                    kind: FileDiffDisplayRowKind::Add,
+                    emphasis: paired.inserted,
+                });
+                continue;
             }
         }
 
@@ -310,12 +351,14 @@ fn build_file_diff_cache_entry(
                 prefix: format!("{:>width$} │+", line_num, width = line_num_width),
                 text: (*line_text).to_string(),
                 kind: FileDiffDisplayRowKind::Add,
+                emphasis: Vec::new(),
             });
         } else {
             rows.push(FileDiffDisplayRow {
                 prefix: format!("{:>width$} │ ", line_num, width = line_num_width),
                 text: (*line_text).to_string(),
                 kind: FileDiffDisplayRowKind::Normal,
+                emphasis: Vec::new(),
             });
         }
     }
@@ -329,6 +372,7 @@ fn build_file_diff_cache_entry(
             prefix: format!("{} │-", gutter_pad),
             text: del_text.clone(),
             kind: FileDiffDisplayRowKind::Del,
+            emphasis: Vec::new(),
         });
     }
 
@@ -337,6 +381,7 @@ fn build_file_diff_cache_entry(
             prefix: String::new(),
             text: "File not found or empty".to_string(),
             kind: FileDiffDisplayRowKind::Placeholder,
+            emphasis: Vec::new(),
         });
     }
 

@@ -269,6 +269,14 @@ mod macos {
     // opportunity for this constant to drift again.
     use libc::TH_STATE_WAITING;
 
+    /// Report whether `pid` looks blocked reading stdin.
+    ///
+    /// Known limitation: fd 0 is classified from its *type* only, and a vnode
+    /// covers both a pty and `/dev/null`, so a process whose stdin is
+    /// `/dev/null` and which parks in any wait state is reported as `Reading`.
+    /// Separating them needs the fd's vnode path (`PROC_PIDFDVNODEPATHINFO`,
+    /// declared below but unused), so callers must treat `Reading` as advisory
+    /// rather than proof that input is wanted.
     pub fn check(pid: u32) -> StdinState {
         // Check if fd 0 (stdin) is a pipe or pty
         if !stdin_is_interactive(pid as i32) {

@@ -84,8 +84,8 @@ fn restart_required_sections_say_so() {
     let after = "[acp]\nprofile = \"extended\"\n";
     std::fs::write(&path, after).expect("write");
 
-    let notice =
-        config_edit_notice(&path, "[acp]\nprofile = \"standard\"\n", after).expect("report expected");
+    let notice = config_edit_notice(&path, "[acp]\nprofile = \"standard\"\n", after)
+        .expect("report expected");
     assert!(
         notice.contains("Restart required for: acp.profile"),
         "{notice}"
@@ -180,10 +180,7 @@ async fn the_write_tool_reports_config_changes_end_to_end() {
     let body = output.output;
     assert!(body.contains("display.centered"), "{body}");
     assert!(body.contains("live now"), "{body}");
-    assert!(
-        body.contains("Restart required for: acp.profile"),
-        "{body}"
-    );
+    assert!(body.contains("Restart required for: acp.profile"), "{body}");
     assert!(
         crate::config::config().display.centered,
         "the display change should be live in-process immediately after the write"

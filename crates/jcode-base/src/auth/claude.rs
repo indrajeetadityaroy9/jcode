@@ -721,12 +721,17 @@ fn load_claude_code_keychain_credentials() -> Option<ClaudeCredentials> {
 
 /// Shell out to `security find-generic-password -w` to read the Claude Code
 /// Keychain secret. Bounded by a short timeout so a locked Keychain prompt can
-/// never hang startup/auth probes.
+/// never hang startup/auth probes. Skipped when reads are sandboxed - see
+/// [`keychain_reads_sandboxed`].
 #[cfg(target_os = "macos")]
 fn read_claude_code_keychain_blob() -> Option<String> {
     use std::io::Read;
     use std::process::{Command, Stdio};
     use std::time::Duration;
+
+    if keychain_reads_sandboxed() {
+        return None;
+    }
 
     let mut child = Command::new("/usr/bin/security")
         .args([
@@ -791,11 +796,28 @@ pub fn native_credentials_present() -> bool {
     claude_code_keychain_item_exists()
 }
 
+/// True when credential discovery is sandboxed and the login Keychain is
+/// therefore off limits.
+///
+/// `JCODE_HOME` redirects every file-based credential source under
+/// `$JCODE_HOME/external/` (see `storage::user_home_path`), but the Keychain is
+/// process-wide and cannot be redirected. Without this gate a sandboxed run -
+/// or a test asserting a pristine home - still discovers the host's real
+/// Claude Code login.
+#[cfg(target_os = "macos")]
+fn keychain_reads_sandboxed() -> bool {
+    std::env::var_os("JCODE_HOME").is_some()
+}
+
 /// macOS: cheaply check whether the Claude Code Keychain item exists without
 /// reading (and therefore without unlocking/prompting for) its secret value.
 #[cfg(target_os = "macos")]
 fn claude_code_keychain_item_exists() -> bool {
     use std::process::{Command, Stdio};
+
+    if keychain_reads_sandboxed() {
+        return false;
+    }
     Command::new("/usr/bin/security")
         .args(["find-generic-password", "-s", CLAUDE_CODE_KEYCHAIN_SERVICE])
         .stdin(Stdio::null())

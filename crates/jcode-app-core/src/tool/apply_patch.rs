@@ -1,3 +1,4 @@
+use super::locate_hint::closest_match;
 use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, FileOp, FileTouch};
 use anyhow::Result;
@@ -388,9 +389,10 @@ fn compute_replacements(
                 line_index = idx + 1;
             } else {
                 anyhow::bail!(
-                    "Failed to find context '{}' in {}",
+                    "Failed to find context '{}' in {}{}",
                     ctx_line,
-                    path.display()
+                    path.display(),
+                    hint_suffix(original_lines, std::slice::from_ref(ctx_line))
                 );
             }
         }
@@ -423,15 +425,30 @@ fn compute_replacements(
             line_index = start_idx + pattern.len();
         } else {
             anyhow::bail!(
-                "Failed to find expected lines in {}:\n{}",
+                "Failed to find expected lines in {}:\n{}{}",
                 path.display(),
                 chunk.old_lines.join("\n"),
+                hint_suffix(original_lines, &chunk.old_lines)
             );
         }
     }
 
     replacements.sort_by(|(a, _, _), (b, _, _)| a.cmp(b));
     Ok(replacements)
+}
+
+/// Name the closest region of the file when a hunk fails to locate.
+///
+/// `seek_sequence` is exact-match only, so a patch written against a file that
+/// has since drifted by one token fails with no indication of where the target
+/// went. Empty when nothing in the file is close enough to be worth naming.
+fn hint_suffix(original_lines: &[String], wanted: &[String]) -> String {
+    let content = original_lines.join("\n");
+    let needle = wanted.join("\n");
+    match closest_match(&content, &needle) {
+        Some(hint) => format!("\n{}", hint.describe()),
+        None => String::new(),
+    }
 }
 
 fn apply_replacements(

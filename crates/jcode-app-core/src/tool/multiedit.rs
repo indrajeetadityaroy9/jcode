@@ -1,3 +1,4 @@
+use super::locate_hint::closest_match;
 use super::{Tool, ToolContext, ToolOutput};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -98,7 +99,14 @@ impl Tool for MultiEditTool {
             let occurrences = content.matches(&edit.old_string).count();
 
             if occurrences == 0 {
-                failed.push(format!("Edit {}: old_string not found", i + 1));
+                // `content` is the running buffer, so a later edit whose target
+                // an earlier edit already rewrote gets located against what the
+                // file now says — which is the state the retry has to match.
+                let hint = match closest_match(&content, &edit.old_string) {
+                    Some(hint) => format!("\n    {}", hint.describe().replace('\n', "\n    ")),
+                    None => String::new(),
+                };
+                failed.push(format!("Edit {}: old_string not found{hint}", i + 1));
                 continue;
             }
 

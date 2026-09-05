@@ -24,3 +24,18 @@ jobs = 4
 # the installed binary keeps working across `brew upgrade` and on machines
 # without the formula. Verify with `otool -L <binary> | grep pcre` -> no match.
 PCRE2_SYS_STATIC = "1"
+
+# One test thread per test binary. jcode's test suites read and write
+# process-global state - `JCODE_HOME`-derived paths, the config cache, the
+# provider context-limit cache, the TUI's render-state globals - so tests in a
+# single binary are only isolated from each other when they run one at a time.
+# Cargo still runs the crates' test binaries in parallel (separate processes,
+# separate globals), so the wall-clock cost is small: jcode-tui measures 43s
+# serialized vs 22s at full parallelism, in exchange for a suite that reports
+# the same result every run instead of a shifting handful of races.
+#
+# Individual tests that need shared state still take
+# `jcode_base::storage::lock_test_env()`; that guard is what makes nested
+# helpers safe, and it is required for the `test-support` feature consumers
+# that do run threaded.
+RUST_TEST_THREADS = "1"

@@ -1,3 +1,4 @@
+use super::locate_hint::closest_match;
 use super::{Tool, ToolContext, ToolOutput};
 use crate::bus::{Bus, BusEvent, FileOp, FileTouch};
 use anyhow::Result;
@@ -289,8 +290,18 @@ fn try_flexible_match(content: &str, old_string: &str, file_path: &str) -> Resul
         }
     }
 
+    // The two ladders above cover whitespace-only drift. Anything else is a
+    // real difference, and naming it beats sending the caller back to `read`.
+    if let Some(hint) = closest_match(content, old_string) {
+        return Err(anyhow::anyhow!(
+            "old_string not found in {}.\n{}",
+            file_path,
+            hint.describe()
+        ));
+    }
+
     Err(anyhow::anyhow!(
-        "old_string not found in {}.\n\
+        "old_string not found in {}, and nothing in the file resembles it.\n\
          Use the read tool to see the current file contents.",
         file_path
     ))

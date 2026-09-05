@@ -176,7 +176,7 @@ impl Provider for OpenRouterSpecCaptureProvider {
 }
 
 pub(crate) fn create_test_app() -> App {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
     // `clear_test_render_state_for_tests` wipes process-global render state
     // (flicker history, layout snapshots, copy targets) and internally takes
@@ -197,7 +197,7 @@ pub(crate) fn create_test_app() -> App {
 }
 
 fn create_named_provider_test_app(name: &'static str, model: &'static str) -> App {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -223,7 +223,7 @@ fn wait_for_model_picker_load(app: &mut App) {
 }
 
 fn create_refresh_summary_test_app(summary: crate::provider::ModelCatalogRefreshSummary) -> App {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -237,7 +237,7 @@ fn create_refresh_summary_test_app(summary: crate::provider::ModelCatalogRefresh
 }
 
 fn create_openrouter_spec_capture_test_app() -> (App, StdArc<StdMutex<Vec<String>>>) {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
     crate::tui::ui::clear_test_render_state_for_tests();
 
@@ -438,10 +438,8 @@ fn with_temp_jcode_home<T>(f: impl FnOnce() -> T) -> T {
 /// silently following a config default they do not control.
 fn with_reasoning_current_home<T>(f: impl FnOnce() -> T) -> T {
     with_temp_jcode_home(|| {
-        crate::config::Config::set_reasoning_display(
-            crate::config::ReasoningDisplayMode::Current,
-        )
-        .expect("pin reasoning display to current for the test config");
+        crate::config::Config::set_reasoning_display(crate::config::ReasoningDisplayMode::Current)
+            .expect("pin reasoning display to current for the test config");
         crate::config::invalidate_config_cache();
         f()
     })

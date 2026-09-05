@@ -3883,16 +3883,22 @@ pub(crate) fn render_tool_message(
                         end = i + ch.len_utf8();
                     }
                     let truncated = &content[..end];
-                    let highlighted = markdown::highlight_line(truncated, file_ext);
-                    for span in highlighted {
-                        spans.push(tint_span_with_diff_color(span, base_color));
-                    }
+                    let highlighted = markdown::highlight_line(truncated, file_ext)
+                        .into_iter()
+                        .map(|span| tint_span_with_diff_color(span, base_color))
+                        .collect();
+                    spans.extend(emphasize_diff_spans(highlighted, &line.emphasis, end));
                     spans.push(Span::styled("…", Style::default().fg(dim_color())));
                 } else {
-                    let highlighted = markdown::highlight_line(content.as_str(), file_ext);
-                    for span in highlighted {
-                        spans.push(tint_span_with_diff_color(span, base_color));
-                    }
+                    let highlighted = markdown::highlight_line(content.as_str(), file_ext)
+                        .into_iter()
+                        .map(|span| tint_span_with_diff_color(span, base_color))
+                        .collect();
+                    spans.extend(emphasize_diff_spans(
+                        highlighted,
+                        &line.emphasis,
+                        content.len(),
+                    ));
                 }
             }
 

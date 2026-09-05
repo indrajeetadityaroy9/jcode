@@ -2165,7 +2165,7 @@ pub(super) fn handle_navigation_shortcuts(
 pub(super) fn is_scroll_only_key(app: &App, code: KeyCode, modifiers: KeyModifiers) -> bool {
     let mut code = code;
     let mut modifiers = modifiers;
-    ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
+    ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers, app.diagram_available());
 
     if app.scroll_keys.scroll_amount(code, modifiers).is_some()
         || app.scroll_keys.prompt_jump(code, modifiers).is_some()
@@ -2877,7 +2877,7 @@ impl App {
     ) -> Result<()> {
         let mut code = code;
         let mut modifiers = modifiers;
-        ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
+        ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers, self.diagram_available());
 
         // Alt+5 always starts the onboarding simulator from a pristine first
         // screen, even when another modal or a previous sim screen is active.
@@ -3653,8 +3653,7 @@ impl App {
         let trimmed = input.trim();
         let handled = super::commands_dispatch::dispatch_local_command(self, trimmed);
         if handled {
-            if trimmed.starts_with('/') {
-            }
+            if trimmed.starts_with('/') {}
             return;
         }
 

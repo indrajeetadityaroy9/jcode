@@ -271,7 +271,7 @@ async fn handle_remote_key_internal(
 ) -> Result<()> {
     let mut code = code;
     let mut modifiers = modifiers;
-    ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers);
+    ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers, app.diagram_available());
 
     // Alt+5 always resets the simulator before modal routing, including in
     // remote/client mode.

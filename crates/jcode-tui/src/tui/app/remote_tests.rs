@@ -38,7 +38,7 @@ impl Provider for MockProvider {
 }
 
 fn create_test_app() -> crate::tui::app::App {
-    ensure_test_jcode_home_if_unset();
+    let _test_env = ensure_test_jcode_home_if_unset();
     // `has_notification()` (via `unfocused_redraw_warranted`) consults a
     // process-wide ambient-info cache that another test may have populated
     // from its own JCODE_HOME (scheduled reminders read as a notification).
@@ -53,26 +53,31 @@ fn create_test_app() -> crate::tui::app::App {
     app
 }
 
-/// Point JCODE_HOME at a per-process temp dir when the environment does not
-/// already pin one, so tests never read the developer's real `~/.jcode`
-/// state (e.g. a populated ambient queue turns `has_notification()` on and
-/// breaks the unfocused-redraw assertions). Mirrors the helper of the same
-/// name used by the main app test suite.
-fn ensure_test_jcode_home_if_unset() {
-    use std::sync::OnceLock;
+/// Lock the shared test-state mutex and point JCODE_HOME at a per-process temp
+/// dir when the environment does not already pin one, so tests never read the
+/// developer's real `~/.jcode` state (e.g. a populated ambient queue turns
+/// `has_notification()` on and breaks the unfocused-redraw assertions).
+///
+/// The returned guard must be held for the whole test: these tests read and
+/// write process-global state (the provider catalog, persisted UI prefs, the
+/// model-picker cache), and without it a sibling test swaps `JCODE_HOME` or
+/// reloads the catalog mid-assertion. Firing and forgetting was invisible
+/// while the suite deadlocked before reaching these tests.
+#[must_use = "hold the guard for the test body; dropping it immediately re-opens the race"]
+fn ensure_test_jcode_home_if_unset() -> crate::storage::TestEnvGuard {
+    use std::sync::LazyLock;
 
-    static TEST_HOME: OnceLock<std::path::PathBuf> = OnceLock::new();
-
-    if std::env::var_os("JCODE_HOME").is_some() {
-        return;
-    }
-
-    let path = TEST_HOME.get_or_init(|| {
+    static TEST_HOME: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
         let path = std::env::temp_dir().join(format!("jcode-test-home-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&path);
         path
     });
-    crate::env::set_var("JCODE_HOME", path);
+
+    let guard = crate::storage::lock_test_env();
+    if std::env::var_os("JCODE_HOME").is_none() {
+        crate::env::set_var("JCODE_HOME", &*TEST_HOME);
+    }
+    guard
 }
 
 #[test]

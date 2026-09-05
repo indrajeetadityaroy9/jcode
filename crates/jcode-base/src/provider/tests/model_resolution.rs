@@ -1804,6 +1804,8 @@ fn test_provider_for_model_cursor() {
 
 #[test]
 fn test_context_limit_spark_vs_codex() {
+    // Static tables only - see `test_resolve_model_capabilities_uses_provider_hint`.
+    crate::provider::clear_context_limit_cache();
     assert_eq!(
         context_limit_for_model("gpt-5.3-codex-spark"),
         Some(128_000)
@@ -1816,6 +1818,7 @@ fn test_context_limit_spark_vs_codex() {
 
 #[test]
 fn test_context_limit_gpt_5_4() {
+    crate::provider::clear_context_limit_cache();
     assert_eq!(context_limit_for_model("gpt-5.4"), Some(1_000_000));
     assert_eq!(context_limit_for_model("gpt-5.4-pro"), Some(1_000_000));
     assert_eq!(context_limit_for_model("gpt-5.4[1m]"), Some(1_000_000));
@@ -1823,6 +1826,7 @@ fn test_context_limit_gpt_5_4() {
 
 #[test]
 fn test_context_limit_respects_provider_hint() {
+    crate::provider::clear_context_limit_cache();
     assert_eq!(
         context_limit_for_model_with_provider("gpt-5.4", Some("openai")),
         Some(1_000_000)
@@ -1839,6 +1843,13 @@ fn test_context_limit_respects_provider_hint() {
 
 #[test]
 fn test_resolve_model_capabilities_uses_provider_hint() {
+    // These assertions describe the *static* classification tables. The dynamic
+    // context-limit cache outranks them and is process-global, seeded as a side
+    // effect of any test that builds provider routes (the Antigravity catalog
+    // publishes gpt-5.x at 272k), so state the precondition rather than
+    // depending on test order.
+    crate::provider::clear_context_limit_cache();
+
     let openai = resolve_model_capabilities("gpt-5.4", Some("openai"));
     assert_eq!(openai.provider.as_deref(), Some("openai"));
     assert_eq!(openai.context_window, Some(1_000_000));
