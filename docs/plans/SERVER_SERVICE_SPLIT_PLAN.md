@@ -1,8 +1,19 @@
 # Server Service Split Plan
 
-Status: Audit-based plan
+Status: **not started.** This is a proposal, not a description of the code.
+None of the five service handles named below (`SessionServiceHandle`,
+`ClientServiceHandle`, `SwarmServiceHandle`, `DebugServiceHandle`,
+`MaintenanceServiceHandle`) exist anywhere in the tree, `Server` still owns the
+full state bag directly, and `crates/jcode-app-core/crates/jcode-app-core/src/server/` is still a flat
+directory of 74 `.rs` files with no `services/`, `session/`, `swarm/`, `debug/`,
+or `maintenance/` subdirectories. Its only two subdirectories are test-only
+(`client_session_tests/`, `comm_control_tests/`). Treat every "Proposed",
+"Recommended", and "Phase" section as unbuilt.
 
-Scope: `src/server*.rs` and `src/server/**/*.rs` in the current shared-server architecture.
+Scope: `crates/jcode-app-core/src/server.rs` and
+`crates/jcode-app-core/crates/jcode-app-core/src/server/**/*.rs`. (Paths below are given relative to
+`crates/jcode-app-core/`; the pre-crate-split root `crates/jcode-app-core/crates/jcode-app-core/src/server/` no longer
+exists.)
 
 This document audits the current server stack and proposes an incremental split into five in-process services:
 
@@ -16,9 +27,8 @@ The intent is to improve ownership boundaries and reduce argument fanout without
 
 See also:
 
-- [`SERVER_ARCHITECTURE.md`](./SERVER_ARCHITECTURE.md)
-- [`SWARM_ARCHITECTURE.md`](./SWARM_ARCHITECTURE.md)
-- [`UNIFIED_SELFDEV_SERVER_PLAN.md`](./UNIFIED_SELFDEV_SERVER_PLAN.md)
+- [`SERVER_ARCHITECTURE.md`](../SERVER_ARCHITECTURE.md)
+- [`SWARM_ARCHITECTURE.md`](../SWARM_ARCHITECTURE.md)
 
 ## Executive Summary
 
@@ -65,7 +75,7 @@ flowchart TD
 
 ### Shared state concentration
 
-`src/server.rs` owns one large `Server` struct with state spanning all concerns, including:
+`crates/jcode-app-core/src/server.rs` (2,329 lines) owns one large `Server` struct with state spanning all concerns, including:
 
 - sessions and default session id
 - client count and client connection map
@@ -94,25 +104,50 @@ These are good extraction points. The plan below leans on them instead of fighti
 
 ## Module Heat Map
 
-Largest server-side modules at the time of audit:
+Largest server-side modules, by `wc -l` of the current tree:
 
 | File | Lines | Primary concern today | Future service |
 |---|---:|---|---|
-| `src/server/client_lifecycle.rs` | 1767 | client request loop and router | client |
-| `src/server/client_comm.rs` | 1492 | swarm communication requests | swarm |
-| `src/server/client_actions.rs` | 1249 | session-local actions | session |
-| `src/server/swarm.rs` | 1202 | swarm state mutation and fanout | swarm |
-| `src/server/comm_control.rs` | 1183 | swarm control / await-members / client debug bridge | swarm + debug |
-| `src/server/client_session.rs` | 1091 | subscribe, resume, clear, reload | session + client boundary |
-| `src/server/comm_session.rs` | 987 | spawn/stop session flows | session + swarm boundary |
-| `src/server/debug.rs` | 980 | debug socket command router | debug |
-| `src/server/reload.rs` | 826 | reload and graceful shutdown | maintenance |
-| `src/server/debug_server_state.rs` | 748 | debug snapshots across all stores | debug |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/client_lifecycle.rs` | 3284 | client request loop and router | client |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/swarm.rs` | 3170 | swarm state mutation and fanout | swarm |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/comm_control.rs` | 2625 | swarm control / await-members / client debug bridge | swarm + debug |
+| `crates/jcode-app-core/src/server.rs` | 2329 | bootstrap, shared state bag, maintenance loops | all (becomes wiring only) |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/client_session.rs` | 1675 | subscribe, resume, clear, reload | session + client boundary |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/provider_control.rs` | 1599 | provider/model switching per session | session |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/comm_session.rs` | 1399 | spawn/stop session flows | session + swarm boundary |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/jade_relay.rs` | 1396 | opt-in cloud relay listener | maintenance |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/debug_server_state.rs` | 1257 | debug snapshots across all stores | debug |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/client_actions.rs` | 1155 | session-local actions | session |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/util.rs` | 937 | shared helpers | — |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/client_state.rs` | 921 | per-connection state | client |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/state.rs` | 762 | shared types and delivery helpers | session (Seam A) |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/debug.rs` | 576 | debug socket command router | debug |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/reload.rs` | 544 | reload and graceful shutdown | maintenance |
+| `crates/jcode-app-core/crates/jcode-app-core/src/server/runtime.rs` | 422 | accept loops / transport runtime | client |
+
+Caveats on those numbers:
+
+- Counts are raw `wc -l`, including inline `#[cfg(test)] mod tests`. `swarm.rs`
+  is the worst offender: its inline test module starts at line 1727, so only
+  ~1,726 lines are production code. Modules whose tests live in a sibling file
+  are already production-only; those siblings add a lot more:
+  `client_lifecycle_tests.rs` 1413, `provider_control_tests.rs` 1393,
+  `comm_session_tests.rs` 1129, `client_session_tests.rs` 446 plus the
+  `client_session_tests/` directory, and `comm_control_tests.rs` 166 plus the
+  `comm_control_tests/` directory (`dag_e2e.rs` alone is 1332).
+- `client_comm.rs` is no longer a large module. It is now a 12-line re-export
+  shim over `client_comm_channels.rs` (283), `client_comm_context.rs` (336),
+  and `client_comm_message.rs` (422) — i.e. the swarm-communication request
+  handlers were already split by domain. Where this plan says
+  "`client_comm.rs`", read "the `client_comm_*` modules".
 
 Interpretation:
 
 - The architecture is not blocked on missing modules.
 - It is blocked on **cross-service state access** and **router width**.
+- The largest routers have grown substantially since the original audit
+  (`client_lifecycle.rs` roughly doubled), so the router-width problem this
+  plan describes is worse now, not better.
 
 ## Where Coupling Is Highest
 
@@ -545,7 +580,7 @@ These are higher-risk and do not solve the present problem as directly as state/
 Possible end-state layout:
 
 ```text
-src/server/
+crates/jcode-app-core/src/server/
   bootstrap.rs            # current server.rs bootstrap pieces
   runtime.rs              # accept loops and transport runtime
   services/

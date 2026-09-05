@@ -20,7 +20,6 @@
 /// Examples:
 ///   `gpt-5.5`                   -> `GPT-5.5`
 ///   `gpt-5.1-codex-max`         -> `GPT-5.1 Codex Max`
-///   `gpt-5.6-pro[web]`          -> `GPT-5.6 Pro (web)`
 ///   `claude-opus-4-8`           -> `Claude Opus 4.8`
 ///   `claude-opus-4-6[1m]`       -> `Claude Opus 4.6 (1M)`
 ///   `claude-haiku-4-5-20251001` -> `Claude Haiku 4.5 (2025-10-01)`
@@ -32,7 +31,7 @@ pub(crate) fn pretty_model_display_name(model: &str) -> String {
         return "your default model".to_string();
     }
 
-    // Preserve bracketed route suffixes (`[1m]`, `[web]`) and re-attach them as
+    // Preserve bracketed route suffixes (`[1m]`) and re-attach them as
     // a parenthetical, since they are jcode-side route markers rather than part
     // of the upstream family/version name.
     let (core, bracket_suffix) = split_bracket_suffix(model);
@@ -236,11 +235,6 @@ mod tests {
             pretty_model_display_name("gpt-5.1-codex-max"),
             "GPT-5.1 Codex Max"
         );
-        // Bracketed route markers become a parenthetical instead of leaking `[web]`.
-        assert_eq!(
-            pretty_model_display_name("gpt-5.6-pro[web]"),
-            "GPT-5.6 Pro (web)"
-        );
         // Dated snapshots read as a date, not as extra version digits.
         assert_eq!(
             pretty_model_display_name("claude-haiku-4-5-20251001"),
@@ -284,8 +278,8 @@ mod tests {
             Some("Gemini 3.1 Pro Preview")
         );
         assert_eq!(
-            pretty_known_model_family("gpt-5.6-pro[web]").as_deref(),
-            Some("GPT-5.6 Pro (web)")
+            pretty_known_model_family("claude-opus-4-8[1m]").as_deref(),
+            Some("Claude Opus 4.8 (1M)")
         );
         // Open-weights, third-party, namespaced, and profile-scoped ids stay raw so
         // they remain copy-pasteable and unambiguous in the picker.
@@ -299,7 +293,6 @@ mod tests {
             "MiniMax-M2.5-highspeed",
             "qwen3-coder-plus",
             "o3-mini",
-            "grok-4",
             "deepseek/deepseek-v4-pro",
             "anthropic/claude-opus-4.6",
             "google/gemini-3-pro-preview",

@@ -59,7 +59,6 @@ url = "2"
 open = "5"               # Open URLs in browser
 jcode-agent-runtime = { path = "../jcode-agent-runtime" }
 jcode-ambient-types = { path = "../jcode-ambient-types" }
-jcode-notify-email = { path = "../jcode-notify-email" }
 jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-schema-dialect = { path = "../jcode-schema-dialect" }
 # NOTE: jcode-app-core does NOT depend on any jcode-tui-* crate. They were
@@ -113,8 +112,6 @@ jemalloc = ["jcode-base/jemalloc"]
 jemalloc-prof = ["jcode-base/jemalloc-prof"]
 # local embeddings live in jcode-base (embedding); forward there.
 embeddings = ["jcode-base/embeddings"]
-# Used only by the CentOS 7 portable Linux release build.
-linux-compat-vendored-openssl = ["jcode-notify-email/linux-compat-vendored-openssl"]
 # PDF text extraction lives in this crate (tool/read.rs).
 pdf = ["dep:jcode-pdf"]
 # Compiles this crate's test-only helpers/accessors (e.g. the

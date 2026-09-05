@@ -31,7 +31,6 @@ FORBIDDEN_INTERNAL_DEPS = {
     "jcode-azure-auth",
     "jcode-core",
     "jcode-embedding",
-    "jcode-notify-email",
     "jcode-pdf",
     "jcode-plan",
     "jcode-provider-core",

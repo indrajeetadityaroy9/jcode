@@ -259,7 +259,13 @@ fn openai_credential_mode_runtime_provider_identity_round_trips() {
 
 #[tokio::test]
 async fn openai_available_efforts_follow_active_model_catalog_metadata() {
-    let provider = OpenAIProvider::new_browser_only();
+    let provider = OpenAIProvider::new(CodexCredentials {
+        access_token: "test".to_string(),
+        refresh_token: String::new(),
+        id_token: None,
+        account_id: None,
+        expires_at: None,
+    });
     *provider.model.write().await = "gpt-5.6".to_string();
     provider
         .model_reasoning_efforts

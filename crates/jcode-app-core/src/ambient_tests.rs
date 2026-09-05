@@ -354,8 +354,6 @@ fn test_build_ambient_system_prompt_minimal() {
     assert!(prompt.contains("anthropic-oauth"));
     assert!(prompt.contains("## Instructions"));
     assert!(prompt.contains("end_ambient_cycle"));
-    assert!(prompt.contains("reviewer-ready"));
-    assert!(prompt.contains("context.why_permission_needed"));
 }
 
 #[test]

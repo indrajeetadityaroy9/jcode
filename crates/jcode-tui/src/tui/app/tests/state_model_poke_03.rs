@@ -1396,7 +1396,7 @@ fn test_model_picker_waits_for_async_post_login_catalog_activation() {
         picker
             .entries
             .iter()
-            .any(|entry| entry.name == "grok-code-fast-1")
+            .any(|entry| entry.name == "deepseek-v4-flash")
     );
 }
 
@@ -1429,7 +1429,7 @@ fn test_login_completed_surfaces_new_provider_models_in_local_model_picker() {
         picker
             .entries
             .iter()
-            .any(|entry| entry.name == "grok-code-fast-1"),
+            .any(|entry| entry.name == "deepseek-v4-flash"),
         "all newly available Copilot models should appear in /model"
     );
     assert!(copilot_entry.options.iter().any(|route| {

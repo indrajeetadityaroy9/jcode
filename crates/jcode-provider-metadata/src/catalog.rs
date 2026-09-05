@@ -316,17 +316,6 @@ pub const MINIMAX_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     requires_api_key: true,
 };
 
-pub const XAI_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
-    id: "xai",
-    display_name: "xAI",
-    api_base: "https://api.x.ai/v1",
-    api_key_env: "XAI_API_KEY",
-    env_file: "xai.env",
-    setup_url: "https://docs.x.ai/developers/quickstart",
-    default_model: Some("grok-code-fast-1"),
-    requires_api_key: true,
-};
-
 pub const LMSTUDIO_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfile {
     id: "lmstudio",
     display_name: "LM Studio",
@@ -443,7 +432,7 @@ pub const OPENAI_COMPAT_PROFILE: OpenAiCompatibleProfile = OpenAiCompatibleProfi
     requires_api_key: true,
 };
 
-pub(crate) const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 38] = [
+pub(crate) const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 37] = [
     OPENCODE_PROFILE,
     OPENCODE_GO_PROFILE,
     ZAI_PROFILE,
@@ -474,7 +463,6 @@ pub(crate) const OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 38] = [
     DEEPINFRA_PROFILE,
     FIREWORKS_PROFILE,
     MINIMAX_PROFILE,
-    XAI_PROFILE,
     NVIDIA_NIM_PROFILE,
     XIAOMI_MIMO_PROFILE,
     META_MUSE_PROFILE,
@@ -937,34 +925,6 @@ pub const MINIMAX_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescrip
     order: LoginProviderSurfaceOrder::new(Some(38), Some(38), Some(38), Some(38), Some(38)),
 };
 
-pub const XAI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
-    id: "xai",
-    display_name: "xAI",
-    auth_kind: LoginProviderAuthKind::ApiKey,
-    auth_state_key: LoginProviderAuthStateKey::OpenRouterLike,
-    auth_status_method: "API key",
-    aliases: &["x.ai", "x-ai", "grok"],
-    menu_detail: "API key",
-    recommended: false,
-    target: LoginProviderTarget::OpenAiCompatible(XAI_PROFILE),
-    order: LoginProviderSurfaceOrder::new(Some(33), Some(33), Some(33), Some(33), Some(33)),
-};
-
-/// Grok Build is intentionally a separate identity from `xai`: Jcode manages
-/// its subscription backend and never consumes `XAI_API_KEY`.
-pub const GROK_BUILD_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
-    id: "grok-build",
-    display_name: "Grok Build",
-    auth_kind: LoginProviderAuthKind::Cli,
-    auth_state_key: LoginProviderAuthStateKey::GrokBuild,
-    auth_status_method: "Grok Build subscription login",
-    aliases: &[],
-    menu_detail: "Grok Build subscription managed by Jcode",
-    recommended: false,
-    target: LoginProviderTarget::GrokBuild,
-    order: LoginProviderSurfaceOrder::new(Some(100), Some(100), Some(100), Some(100), Some(100)),
-};
-
 pub const NVIDIA_NIM_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "nvidia-nim",
     display_name: "NVIDIA NIM",
@@ -1126,20 +1086,7 @@ pub const CELERIS_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescrip
     order: LoginProviderSurfaceOrder::new(Some(38), Some(38), Some(38), Some(38), Some(38)),
 };
 
-pub const GOOGLE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
-    id: "google",
-    display_name: "Google/Gmail",
-    auth_kind: LoginProviderAuthKind::OAuth,
-    auth_state_key: LoginProviderAuthStateKey::Google,
-    auth_status_method: "OAuth",
-    aliases: &["gmail"],
-    menu_detail: "read, draft, and send emails",
-    recommended: false,
-    target: LoginProviderTarget::Google,
-    order: LoginProviderSurfaceOrder::new(Some(13), None, None, None, None),
-};
-
-pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 49] = [
+pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 46] = [
     AUTO_IMPORT_LOGIN_PROVIDER,
     CLAUDE_LOGIN_PROVIDER,
     ANTHROPIC_API_LOGIN_PROVIDER,
@@ -1174,8 +1121,6 @@ pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 49] = [
     DEEPINFRA_LOGIN_PROVIDER,
     FIREWORKS_LOGIN_PROVIDER,
     MINIMAX_LOGIN_PROVIDER,
-    XAI_LOGIN_PROVIDER,
-    GROK_BUILD_LOGIN_PROVIDER,
     NVIDIA_NIM_LOGIN_PROVIDER,
     XIAOMI_MIMO_LOGIN_PROVIDER,
     META_MUSE_LOGIN_PROVIDER,
@@ -1188,5 +1133,4 @@ pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 49] = [
     GEMINI_LOGIN_PROVIDER,
     GEMINI_API_LOGIN_PROVIDER,
     ANTIGRAVITY_LOGIN_PROVIDER,
-    GOOGLE_LOGIN_PROVIDER,
 ];

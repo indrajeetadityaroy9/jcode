@@ -1,7 +1,45 @@
 # Jcode Server Memory Incident Runbook
 
 Status: active operational runbook
-Updated: 2026-07-14
+Updated: 2026-09-05
+
+## PLATFORM CAVEAT: this runbook does not work on macOS
+
+**Read this before triaging anything.** Every RSS/PSS/smaps number this runbook depends on is
+collected only on Linux. `process_memory::snapshot_with_source` is
+`#[cfg(target_os = "linux")]` and parses `/proc/self/status` plus `smaps_rollup`
+(`crates/jcode-base/src/process_memory.rs:148`). The non-Linux build is a stub that logs
+`using default non-linux implementation` and returns `ProcessMemorySnapshot::default()`
+(`crates/jcode-base/src/process_memory.rs:180`), i.e. `rss_bytes`, `peak_rss_bytes`,
+`virtual_bytes`, `thread_count`, `main_stack_bytes` and the whole `os` block (PSS, anon PSS, file
+PSS, private/shared dirty, swap) are all `None`. This fork is macOS-only, so in practice:
+
+- `server:memory-incident` reports `pss = 0` and `pss_growth = 0`: the payload takes
+  `os.pss_bytes` or `rss_bytes` and falls back to `0`
+  (`crates/jcode-app-core/src/server/debug_server_state.rs:414-430`).
+- Consequently the PSS warning/critical thresholds and the `non_heap_or_mapping_growth` branch can
+  never fire (`debug_server_state.rs:365`, `:371-376`), and severity reports `healthy` unless the
+  live-session count alone crosses a threshold.
+- On a default (system-allocator) build `allocator_live_bytes` is also `0`: `glibc_malloc_stats` is
+  a `None`-returning stub off glibc (`process_memory.rs:290`), so `allocator_retention` and
+  `unattributed_live_heap` cannot fire either.
+- `allocator:purge` fails outright with `allocator purge unavailable on this platform: rebuild with
+  --features jemalloc` (`process_memory.rs:336-339`).
+- The `/proc`-based commands in §5 (`smaps_rollup`, `pmap`, `ps -T`) do not exist on macOS.
+
+### What actually works on macOS
+
+| Need | macOS substitute |
+|---|---|
+| Live session population, swarm attribution, status counts | Works unchanged — pure application state (`debug_server_state.rs:441-491`). This is the one decision-tree branch that stays valid. |
+| Per-session payload attribution (transcript / provider cache / tool results / blobs) | Works unchanged — `jcode debug 'server:memory'` and `agent:memory` are JSON-byte accounting, not OS metrics. |
+| Allocator live/retained bytes, purge A/B | Requires a rebuild with `--features jemalloc` (or `jemalloc-prof`). The jemalloc feature is not target-gated, so a macOS jemalloc build does populate `allocated/active/resident/retained` and enables arena purge (`process_memory.rs:200-211`, `:295-316`). Note the retained-resident estimate degrades to raw `retained` because anon PSS is unavailable to cap it (`runtime_memory_log.rs:734-737`). |
+| Process RSS / footprint | **No in-product substitute.** Use the OS directly: `ps -o rss=,vsz= -p <pid>`, `footprint -p <pid>`, or `vmmap <pid>`. jcode will not log or report it, and the JSONL memory logs will record zeros, so `analyze_runtime_memory_log.py` PSS trends and spike lists are empty by construction. |
+| Mapping / thread growth | `vmmap <pid>` and `sample <pid>` in place of `pmap`/`ps -T`. |
+
+Until `process_memory` grows a Darwin implementation (`task_info`/`proc_pid_rusage` for RSS,
+`mach_vm_region` for mapping detail), treat the sections below as Linux-only procedure. The
+session-population and payload-attribution paths are the only parts an operator can act on here.
 
 This runbook answers two questions:
 
@@ -65,15 +103,25 @@ python scripts/analyze_runtime_memory_log.py --days 1 --json > /tmp/jcode-memory
 
 ## Severity thresholds
 
-The built-in incident report uses these initial operational thresholds:
+The built-in incident report uses these operational thresholds
+(`crates/jcode-app-core/src/server/debug_server_state.rs:17-22`, applied in
+`classify_memory_incident`, `:371-376`):
 
-| Signal | Warning | Critical |
-|---|---:|---:|
-| PSS | 1 GiB | 2 GiB |
-| PSS growth in 15 minutes | 256 MiB | 1 GiB |
-| Resident Agent sessions | 128 | 512 |
+| Signal | Warning | Critical | Constant |
+|---|---:|---:|---|
+| PSS | 1 GiB | 2 GiB | `MEMORY_WARNING_PSS_BYTES` / `MEMORY_CRITICAL_PSS_BYTES` |
+| PSS growth in 15 minutes | 256 MiB | 1 GiB | `MEMORY_WARNING_GROWTH_BYTES` / `MEMORY_CRITICAL_GROWTH_BYTES` |
+| Resident Agent sessions | 128 | 512 | `MEMORY_WARNING_LIVE_SESSIONS` / `MEMORY_CRITICAL_LIVE_SESSIONS` |
 
 A threshold starts an investigation. It does not authorize destructive cleanup by itself.
+
+The two classifiers emit different cause sets. `classify_memory_incident`
+(`debug_server_state.rs:349-390`) emits exactly `runaway_live_session_population`,
+`allocator_retention`, `unattributed_live_heap`, `non_heap_or_mapping_growth`, or
+`within_normal_operating_range`. The offline analyzer additionally emits
+`session_payload_growth` (`scripts/analyze_runtime_memory_log.py:746`) because it can see the
+per-session attribution walk. §3 below therefore only appears in analyzer output, never in
+`server:memory-incident`.
 
 ## Decision tree
 
@@ -115,7 +163,7 @@ jcode debug 'server:memory-incident' > /tmp/after.json
 
 A large PSS drop confirms allocator retention. If it repeatedly regrows, inspect allocation churn and allocator decay rather than raising memory budgets.
 
-### 3. `session_payload_growth`
+### 3. `session_payload_growth` (offline analyzer only)
 
 Evidence:
 
@@ -150,7 +198,7 @@ jcode debug 'allocator:profile:dump /tmp/jcode-server.heap'
 
 The normal system-allocator build cannot produce allocation-stack profiles. Do not claim heap ownership from RSS alone.
 
-### 5. `non_heap_or_mapping_growth`
+### 5. `non_heap_or_mapping_growth` (Linux only)
 
 Evidence:
 
@@ -166,6 +214,10 @@ ps -T -p <server-pid> -o pid,tid,%cpu,time,comm,wchan:32
 ```
 
 Investigate model mappings, shared memory, thread creation, or large anonymous mappings outside the allocator.
+
+On macOS none of the three commands above exist and this cause can never be classified (PSS is
+always 0). Use `vmmap <server-pid>` for mapping detail and `sample <server-pid>` for thread
+activity instead.
 
 ## Escalation ladder
 

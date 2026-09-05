@@ -574,8 +574,6 @@ pub(super) fn list_cli_providers() -> Vec<ProviderListEntry> {
         ProviderChoice::Perplexity,
         ProviderChoice::TogetherAi,
         ProviderChoice::Deepinfra,
-        ProviderChoice::Xai,
-        ProviderChoice::GrokBuild,
         ProviderChoice::Chutes,
         ProviderChoice::Cerebras,
         ProviderChoice::AlibabaCodingPlan,
@@ -584,7 +582,6 @@ pub(super) fn list_cli_providers() -> Vec<ProviderListEntry> {
         ProviderChoice::Copilot,
         ProviderChoice::Gemini,
         ProviderChoice::Antigravity,
-        ProviderChoice::Google,
         ProviderChoice::Auto,
     ];
 

@@ -33,11 +33,9 @@ pub enum LoginProviderTarget {
     Azure,
     OpenAiCompatible(OpenAiCompatibleProfile),
     Cursor,
-    GrokBuild,
     Copilot,
     Gemini,
     Antigravity,
-    Google,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,8 +50,6 @@ pub enum LoginProviderAuthStateKey {
     Gemini,
     Antigravity,
     Cursor,
-    GrokBuild,
-    Google,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -591,16 +587,8 @@ mod tests {
             Some("minimax")
         );
         assert_eq!(
-            resolve_login_provider("grok").map(|provider| provider.id),
-            Some("xai")
-        );
-        assert_eq!(
             resolve_login_provider("lm-studio").map(|provider| provider.id),
             Some("lmstudio")
-        );
-        assert_eq!(
-            resolve_login_provider("gmail").map(|provider| provider.id),
-            Some("google")
         );
     }
 
@@ -644,7 +632,6 @@ mod tests {
             resolve_login_selection("compat", &providers).map(|provider| provider.id),
             Some("openai-compatible")
         );
-        assert!(resolve_login_selection("google", &providers).is_none());
     }
 
     #[test]

@@ -6,15 +6,15 @@ Add a single native tool, **`computer`**, that lets the agent observe and contro
 the macOS GUI — screenshots, the accessibility (AX) tree, mouse/keyboard input,
 window/app management, and clipboard — through one `action`-dispatched interface.
 
-This mirrors the existing **`browser`** tool (`crates/jcode-app-core/src/tool/browser.rs`):
-one registered tool, an `action: String` that selects a sub-operation, with optional
-typed params. It gives jcode a closed control loop (*see screen → decide → act*)
-without depending on a browser or external automation tooling.
+It follows the shape of jcode's other multi-action tools: one registered tool, an
+`action: String` that selects a sub-operation, with optional typed params. It gives
+jcode a closed control loop (*see screen → decide → act*) without depending on
+external automation tooling.
 
 ## Motivation
 
-- The agent can already drive a browser; it cannot drive native macOS apps, system
-  UI, or anything outside the browser sandbox.
+- The agent cannot drive native macOS apps, system UI, or anything with no
+  command-line or HTTP entry point.
 - "Computer use" agents need exactly three primitives: **read the screen**, **read
   UI structure**, and **synthesize input**. macOS exposes all three through the
   Accessibility / Quartz Event Services / ScreenCaptureKit stack.
@@ -29,7 +29,7 @@ crates/jcode-macos-control/        (new) cfg(target_os = "macos") platform crate
      CoreFoundation (core-foundation), screenshots (ScreenCaptureKit / CGDisplay),
      app/window control (objc2 + objc2-app-kit), clipboard (objc2 NSPasteboard)
 
-crates/jcode-app-core/src/tool/computer.rs   (new) ComputerTool
+crates/jcode-app-core/src/tool/computer/   (new) ComputerTool
   └─ thin dispatch layer: parse input -> call jcode-macos-control -> ToolOutput
   └─ registered in crates/jcode-app-core/src/tool/mod.rs base_tools()
 ```
@@ -40,7 +40,7 @@ crates/jcode-app-core/src/tool/computer.rs   (new) ComputerTool
 - On non-macOS targets the tool still registers but every action returns a clean
   `unsupported on this platform` error, so the tool list stays stable across OSes.
 - `screenshot` returns its image via `ToolOutput::with_image` (base64), matching how
-  `browser` returns screenshots today.
+  other image-producing tools return screenshots today.
 
 ## Permissions (the important part)
 

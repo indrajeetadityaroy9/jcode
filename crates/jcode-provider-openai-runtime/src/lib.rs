@@ -26,7 +26,7 @@ use reqwest::{Client, StatusCode};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::panic::AssertUnwindSafe;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering as AtomicOrdering};
+use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use std::sync::{Arc, LazyLock, RwLock as StdRwLock, Weak};
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
@@ -42,12 +42,6 @@ const CHATGPT_API_BASE: &str = "https://chatgpt.com/backend-api/codex";
 const RESPONSES_PATH: &str = "responses";
 const DEFAULT_MODEL: &str = jcode_provider_core::DEFAULT_OPENAI_MODEL;
 const ORIGINATOR: &str = "codex_cli_rs";
-
-pub(crate) const CHATGPT_WEB_MODEL: &str = jcode_provider_core::CHATGPT_WEB_MODEL;
-
-pub(crate) fn is_chatgpt_web_model(model: &str) -> bool {
-    model.trim() == CHATGPT_WEB_MODEL
-}
 
 /// Whether the hosted `image_generation` tool can be attached for `model_id`.
 ///
@@ -714,11 +708,6 @@ pub struct OpenAIProvider {
     websocket_failure_streaks: Arc<RwLock<HashMap<String, u32>>>,
     /// Persistent WebSocket connection for incremental continuation
     persistent_ws: Arc<Mutex<Option<PersistentWsState>>>,
-    /// Browser-backed ChatGPT state for web-only models such as GPT-5.6 Pro.
-    chatgpt_web: Arc<chatgpt_web::ChatGptWebState>,
-    /// True when this runtime was created without API credentials. It can still
-    /// serve browser-backed models and upgrades in place after a successful login.
-    browser_only: Arc<AtomicBool>,
 }
 
 impl OpenAIProvider {
@@ -735,55 +724,23 @@ impl OpenAIProvider {
     }
 
     pub fn new(credentials: CodexCredentials) -> Self {
-        Self::new_inner(credentials, false)
-    }
-
-    /// Construct the OpenAI runtime for browser-backed models when no Codex or
-    /// platform API credential exists. API models remain unavailable until a
-    /// later auth refresh successfully loads credentials.
-    pub fn new_browser_only() -> Self {
-        Self::new_inner(
-            CodexCredentials {
-                access_token: String::new(),
-                refresh_token: String::new(),
-                id_token: None,
-                account_id: None,
-                expires_at: None,
-            },
-            true,
-        )
-    }
-
-    fn new_inner(credentials: CodexCredentials, browser_only: bool) -> Self {
-        let credential_mode = if browser_only {
-            OpenAICredentialMode::Auto
-        } else {
-            OpenAICredentialMode::from_runtime_env(jcode_provider_core::DualAuthProvider::OpenAI)
-        };
-        let credentials = if browser_only {
-            credentials
-        } else {
-            match credential_mode {
-                OpenAICredentialMode::Auto => credentials,
-                OpenAICredentialMode::OAuth | OpenAICredentialMode::ApiKey => {
-                    load_credentials_for_mode(credential_mode).unwrap_or(credentials)
-                }
+        let credential_mode =
+            OpenAICredentialMode::from_runtime_env(jcode_provider_core::DualAuthProvider::OpenAI);
+        let credentials = match credential_mode {
+            OpenAICredentialMode::Auto => credentials,
+            OpenAICredentialMode::OAuth | OpenAICredentialMode::ApiKey => {
+                load_credentials_for_mode(credential_mode).unwrap_or(credentials)
             }
         };
 
         // Check for model override from environment
-        let mut model = if browser_only {
-            CHATGPT_WEB_MODEL.to_string()
-        } else {
-            std::env::var("JCODE_OPENAI_MODEL")
-                .unwrap_or_else(|_| DEFAULT_MODEL.to_string())
-                .trim()
-                .to_string()
-        };
-        if !is_chatgpt_web_model(&model)
-            && !jcode_base::provider::known_openai_model_ids()
-                .iter()
-                .any(|known| known == &model)
+        let mut model = std::env::var("JCODE_OPENAI_MODEL")
+            .unwrap_or_else(|_| DEFAULT_MODEL.to_string())
+            .trim()
+            .to_string();
+        if !jcode_base::provider::known_openai_model_ids()
+            .iter()
+            .any(|known| known == &model)
         {
             jcode_base::logging::info(&format!(
                 "Warning: '{}' is not supported; falling back to '{}'",
@@ -858,15 +815,9 @@ impl OpenAIProvider {
             websocket_cooldowns: Arc::clone(&WEBSOCKET_COOLDOWNS),
             websocket_failure_streaks: Arc::clone(&WEBSOCKET_FAILURE_STREAKS),
             persistent_ws: Arc::new(Mutex::new(None)),
-            chatgpt_web: Arc::new(chatgpt_web::ChatGptWebState::new()),
-            browser_only: Arc::new(AtomicBool::new(browser_only)),
         };
         provider.revalidate_reasoning_effort();
         provider
-    }
-
-    fn is_browser_only(&self) -> bool {
-        self.browser_only.load(AtomicOrdering::Acquire)
     }
 
     pub(crate) fn reload_credentials_now(&self) {
@@ -879,7 +830,6 @@ impl OpenAIProvider {
             match self.credentials.try_write() {
                 Ok(mut guard) => {
                     *guard = credentials;
-                    self.browser_only.store(false, AtomicOrdering::Release);
                     self.reload_cached_reasoning_efforts();
                 }
                 Err(_) => {
@@ -898,7 +848,6 @@ impl OpenAIProvider {
         match self.credentials.try_write() {
             Ok(mut guard) => {
                 *guard = credentials;
-                self.browser_only.store(false, AtomicOrdering::Release);
                 self.reload_cached_reasoning_efforts();
             }
             Err(_) => {
@@ -1355,7 +1304,6 @@ use self::stream::{OpenAIResponsesStream, parse_openai_response_event};
 #[cfg(test)]
 use self::stream::{handle_openai_output_item, parse_text_wrapped_tool_call};
 
-mod chatgpt_web;
 #[path = "openai_provider_impl.rs"]
 mod openai_provider_impl;
 #[path = "openai_stream_runtime.rs"]

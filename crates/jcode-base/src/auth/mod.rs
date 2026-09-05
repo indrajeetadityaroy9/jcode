@@ -11,9 +11,7 @@ pub mod doctor;
 pub mod env_facts;
 pub mod external;
 pub mod gemini;
-pub mod google;
 pub(crate) mod google_oauth;
-pub mod grok_build;
 pub mod integration;
 pub mod lifecycle;
 pub mod login_diagnostics;
@@ -207,7 +205,6 @@ fn log_auth_status_snapshot(event: &str, status: &AuthStatus) {
             ("antigravity", auth_state_label(status.antigravity)),
             ("gemini", auth_state_label(status.gemini)),
             ("cursor", auth_state_label(status.cursor)),
-            ("google", auth_state_label(status.google)),
         ],
     );
 }
@@ -236,8 +233,9 @@ fn available_provider_base_readiness(provider: LoginProviderDescriptor) -> AuthR
         | crate::provider_catalog::LoginProviderTarget::OpenAi
         | crate::provider_catalog::LoginProviderTarget::Copilot
         | crate::provider_catalog::LoginProviderTarget::Gemini
-        | crate::provider_catalog::LoginProviderTarget::Antigravity
-        | crate::provider_catalog::LoginProviderTarget::Google => AuthReadinessLevel::Authenticated,
+        | crate::provider_catalog::LoginProviderTarget::Antigravity => {
+            AuthReadinessLevel::Authenticated
+        }
         _ => AuthReadinessLevel::CredentialPresent,
     }
 }
@@ -398,7 +396,6 @@ impl AuthStatus {
             || self.antigravity == AuthState::Available
             || self.gemini == AuthState::Available
             || self.cursor == AuthState::Available
-            || self.grok_build == AuthState::Available
     }
 
     /// Emit a structured, non-secret snapshot of which providers currently have
@@ -433,7 +430,6 @@ impl AuthStatus {
                 ("antigravity", self.antigravity.label().to_string()),
                 ("gemini", self.gemini.label().to_string()),
                 ("cursor", self.cursor.label().to_string()),
-                ("grok_build", self.grok_build.label().to_string()),
             ],
         );
     }
@@ -465,8 +461,6 @@ impl AuthStatus {
             LoginProviderAuthStateKey::Antigravity => self.antigravity,
             LoginProviderAuthStateKey::Gemini => self.gemini,
             LoginProviderAuthStateKey::Cursor => self.cursor,
-            LoginProviderAuthStateKey::GrokBuild => self.grok_build,
-            LoginProviderAuthStateKey::Google => self.google,
         }
     }
 
@@ -523,7 +517,6 @@ impl AuthStatus {
             // Same split for OpenAI: `openai` is the ChatGPT/Codex OAuth login,
             // `openai-api` (handled above) is the API-key login.
             crate::provider_catalog::LoginProviderTarget::OpenAi => self.openai_oauth_state,
-            crate::provider_catalog::LoginProviderTarget::GrokBuild => self.grok_build,
             crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
                 if crate::provider_catalog::openai_compatible_profile_is_configured(profile) {
                     AuthState::Available
@@ -580,15 +573,6 @@ impl AuthStatus {
                     "API key (`ANTHROPIC_API_KEY`)".to_string()
                 } else {
                     "not configured".to_string()
-                }
-            }
-            crate::provider_catalog::LoginProviderTarget::GrokBuild => {
-                if self.grok_build == AuthState::Available {
-                    "Jcode-managed Grok Build backend; subscription login is verified over ACP at request time".to_string()
-                } else if grok_build::cli_available() {
-                    "subscription login not configured (backend managed by Jcode)".to_string()
-                } else {
-                    "not configured (Jcode downloads the provider backend during login)".to_string()
                 }
             }
             crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
@@ -795,24 +779,6 @@ impl AuthStatus {
                     AuthValidationMethod::ConfigurationCheck,
                 )
             }
-            crate::provider_catalog::LoginProviderTarget::GrokBuild => (
-                if state == AuthState::Available {
-                    AuthCredentialSource::LocalCliSession
-                } else {
-                    AuthCredentialSource::None
-                },
-                if state == AuthState::Available {
-                    "Grok Build subscription login managed through Jcode".to_string()
-                } else if grok_build::cli_available() {
-                    "Jcode-managed backend provisioned; subscription login not configured"
-                        .to_string()
-                } else {
-                    "Jcode-managed Grok Build backend not provisioned".to_string()
-                },
-                AuthExpiryConfidence::Unknown,
-                AuthRefreshSupport::ExternalManaged,
-                AuthValidationMethod::CommandProbe,
-            ),
             crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
                 // Prefer the active named config profile's credential location
                 // (set via `--provider-profile`) over the built-in profile env
@@ -956,14 +922,6 @@ fn build_auth_status_uncached(mode: AuthProbeMode) -> (AuthStatus, Vec<(&'static
     record_auth_probe_step(&mut timings, "cursor", || {
         probe_cursor_status(&mut status, mode)
     });
-    record_auth_probe_step(&mut timings, "grok_build", || {
-        status.grok_build = if grok_build::cli_available() && grok_build::has_cached_login() {
-            AuthState::Available
-        } else {
-            AuthState::NotConfigured
-        }
-    });
-    record_auth_probe_step(&mut timings, "google", || probe_google_status(&mut status));
 
     (status, timings)
 }
@@ -1131,22 +1089,6 @@ fn probe_cursor_status(status: &mut AuthStatus, mode: AuthProbeMode) {
     }
 }
 
-fn probe_google_status(status: &mut AuthStatus) {
-    match google::load_tokens() {
-        Ok(tokens) => {
-            if tokens.is_expired() {
-                status.google = AuthState::Expired;
-            } else {
-                status.google = AuthState::Available;
-            }
-            status.google_can_send = tokens.tier.can_send();
-        }
-        Err(_) => {
-            status.google = AuthState::NotConfigured;
-        }
-    }
-}
-
 fn assessment_for_key(
     status: &AuthStatus,
     key: LoginProviderAuthStateKey,
@@ -1262,35 +1204,6 @@ fn assessment_for_key(
                 },
                 AuthRefreshSupport::Conditional,
                 AuthValidationMethod::CompositeProbe,
-            )
-        }
-        LoginProviderAuthStateKey::GrokBuild => (
-            if state == AuthState::Available {
-                AuthCredentialSource::LocalCliSession
-            } else {
-                AuthCredentialSource::None
-            },
-            if state == AuthState::Available {
-                "Grok CLI cached login".to_string()
-            } else {
-                "Grok CLI unavailable".to_string()
-            },
-            AuthExpiryConfidence::Unknown,
-            AuthRefreshSupport::ExternalManaged,
-            AuthValidationMethod::CommandProbe,
-        ),
-        LoginProviderAuthStateKey::Google => {
-            let (source, detail) = summarize_sources(vec![google_source()]);
-            (
-                source,
-                detail,
-                if state == AuthState::NotConfigured {
-                    AuthExpiryConfidence::Unknown
-                } else {
-                    AuthExpiryConfidence::Exact
-                },
-                AuthRefreshSupport::Automatic,
-                AuthValidationMethod::TimestampCheck,
             )
         }
         LoginProviderAuthStateKey::Jcode
@@ -1480,21 +1393,6 @@ fn antigravity_source() -> Option<(AuthCredentialSource, String)> {
             "trusted external auth import".to_string(),
         )
     })
-}
-
-fn google_source() -> Option<(AuthCredentialSource, String)> {
-    if let (Ok(tokens_path), Ok(credentials_path)) = (
-        crate::auth::google::tokens_path(),
-        crate::auth::google::credentials_path(),
-    ) && tokens_path.exists()
-        && credentials_path.exists()
-    {
-        return Some((
-            AuthCredentialSource::JcodeManagedFile,
-            format!("{} + {}", credentials_path.display(), tokens_path.display()),
-        ));
-    }
-    None
 }
 
 fn cursor_source() -> Option<(AuthCredentialSource, String)> {

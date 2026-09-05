@@ -117,16 +117,6 @@ pub async fn run() -> Result<()> {
 /// discoverable as more providers move out of the base crate.
 pub fn register_external_provider_runtimes() {
     crate::provider::external::register_external_provider(
-        crate::provider::external::GROK_BUILD_RUNTIME,
-        || {
-            let mut process = jcode_provider_grok_build_runtime::GrokBuildProcess::from_env();
-            process.command = crate::auth::grok_build::cli_path();
-            std::sync::Arc::new(
-                jcode_provider_grok_build_runtime::GrokBuildProvider::with_process(process),
-            )
-        },
-    );
-    crate::provider::external::register_external_provider(
         crate::provider::external::GEMINI_RUNTIME,
         || std::sync::Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new()),
     );
@@ -172,17 +162,23 @@ pub fn register_external_provider_runtimes() {
     crate::provider::external::register_standard_openrouter_catalog_refresh(
         jcode_provider_openrouter_runtime::maybe_schedule_standard_openrouter_catalog_refresh,
     );
-    // API-backed OpenAI routes use Codex/platform credentials. The runtime is
-    // still registered without them so browser-backed ChatGPT models remain
-    // usable through the logged-in Firefox session.
+    // API-backed OpenAI routes use Codex/platform credentials; without them the
+    // runtime has nothing to authenticate with, so registration fails cleanly.
     crate::provider::external::register_external_provider_fallible(
         crate::provider::external::OPENAI_RUNTIME,
         || {
-            let provider = match crate::auth::codex::load_credentials() {
-                Ok(credentials) => jcode_provider_openai_runtime::OpenAIProvider::new(credentials),
-                Err(_) => jcode_provider_openai_runtime::OpenAIProvider::new_browser_only(),
+            let credentials = match crate::auth::codex::load_credentials() {
+                Ok(credentials) => credentials,
+                Err(err) => {
+                    logging::info(&format!(
+                        "OpenAI runtime not registered: no usable Codex credentials ({err})"
+                    ));
+                    return None;
+                }
             };
-            Some(std::sync::Arc::new(provider) as std::sync::Arc<dyn crate::provider::Provider>)
+            Some(std::sync::Arc::new(
+                jcode_provider_openai_runtime::OpenAIProvider::new(credentials),
+            ) as std::sync::Arc<dyn crate::provider::Provider>)
         },
     );
     // Copilot's constructor is fallible (needs a GitHub token) and the runtime

@@ -900,17 +900,17 @@ fn skills_command_lists_loaded_and_endorsed_skills() {
 fn skills_command_marks_active_skill_in_remote_mode() {
     let mut app = create_test_app();
     app.is_remote = true;
-    app.remote_skills = vec!["optimization".to_string(), "firefox-browser".to_string()];
+    app.remote_skills = vec!["optimization".to_string(), "todo-planning-skill".to_string()];
     app.active_skill = Some("optimization".to_string());
 
     assert!(super::state_ui::handle_info_command(&mut app, "/skills"));
     let content = app.display_messages().last().unwrap().content.clone();
 
     assert!(content.contains("- /optimization (active)"), "{content}");
-    assert!(content.contains("- /firefox-browser\n"), "{content}");
+    assert!(content.contains("- /todo-planning-skill\n"), "{content}");
     // Endorsed list should mark remote-installed skills as installed.
     assert!(
-        content.contains("/firefox-browser [installed]"),
+        content.contains("/todo-planning-skill [installed]"),
         "{content}"
     );
 }

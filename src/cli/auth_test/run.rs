@@ -6,7 +6,7 @@ async fn maybe_run_auth_test_smoke(
     enabled: bool,
     prompt: &str,
 ) {
-    if enabled && report.success && target.supports_smoke() {
+    if enabled && report.success {
         // Some providers validate chat but cannot run the tool smoke. The
         // Cursor native agent transport is text-only (no tool calls over
         // agent.v1.AgentService/Run), so skip the tool smoke with an
@@ -44,8 +44,6 @@ async fn maybe_run_auth_test_smoke(
                 report.push_step(kind.step_name(), false, detail);
             }
         }
-    } else if !target.supports_smoke() {
-        report.push_step(kind.step_name(), true, kind.unsupported_detail());
     } else if !enabled {
         report.push_step(kind.step_name(), true, kind.skipped_by_flag_detail());
     }
@@ -605,7 +603,6 @@ async fn populate_auth_test_target_report(
         AuthTestTarget::Openai => probe_openai_auth(&mut report).await,
         AuthTestTarget::Gemini => probe_gemini_auth(&mut report).await,
         AuthTestTarget::Antigravity => probe_antigravity_auth(&mut report).await,
-        AuthTestTarget::Google => probe_google_auth(&mut report).await,
         AuthTestTarget::Copilot => probe_copilot_auth(&mut report).await,
         AuthTestTarget::Cursor => probe_cursor_auth(&mut report).await,
     }

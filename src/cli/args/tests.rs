@@ -71,12 +71,6 @@ fn test_provider_choice_aliases_parse() {
     let args = Args::try_parse_from(["jcode", "--provider", "together", "run", "smoke"]).unwrap();
     assert_eq!(args.provider, ProviderChoice::TogetherAi);
 
-    let args = Args::try_parse_from(["jcode", "--provider", "grok", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, ProviderChoice::Xai);
-
-    let args = Args::try_parse_from(["jcode", "--provider", "grok-build"]).unwrap();
-    assert_eq!(args.provider, ProviderChoice::GrokBuild);
-
     let args = Args::try_parse_from(["jcode", "--provider", "cgc", "run", "smoke"]).unwrap();
     assert_eq!(args.provider, ProviderChoice::Comtegra);
 }
@@ -372,7 +366,6 @@ fn login_no_browser_flag_parses() {
             auth_code,
             json,
             complete,
-            google_access_tier,
             api_base,
             api_key,
             api_key_env,
@@ -386,7 +379,6 @@ fn login_no_browser_flag_parses() {
             assert!(auth_code.is_none());
             assert!(!json);
             assert!(!complete);
-            assert!(google_access_tier.is_none());
             assert!(api_base.is_none());
             assert!(api_key.is_none());
             assert!(api_key_env.is_none());
@@ -404,10 +396,10 @@ fn login_no_browser_flag_parses() {
 
 #[test]
 fn login_accepts_provider_positional() {
-    let args = Args::try_parse_from(["jcode", "login", "google"]).unwrap();
+    let args = Args::try_parse_from(["jcode", "login", "gemini"]).unwrap();
     match args.command {
         Some(Command::Login { provider, .. }) => {
-            assert_eq!(provider, Some(ProviderChoice::Google));
+            assert_eq!(provider, Some(ProviderChoice::Gemini));
         }
         other => panic!("unexpected command: {:?}", other),
     }
@@ -477,7 +469,6 @@ fn login_scriptable_flags_parse() {
             callback_url,
             auth_code,
             complete,
-            google_access_tier,
             ..
         }) => {
             assert!(print_auth_url);
@@ -485,7 +476,6 @@ fn login_scriptable_flags_parse() {
             assert!(callback_url.is_none());
             assert!(auth_code.is_none());
             assert!(!complete);
-            assert!(google_access_tier.is_none());
         }
         other => panic!("unexpected command: {:?}", other),
     }
@@ -515,22 +505,10 @@ fn login_scriptable_flags_parse() {
         other => panic!("unexpected command: {:?}", other),
     }
 
-    let args = Args::try_parse_from([
-        "jcode",
-        "login",
-        "--complete",
-        "--google-access-tier",
-        "readonly",
-    ])
-    .unwrap();
+    let args = Args::try_parse_from(["jcode", "login", "--complete"]).unwrap();
     match args.command {
-        Some(Command::Login {
-            complete,
-            google_access_tier,
-            ..
-        }) => {
+        Some(Command::Login { complete, .. }) => {
             assert!(complete);
-            assert_eq!(google_access_tier, Some(GoogleAccessTierArg::Readonly));
         }
         other => panic!("unexpected command: {:?}", other),
     }

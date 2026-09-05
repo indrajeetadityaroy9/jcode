@@ -1,9 +1,9 @@
 {
-  "total": 3248,
+  "total": 3187,
   "totals_by_pattern": {
-    "dot_ok": 1218,
-    "let_underscore": 1202,
-    "unwrap_or_default": 828
+    "dot_ok": 1196,
+    "let_underscore": 1189,
+    "unwrap_or_default": 802
   },
   "tracked_files": {
     "crates/jcode-app-core/src/agent.rs": {
@@ -396,11 +396,6 @@
       "let_underscore": 0,
       "unwrap_or_default": 1
     },
-    "crates/jcode-app-core/src/tool/browser.rs": {
-      "dot_ok": 0,
-      "let_underscore": 1,
-      "unwrap_or_default": 3
-    },
     "crates/jcode-app-core/src/tool/communicate.rs": {
       "dot_ok": 0,
       "let_underscore": 4,
@@ -455,11 +450,6 @@
       "dot_ok": 0,
       "let_underscore": 0,
       "unwrap_or_default": 1
-    },
-    "crates/jcode-app-core/src/tool/gmail.rs": {
-      "dot_ok": 0,
-      "let_underscore": 0,
-      "unwrap_or_default": 8
     },
     "crates/jcode-app-core/src/tool/goal.rs": {
       "dot_ok": 0,
@@ -671,11 +661,6 @@
       "let_underscore": 17,
       "unwrap_or_default": 9
     },
-    "crates/jcode-base/src/browser.rs": {
-      "dot_ok": 5,
-      "let_underscore": 6,
-      "unwrap_or_default": 2
-    },
     "crates/jcode-base/src/bus.rs": {
       "dot_ok": 0,
       "let_underscore": 2,
@@ -750,11 +735,6 @@
       "dot_ok": 3,
       "let_underscore": 0,
       "unwrap_or_default": 0
-    },
-    "crates/jcode-base/src/gmail.rs": {
-      "dot_ok": 9,
-      "let_underscore": 1,
-      "unwrap_or_default": 4
     },
     "crates/jcode-base/src/goal.rs": {
       "dot_ok": 1,
@@ -1206,11 +1186,6 @@
       "let_underscore": 0,
       "unwrap_or_default": 1
     },
-    "crates/jcode-notify-email/src/lib.rs": {
-      "dot_ok": 0,
-      "let_underscore": 0,
-      "unwrap_or_default": 1
-    },
     "crates/jcode-overnight-core/src/lib.rs": {
       "dot_ok": 1,
       "let_underscore": 0,
@@ -1365,11 +1340,6 @@
       "dot_ok": 1,
       "let_underscore": 0,
       "unwrap_or_default": 0
-    },
-    "crates/jcode-provider-openai-runtime/src/chatgpt_web.rs": {
-      "dot_ok": 8,
-      "let_underscore": 5,
-      "unwrap_or_default": 8
     },
     "crates/jcode-provider-openai-runtime/src/lib.rs": {
       "dot_ok": 3,

@@ -505,7 +505,7 @@ fn role_parser_accepts_all_as_default_all_roles_filter() {
         parse_role_filter(Some("assistant")).unwrap(),
         Some(RoleFilter::Assistant)
     );
-    let err = parse_role_filter(Some("browser")).expect_err("invalid role should fail");
+    let err = parse_role_filter(Some("webfetch")).expect_err("invalid role should fail");
     assert!(err.contains("all, user, assistant, or metadata"));
 }
 

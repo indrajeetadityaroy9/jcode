@@ -67,6 +67,10 @@ file we kept.
 | **Desktop app** | `crates/jcode-desktop2` (winit + wgpu + Vello + Parley GPU client, ~42k lines) and `crates/jcode-math` (its TeX layout engine, no other consumer). Also `SelfDevBuildTarget::Desktop2` in `jcode-dev-types` + its routing in `jcode-build-support/src/paths.rs`, the `vello`/`wgpu`/`parley`/`fontique`/`skrifa`/`read-fonts`/`font-types`/`harfrust`/`peniko`/`color`/`zeno`/`naga` `[profile.*.package.*]` pins in the root `Cargo.toml`, the already-dead legacy-desktop pins (`cosmic-text`, `swash`, `yazi`, `unicode-linebreak`), `scripts/{check_desktop2_reload.py,desktop2_mutation_sweep.sh,desktop2_visual_check.sh}`, the desktop2 frame-budget gate in `check_guardrails.sh`, `captures/` in `.gitignore`, and all `docs/DESKTOP*.md`. **Kept:** `jcode-harness-api`, `jcode-harness-api-server` (`jcode api-bridge`) and `jcode-sdk` — a general programmatic surface, not desktop-only; `jcode-render-core` (shared with the TUI); and the `kurbo`/`rustybuzz`/`ttf-parser`/`fontdb` pins, which the TUI's mermaid SVG rasterizer still needs. `docs/HARNESS_API_AND_DESKTOP_REWRITE.md` was trimmed to Part 1 and renamed `docs/HARNESS_API.md`. |
 | **AWS Bedrock provider** | `crates/jcode-provider-bedrock` (native Converse/ConverseStream client, IAM SigV4 + `AWS_BEARER_TOKEN_BEDROCK` bearer auth, ~2k lines) and the whole 20-crate `aws-sdk-*` dependency stack it pulled in. Also the `bedrock` cargo feature and its forwarding through `jcode-base`/`jcode-app-core`/`jcode-tui`, `provider::bedrock` re-export, `ActiveProvider::Bedrock` / `RuntimeKey::Bedrock` / `ModelRouteApiMethod::Bedrock` / `LoginProviderTarget::Bedrock` / `LoginProviderAuthStateKey::Bedrock` / `ProviderChoice::Bedrock`, `AuthStatus.bedrock` + `probe_bedrock_status`, `BEDROCK_LOGIN_PROVIDER`, `ALL_BEDROCK_MODELS`, the `bedrock:` model-spec prefix and its route/prefetch/failover arms, `jcode login --provider bedrock` (CLI + TUI API-key flow), the Bedrock branch of the provider doctor's native-driver matrix, the picker's Bedrock model-id prettifier in `tui/app/helpers/model_names.rs`, `JCODE_BEDROCK_{ENABLE,PROFILE,MODEL}`, and `docs/AWS_BEDROCK_PROVIDER.md`. **Kept:** every `Bedrock` mention that describes someone *else's* upstream — the hosted jcode router's server-side routing notes in `subscription_catalog.rs`, OpenRouter's upstream list in `jcode-provider-openrouter/src/request.rs`, and `docs/JCODE_CLOUD_AWS.md` (EC2 deployment, not a local provider). |
 | **Global launch hotkeys** | The OS-level shortcuts that launched a new jcode window, and everything built to install and promote them: `jcode-setup-hints/src/{launch_hotkeys,linux_env,linux_niri,cli_launch_hints}.rs` (+ `linux_niri_fuzz_corpus.txt`, `scripts/fuzz/niri_insert_point_fuzz.py`), the whole hotkey half of `jcode-setup-hints/src/lib.rs` (2548 → 530 lines: `run_setup_hotkey`, `run_macos_hotkey_listener_main_thread` + its Carbon/Core-Foundation run loop, the LaunchAgent installer/uninstaller/migrator, `HOTKEY_LISTENER_VERSION`, `MacHotkeyAction`, `record_launch_dirs`, `record_launch_hotkey_use`, `launch_hotkey_notice_lines`, `reinstall_launch_hotkeys_after_config_change`, and every GNOME/KDE/XFCE/Cinnamon/MATE/niri/Hyprland/sway dconf+config-file installer), `jcode setup-hotkey` with `--listen-macos-hotkey`/`--uninstall`/`--notify-cli-launch` and its `main.rs` pre-Tokio entry points, the global `--spawn-hotkey <CHORD>` flag, `[launch_hotkeys]` (`LaunchHotkeysConfig`, `LaunchHotkeyEntry`, `Config::{set_launch_hotkeys, bake_launch_hotkeys_once}`, the `launch_hotkeys` restart-required section), `repo_ranking::{PlannedHotkey, DEFAULT_LAUNCH_HOTKEY_CHORDS, build_launch_hotkey_plan, plan_launch_hotkeys_from_sessions}`, the `~/.jcode/hotkey/` support dir (`last_dir`, `last_repo`, `plan.json`), the "Launch hotkeys" startup notice + its single-line renderer, the Claude-Code/Codex SessionStart hook that nagged about the shortcut, and the now-unused `global-hotkey` dependency in all five manifests. **Kept:** everything about *in-app* keys — `[keybindings]`, `hotkey_feedback.rs` (rare-chord hints + near-miss suggestions), the `/hotkeys` usage list, `[dictation].key`, and `jcode-setup-hints/src/keymap/**`, which still detects terminal/macOS shortcuts that intercept jcode's own chords. Also kept: `jcode setup-launcher` + `macos_launcher.rs` (the Spotlight/Dock `Jcode.app`), `macos_terminal.rs`, `terminal.preferred`, the terminal-capability nudges, and the repo-*ranking* half of `repo_ranking.rs` that onboarding uses for its "recent project" suggestion. |
+| **Grok / xAI providers** | Both access paths. (1) **Grok Build**, the Jcode-managed subscription provider: `crates/jcode-provider-grok-build-runtime` (Agent Client Protocol over the stdio of an xAI `grok` binary Jcode downloaded itself), `jcode-base/src/auth/grok_build.rs` (version pin, download, `ensure_cli`, cached-login probe), `GROK_BUILD_LOGIN_PROVIDER`, `LoginProviderTarget::GrokBuild`, `LoginProviderAuthStateKey::GrokBuild`, `RuntimeProviderId::GrokBuild`, `AuthStatus.grok_build`, `GROK_BUILD_PROFILE_ID`, `external::GROK_BUILD_RUNTIME` + its composition-root registration, the `grok-build:` model prefix and the `grok-build-acp` route rows, `jcode login --provider grok-build`, the TUI `start_grok_build_login` managed-OAuth flow and `PendingLogin::GrokBuild`, and `JCODE_GROK_CLI_PATH`. (2) The **`xai` OpenAI-compatible profile** (`XAI_PROFILE`, `XAI_LOGIN_PROVIDER`, `api.x.ai/v1`, `XAI_API_KEY`, `xai.env`, default model `grok-code-fast-1`, aliases `x.ai`/`x-ai`/`grok`) — its entire content is Grok, so it went with the rest. Also gone: `ProviderChoice::{Xai, GrokBuild}` (so `--provider xai|grok-build|grok` no longer parse), the `grok-code-fast` 256K context-window rule in `jcode-provider-core/src/models.rs`, the `xai` pricing key, the `grok-code-fast-1` entry in the `firmware` curated catalog, and the xAI row in `docs/audits/provider-model-catalog-audit.md`. `OPENAI_COMPAT_PROFILES` 38 → **37**, `LOGIN_PROVIDERS` 49 → **47**. **Kept:** the `XAI_API_KEY` entry in the transcript secret-redaction denylist (`jcode-base/src/message.rs`) — provider-independent secret hygiene, useful even with no xAI provider; and `groq`, an unrelated vendor that merely matches the substring. |
+| **Browser automation** | Every path that drove a browser on the agent's behalf, in three layers. (1) The **`browser` agent tool**: `jcode-app-core/src/tool/{browser.rs,browser_tests.rs}` (22 actions over the bridge binary) and its `base_tools` registration — the model-callable tool count drops 29 → 28 on macOS; the TUI's `browser_summary`/`browser_target_summary` renderers and the `"browser"` transcript-compaction arm went with it. (2) The **Firefox agent bridge**: `jcode-base/src/{browser.rs,browser_tests.rs}` (GitHub-release download of `firefox-agent-bridge`, native-messaging host install, extension-compat probes, per-session `BROWSER_SESSION` tabs), the `jcode browser setup\|status` subcommand (`Command::Browser` + `run_browser`), and the auto-rewrite hook in the `bash` tool that silently redirected browser commands to the installed binary. (3) The **ChatGPT-web provider route**: `jcode-provider-openai-runtime/src/chatgpt_web.rs` (~915 lines driving a logged-in ChatGPT tab), `CHATGPT_WEB_MODEL` (`gpt-5.6-pro[web]`) in `jcode-provider-core` + its `ALL_OPENAI_MODELS` entry, `build_chatgpt_web_route` and the `chatgpt-web` api-method routes, `OpenAIProvider::new_browser_only()` and the whole `browser_only` flag (with it gone the OpenAI runtime only registers when Codex credentials load), plus tokio's `process` feature in that crate. Also the endorsed **`firefox-browser` skill** in `jcode-base/src/skill.rs` and `docs/BROWSER_PROVIDER_PROTOCOL.md`. **Kept:** everything that opens the *user's* browser for OAuth (`open_auth_browser`, `--no-browser`, `NO_BROWSER`/`JCODE_NO_BROWSER`, device-approval copy), the `EnvFacts.browser` probe, the `open` tool's Firefox desktop-entry matching, and "browser-style" text-selection comments in the TUI. |
+| **Gmail integration** | The whole email-agent surface. The **`gmail` tool** (`jcode-app-core/src/tool/gmail.rs`, 12 actions: list/read/search/draft/send/attachments/labels) and its `base_tools` registration — the model-callable tool count drops 28 → 27 on macOS. The **Gmail REST backend** `jcode-base/src/gmail.rs` (~1.2k lines) with *both* of its transports: `GmailBackend::Direct` against `gmail.googleapis.com/gmail/v1`, and `GmailBackend::Composio` brokering the same calls through Composio's `proxy-execute` (`ComposioConfig`, connect-link flow, `COMPOSIO_API_KEY`/`COMPOSIO_GMAIL_AUTH_CONFIG_ID`, `JCODE_GMAIL_BACKEND`). The **Gmail-only Google OAuth store** `jcode-base/src/auth/google.rs` (`gmail.readonly`/`compose`/`send`/`modify` scopes, `GmailAccessTier`, `GoogleCredentials`, `~/.jcode/google_oauth.json`), `AuthStatus.{google,google_can_send}`, `probe_google_status`, `GOOGLE_LOGIN_PROVIDER` (`LOGIN_PROVIDERS` 47 → 46), `LoginProviderTarget::Google`, `LoginProviderAuthStateKey::Google`, `jcode login --provider google\|gmail` with its interactive client-ID/secret paste flow, the `--google-access-tier full\|readonly` flag (`GoogleAccessTierArg`), the `jcode auth-test` Google probe (and `AuthTestTarget::supports_smoke`, which existed only to mark Gmail as non-model), the TUI Gmail tool-summary renderer + `"gmail"` compaction arm, `docs/GMAIL_COMPOSIO_BACKEND.md`, and the "Google / Gmail OAuth" section of `OAUTH.md`. **Kept:** `jcode-base/src/auth/google_oauth.rs` — the *shared* token-refresh helper that `auth/gemini.rs` and `auth/antigravity.rs` depend on; every Gemini / Antigravity login path (Code Assist OAuth also says "Google"); the many places where `"google"` is a **Gemini alias** (`provider-core/src/selection.rs`, `auth/external.rs`'s `GEMINI_API_KEY => ["google","gemini"]`, TUI provider colors); and, at the time, `crates/jcode-notify-email` with its `smtp.gmail.com`/`imap.gmail.com` config examples, on the grounds that it was generic SMTP/IMAP rather than the Gmail API — superseded by the next row, which removed that channel too. |
+| **Email notification channel** | The SMTP/IMAP half of ambient notifications, which the Gmail purge had left as the last email surface. `crates/jcode-notify-email` (267 lines: `send_email`/`SendEmailRequest` over `lettre`, `poll_imap_once`/`ReplyAction` over `imap` + `mail-parser`, markdown→HTML email bodies via `pulldown-cmark`) and its workspace member + `jcode-app-core` dependency. In `notifications.rs`: the email dispatch arm of `send_all`, the `send_all_with_email_override` wrapper and its `email_html_override`/`cycle_id` (Message-ID reply-tracking) plumbing, and the whole `imap_reply_loop` — plus its spawn block in `ambient/runner.rs`. Config: the nine `SafetyConfig.email_*` fields and defaults in `jcode-config-types`, the `JCODE_SMTP_PASSWORD` / `JCODE_EMAIL_TO` / `JCODE_IMAP_HOST` / `JCODE_EMAIL_REPLY_ENABLED` env overrides + their `KNOWN_ENV` entries, the `[safety]` email/IMAP block in the config template, and the "Email"/"Email replies" rows of `/config`. Also the now-vacuous `linux-compat-vendored-openssl` feature chain (root → `jcode-tui` → `jcode-app-core` → `jcode-notify-email`, which existed only to vendor OpenSSL for `imap`'s native-tls) and its `--features` flag in `scripts/build_linux_compat.sh`. Dropping `lettre`/`imap`/`mail-parser` retired three triaged advisories (`RUSTSEC-2026-0141`, `RUSTSEC-2023-0086`, `RUSTSEC-2026-0049`) and their `security_preflight.sh` ignores: `imap`/`rustls-connector` held the last rustls 0.22 stack, so the graph now resolves a single `rustls-webpki 0.103.13`. **Kept:** every other notification transport — ntfy.sh, desktop/macOS Notification Center, and the Telegram/Discord/Jade message channels — including the shared `ambient/directives.rs` reply→directive store, which those channels still feed through `AmbientRunnerHandle::inject` (its docs no longer claim email as the source). |
 
 **Deliberately *not* removed** (easy to delete by mistake):
 
@@ -75,7 +79,7 @@ file we kept.
 - Provider KV-cache "telemetry" in `info_widget.rs` / `state_ui.rs` — the cold-cache warning
 - `subscription_api.rs` / `subscription_catalog.rs` / `/subscription` / `jcode login --provider jcode` — provider auth
 - `ApiEvent::PermissionRequest` in `jcode-harness-api` / `jcode-sdk` — harness API wire protocol
-- All 19 remaining `jcode-provider-*` crates and every OAuth flow
+- All 18 remaining `jcode-provider-*` crates and every OAuth flow
 
 **Also excluded by choice** (not purged, just not merged from upstream):
 subscription onboarding pill · discovery reframing · upstream's other onboarding changes.
@@ -135,7 +139,7 @@ added to its manifest grep, `jcode_desktop2` / `jcode_math` / `jcode_provider_be
 API-call-site pattern, and the `::Bedrock` enum variants plus `SelfDevBuildTarget::Desktop2` in
 the registration pattern. Bedrock demanded the tightest patterns in the file: a bare `bedrock`
 matches three things §1 explicitly keeps — the hosted jcode router's "routed server-side to
-Amazon Bedrock" model notes, OpenRouter's upstream list, and `docs/JCODE_CLOUD_AWS.md` — so the
+Amazon Bedrock" model notes, OpenRouter's upstream list, and `docs/proposals/JCODE_CLOUD_AWS.md` — so the
 prose pattern is `aws bedrock|bedrock provider|bedrock api key|--provider bedrock` and never the
 bare word. `desktop` is the same trap in the other direction: it would match the macOS
 desktop-notification stack, so the prose pattern says `desktop app`/`desktop2`/`vello`/`parley`.
@@ -157,15 +161,16 @@ a **bare stem** in the identifier pattern, not just its crate name.
 `scripts/uninstall.sh` alone is **not sufficient**. Run these in order.
 
 ```bash
-# 1. Retire the KeepAlive LaunchAgent FIRST — while the binary still exists.
-#    KeepAlive=1 + RunAtLoad=1 means it respawns the hotkey listener forever,
-#    including after you delete the binary it points at.
-jcode setup-hotkey --uninstall
+# 1. Retire any LaunchAgent left behind by a pre-purge install. The global
+#    launch-hotkey subsystem is gone from this fork, but a KeepAlive=1 +
+#    RunAtLoad=1 agent installed by an older build respawns forever, including
+#    after you delete the binary it points at.
 launchctl bootout gui/$UID/com.jcode.hotkey 2>/dev/null
 rm -f ~/Library/LaunchAgents/com.jcode.hotkey.plist
+rm -rf ~/.jcode/hotkey
 
 # 2. Stop processes uninstall.sh does not match.
-#    Its pkill pattern is 'jcode( .*)? serve' — menubar and the hotkey listener survive.
+#    Its pkill pattern is 'jcode( .*)? serve' — menubar survives.
 pkill -f 'jcode menubar'; pkill -f 'jcode setup-hotkey'
 
 # 3. Uninstall.
@@ -176,7 +181,7 @@ bash scripts/uninstall.sh --purge --yes    # ALSO wipes ~/.jcode (see warning)
 rm -f /var/folders/*/*/T/jcode*.sock
 
 # 5. Artifacts OUTSIDE ~/.jcode that no jcode uninstall path touches.
-#    `jcode setup-hotkey --uninstall` ADDS a SessionStart hook to Claude Code
+#    A pre-purge `jcode setup-hotkey` ADDED a SessionStart hook to Claude Code
 #    and Codex; after the binary is gone it fails on every session start.
 python3 - <<'PY'
 import json, os
@@ -497,9 +502,12 @@ JCODE_BUILD_GIT_HASH="$(git rev-parse --short HEAD)" \
 
 ## 5. Install
 
-Nothing running? Then this is pure file operations. `scripts/install_release.sh` also
-registers global hotkeys, installs `Jcode.app`, and **edits your shell rc files** — do it
-manually to skip those.
+Nothing running? Then this is pure file operations. `scripts/install_release.sh` does the same
+copy/symlink dance and additionally, on macOS, runs `jcode setup-launcher` (installing
+`Jcode.app` plus the turn-notification broker, best-effort), calls `jcode server reload`, and
+**edits your shell rc files** via `jcode_configure_path` (`scripts/lib/configure_path.sh`) — do
+it manually to skip those. It no longer registers global launch hotkeys: that subsystem was
+purged (§1).
 
 ```bash
 cd "$MAIN"
@@ -566,7 +574,7 @@ running them in this table's position instead makes them vacuous. The "When" col
 | 5 | Merge recorded | **§3.5, post-commit** | `git log -1 --pretty=%p` | **two** hashes |
 | 6 | Build | §4, `$MAIN` | `cargo build --profile release-lto; echo $?` | 0 |
 | 7 | Smoke, isolated | §4, `$MAIN` | `./target/release-lto/jcode --no-update --socket /tmp/verify.sock run 'hi'` | see below |
-| 8 | Removed CLI absent | §5, post-install | `jcode --help \| grep -E '^\s+(pair\|permissions)\b'` and `jcode setup-hotkey --help \| grep -i listen-windows-hotkey` | no match |
+| 8 | Removed CLI absent | §5, post-install | `jcode --help \| grep -E '^\s+(pair\|permissions\|self-dev\|setup-hotkey)\b'` | no match |
 | 9 | Version reproducible | §5, post-install | `jcode --version` | matches HEAD, no `-dirty` |
 | 10 | **No upstream work dropped** | §3.5, post-transfer | `./scripts/upstream-features.sh verify "$BASE" upstream/master` | exit 0 |
 
@@ -617,22 +625,22 @@ Each of these cost real time. The symptom is what made it visible.
 4. **`cargo build` skips test targets.** A green build coexists with a test suite that does not
    compile.
 
-5. **`com.jcode.hotkey` LaunchAgent has `KeepAlive=1`.** `uninstall.sh` never touches it;
-   launchd respawns a deleted binary forever. Retire it *before* removing the binary.
+5. **A pre-purge `com.jcode.hotkey` LaunchAgent has `KeepAlive=1`.** The launch-hotkey
+   subsystem is gone, but `uninstall.sh` never touched that agent and launchd respawns a
+   deleted binary forever. Retire it *before* removing the binary (§2 step 1). The old
+   `setup-hotkey --uninstall` path also *added* SessionStart hooks to Claude Code and Codex,
+   so re-check `~/.claude/settings.json` and `~/.codex/config.toml` on any machine that ran it.
 
-6. **`jcode setup-hotkey --uninstall` ADDS hooks** to Claude Code and Codex. An uninstall path
-   that installs things — always re-check `~/.claude/settings.json` afterwards.
-
-7. **The gitleaks pre-commit hook blocks the merge commit** on upstream's keyboard-shortcut
+6. **The gitleaks pre-commit hook blocks the merge commit** on upstream's keyboard-shortcut
    table (`key: "Ctrl+Shift+Tab"`, `generic-api-key`, entropy 3.52). Review, then `--no-verify`.
 
-8. **Closing the TUI does not stop the daemon.** `jcode serve` persists; check `pgrep`.
+7. **Closing the TUI does not stop the daemon.** `jcode serve` persists; check `pgrep`.
 
-9. **`macos_notification_broker.rs` used `jcode::` instead of `crate::`** — a pre-existing
+8. **`macos_notification_broker.rs` used `jcode::` instead of `crate::`** — a pre-existing
    upstream bug, invisible on Linux, that breaks the first macOS build. Fixed in this fork;
    re-check after syncs.
 
-10. **`jcode-build-meta` caches the version stamp — and "commit first" does NOT fix it.**
+9. **`jcode-build-meta` caches the version stamp — and "commit first" does NOT fix it.**
     This entry previously said to commit before building. That advice is wrong: the build
     script *deliberately* does not declare `.git/HEAD` or `.git/index` as `rerun-if-changed`
     inputs, because doing so turned every `git add`/`git status` into a full-tree recompile
@@ -659,67 +667,67 @@ Each of these cost real time. The symptom is what made it visible.
     for a build that failed with 101. *Fix:* never trust the task-completion status; read
     `CARGO_EXIT=` out of the log, and grep the log for `^error`.
 
-11. **`tail -f` monitors never self-terminate.** For "tell me when the build finishes", use a
+10. **`tail -f` monitors never self-terminate.** For "tell me when the build finishes", use a
     background command that exits — the harness notifies on completion by itself.
 
-12. **`~/.jcode` reappears** from any `jcode --version` invocation (migration markers + a log).
+11. **`~/.jcode` reappears** from any `jcode --version` invocation (migration markers + a log).
     Harmless; not a failed purge.
 
-13. **`gitleaks --staged` after committing scans nothing and passes.** The gate table used to
+12. **`gitleaks --staged` after committing scans nothing and passes.** The gate table used to
     list it as step 4 of a post-merge block, by which point §3.5 had already committed.
     *Symptom:* a "reviewed" secret gate on a sync that imported 133 upstream files without ever
     examining one. *Fix:* gate 4 now runs inside §3.5 while the index is populated.
 
-14. **`git push` does not push tags.** The rollback tag is the entire recovery story for §3, and
+13. **`git push` does not push tags.** The rollback tag is the entire recovery story for §3, and
     `git push origin master` leaves it local. *Symptom:* `git ls-remote --tags origin` empty
     while `git tag` listed `pre-merge-…`. *Fix:* §3.1 pushes the tag explicitly.
 
-15. **GitHub orders commit history by author date, not push time.** After pushing a merge whose
+14. **GitHub orders commit history by author date, not push time.** After pushing a merge whose
     commits were authored days earlier, nothing appears at today's date and the contribution
     graph stays blank. *Symptom:* "the push does not appear on the repo commit history" when
     `git ls-remote` and the GitHub API both confirmed it had landed. Not a fault — verify with
     `gh api repos/<owner>/<repo>/commits?sha=master` before debugging a push.
 
-16. **`servers.json` is `{}` when no daemon is registered**, which is the normal post-shutdown
+15. **`servers.json` is `{}` when no daemon is registered**, which is the normal post-shutdown
     state — not an error. The old §5 proof one-liner indexed `list(d)[0]` and raised
     `IndexError` there. *Fix:* iterate and report (§5).
 
-17. **A classifier that drifts from the guard is worse than none.** `classify-upstream.sh` and
+16. **A classifier that drifts from the guard is worse than none.** `classify-upstream.sh` and
     `purge-guard.sh` duplicate the pattern set by necessity (one walks commits, one walks the
     tree). If only one is updated, the classifier reports work as safe that the guard later
     rejects — after you have already resolved it. Change both together.
 
-18. **Every gate was defensive; none checked that upstream work arrived.** A feature dropped in
+17. **Every gate was defensive; none checked that upstream work arrived.** A feature dropped in
     resolution produces no conflict, no compile error and no guard hit — a clean green sync that
     is silently a downgrade. *Symptom:* none, which is the point; it was found by reasoning about
     what the gates could not see, not by an incident. *Fix:* §3.2b + gate 10.
 
-19. **A crate-name pattern does not match a type name.** `jcode-gateway-types` in the identifier
+18. **A crate-name pattern does not match a type name.** `jcode-gateway-types` in the identifier
     list left `GatewayConfig` unmatched, so three purged config fields were reported as dropped
     upstream work. *Symptom:* `MISS config field bind_addr` on a sync that had correctly deleted
     it. *Fix:* bare stems (`gateway`, not `jcode-gateway-types`).
 
-20. **BSD `sed` does not understand `\s`.** On macOS the extraction silently returns the entire
+19. **BSD `sed` does not understand `\s`.** On macOS the extraction silently returns the entire
     diff line instead of the identifier, and every downstream check reports a false MISS.
     *Symptom:* `expected /^\s++    Pair {\s*[({,]/`. *Fix:* `[[:space:]]` in every `sed`
     expression. GNU-only regex shorthands are a recurring hazard in this repo's scripts —
     `grep -E` accepts `\s` here, `sed -E` does not.
 
-21. **v0.76.0 shipped its headline feature *inside* a purged subsystem.** "Opt-in transcript
+20. **v0.76.0 shipped its headline feature *inside* a purged subsystem.** "Opt-in transcript
     telemetry" meant the sync's biggest diff was code we delete, while its real keepers (Grok
     Build TUI login, Anthropic-compatible profiles) were small. *Lesson:* commit count is a poor
     proxy for effort — 77 commits with 3 `MIXED` took longer than the prior 159 with 12, because
     the telemetry surface reached into `agent.rs`, `args.rs`, `dispatch.rs`, `startup.rs` and
     `mod.rs` and **almost none of it conflicted**.
 
-22. **`git rm` refuses on merge-added files.** Purged files that arrive as clean `A` additions
+21. **`git rm` refuses on merge-added files.** Purged files that arrive as clean `A` additions
     (`.github/`, `src/cli/telemetry.rs`) are already staged, so `git rm` errors with "changes
     staged in the index". *Fix:* `git rm -r -f`. Do not `--cached`, which keeps them on disk.
 
-23. **The tmp clone is on `master`, not `merge-upstream`.** §3.5 documented a branch §3.1 never
+22. **The tmp clone is on `master`, not `merge-upstream`.** §3.5 documented a branch §3.1 never
     creates. *Symptom:* `fatal: couldn't find remote ref merge-upstream`. Fixed in §3.5.
 
-24. **Deleting a purged struct field by line leaves its doc comment, and E0585 cascades.**
+23. **Deleting a purged struct field by line leaves its doc comment, and E0585 cascades.**
     Stripping `transcript_telemetry_sent` with a line filter orphaned the `///` above it. That
     is a *parse* error, so the whole `Agent` struct mis-parsed and **12 additional bogus E0308 /
     E0277 "mismatched types" errors** appeared in files the merge never touched
@@ -728,19 +736,17 @@ Each of these cost real time. The symptom is what made it visible.
     believing any that follow. `cargo check -p <crate>` confirms in seconds what a full LTO
     build takes minutes to re-prove.
 
-25. **Committing after the build costs a full rebuild.** A docs-only commit moved HEAD from
+24. **Committing after the build costs a full rebuild.** A docs-only commit moved HEAD from
     `a9ff3a78b` to `4c25acf91`; §5 would then have installed a binary stamped `a9ff3a78b` into
     `versions/4c25acf91`. *Symptom:* nothing at build time — it surfaces only as a gate 9
     mismatch, or worse, silently as a mislabelled install directory that the next rollback
     trusts. *Fix:* land every commit before §4; see the callout in §3.6.
 
-26. **The `com.jcode.hotkey` LaunchAgent respawn is useful at install time.** Pitfall 5 covers
-    it as an uninstall hazard, but during §5 it works in your favour: `pkill` the listener
-    *after* the symlink flip and launchd immediately restarts it from `~/.local/bin/jcode`,
-    which now resolves to the new build. Killing it *before* the flip just reloads old code.
-    `jcode menubar` has no KeepAlive and stays down until launched again.
+25. **`jcode menubar` has no KeepAlive and stays down until launched again.** Unlike the
+    pre-purge hotkey LaunchAgent (pitfall 5), nothing restarts it after the §5 symlink flip,
+    so relaunch it by hand if you want the session-count indicator back.
 
-27. **A `cfg(windows)`-only module is invisible to macOS `cargo test`; a `cfg(any(test, …))`
+26. **A `cfg(windows)`-only module is invisible to macOS `cargo test`; a `cfg(any(test, …))`
     sibling is not.** Planning the Windows purge, `windows_hotkeys.rs` looked orphaned once
     `windows_setup.rs` (its only caller) was deleted — so the plan claimed the deletion would
     surface as `dead_code`. Wrong twice over. `windows_setup.rs` is `cfg(windows)` with no `test`
@@ -752,7 +758,7 @@ Each of these cost real time. The symptom is what made it visible.
     deleting the file without its declaration breaks the test build while `cargo check` stays
     green. Check the `mod` line's predicate, not the file's, and run `cargo test -p <crate>`.
 
-28. **`scripts/warning_budget.txt` was a dead gate, and the purge is what proved it.** The
+27. **`scripts/warning_budget.txt` was a dead gate, and the purge is what proved it.** The
     baseline read `0` while `cargo check -q` reported 10, all of it pre-existing fork-purge
     fallout (an import whose enum variants were purged, a `cfg(unix)` const whose only user is
     `cfg(target_os = "linux")`, and Linux/macOS dead code upstream never trips). A gate that can

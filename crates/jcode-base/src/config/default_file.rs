@@ -313,10 +313,10 @@ bing_market = "en-US"
 profile = "full"
 # Explicit allow-list. When non-empty, only these tools are exposed.
 # enabled = ["bash", "read", "write", "apply_patch", "agentgrep", "ls"]
-# All built-in tools, including gmail, are exposed by the full profile.
+# All built-in tools, including websearch, are exposed by the full profile.
 # Use enabled = ["*"] to explicitly select the unrestricted full toolset.
 # Hide selected tools after applying the profile/allow-list.
-# disabled = ["browser", "gmail", "swarm"]
+# disabled = ["websearch", "swarm"]
 # Disable all built-in tools unless enabled is set.
 disable_base_tools = false
 
@@ -506,7 +506,7 @@ swarm_max_concurrent_agents = 32
 [notifications]
 # Desktop notifications for interactive sessions (macOS Notification Center /
 # Linux notify-send). Separate from [safety], which covers ambient-mode
-# ntfy/email/channel notifications.
+# ntfy/channel notifications.
 #
 # Notify when an agent turn finishes. Fires only for long turns and, by
 # default, only while the terminal window is unfocused. The notification is a
@@ -613,20 +613,6 @@ prevent_sleep_while_streaming = true
 
 # Desktop notifications via notify-send (default: true)
 desktop_notifications = true
-
-# Email notifications via SMTP
-# email_enabled = false
-# email_to = "you@example.com"
-# email_from = "jcode@example.com"
-# email_smtp_host = "smtp.gmail.com"
-# email_smtp_port = 587
-# Password via env: JCODE_SMTP_PASSWORD (preferred) or config below
-# email_password = ""
-
-# IMAP for email replies (reply to ambient emails to send directives)
-# email_reply_enabled = false
-# email_imap_host = "imap.gmail.com"
-# email_imap_port = 993
 
 # Telegram notifications via Bot API (free, https://telegram.org)
 # telegram_enabled = false

@@ -43,7 +43,6 @@ members = [
     "crates/jcode-storage",
     "crates/jcode-side-panel-types",
     "crates/jcode-azure-auth",
-    "crates/jcode-notify-email",
     "crates/jcode-provider-metadata",
     "crates/jcode-provider-env",
     "crates/jcode-provider-core",
@@ -62,7 +61,6 @@ members = [
     "crates/jcode-provider-openrouter-runtime",
     "crates/jcode-provider-anthropic-runtime",
     "crates/jcode-provider-openai-runtime",
-    "crates/jcode-provider-grok-build-runtime",
     "crates/jcode-provider-doctor",
     "crates/jcode-tui-markdown",
     "crates/jcode-tui-messages",
@@ -195,7 +193,6 @@ jcode-provider-claude-cli-runtime = { path = "crates/jcode-provider-claude-cli-r
 jcode-provider-openrouter-runtime = { path = "crates/jcode-provider-openrouter-runtime" }
 jcode-provider-anthropic-runtime = { path = "crates/jcode-provider-anthropic-runtime" }
 jcode-provider-openai-runtime = { path = "crates/jcode-provider-openai-runtime" }
-jcode-provider-grok-build-runtime = { path = "crates/jcode-provider-grok-build-runtime" }
 jcode-dev-types = { path = "crates/jcode-dev-types" }
 
 # Archive extraction (for auto-update)
@@ -221,9 +218,6 @@ jemalloc-prof = [
 # Local embeddings and PDF extraction live in jcode-base / jcode-app-core;
 # these features just forward down the stack.
 embeddings = ["jcode-tui/embeddings"]
-# Internal release feature: build a supported OpenSSL inside the CentOS 7
-# compatibility image while preserving the glibc 2.17 runtime baseline.
-linux-compat-vendored-openssl = ["jcode-tui/linux-compat-vendored-openssl"]
 mmdr-size-api = ["jcode-tui/mmdr-size-api"]
 pdf = ["jcode-tui/pdf"]
 

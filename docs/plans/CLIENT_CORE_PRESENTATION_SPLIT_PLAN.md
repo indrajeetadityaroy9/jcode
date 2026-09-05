@@ -1,6 +1,15 @@
 # Client-Core vs Presentation Split Plan
 
-Status: Proposed
+Status: **mostly unbuilt.** Only Phase 3 (de-globalizing workspace state) has
+landed. There is no `client_core` module anywhere in the tree: none of
+`src/client_core/**` exists, no typed action/reducer boundary exists, the wide
+`TuiState` trait is still the renderer boundary, and no `ClientEffect` enum
+exists. Everything except Phase 3 is still a proposal.
+
+Path note: this plan predates the crate split. Every `src/tui/...` path below
+now lives at `crates/jcode-tui/src/tui/...`, and `src/cli/tui_launch.rs` is
+still at the workspace root. Paths under `src/client_core/` are proposed
+locations that do not exist.
 
 This document audits the current TUI/client stack and proposes a safe, incremental split between a reusable `client-core` layer and the ratatui/crossterm presentation layer.
 
@@ -8,9 +17,9 @@ The goal is to make the current single-surface client easier to maintain, while 
 
 See also:
 
-- [`REFACTORING.md`](./REFACTORING.md)
+- [`REFACTORING.md`](../REFACTORING.md)
 - [`MULTI_SESSION_CLIENT_ARCHITECTURE.md`](./MULTI_SESSION_CLIENT_ARCHITECTURE.md)
-- [`SERVER_ARCHITECTURE.md`](./SERVER_ARCHITECTURE.md)
+- [`SERVER_ARCHITECTURE.md`](../SERVER_ARCHITECTURE.md)
 
 ## Executive Summary
 
@@ -19,7 +28,7 @@ Today the client stack is functionally split, but not structurally split:
 - `src/tui/app.rs` owns a very large `App` state object with session state, transport state, input state, transient UI state, and runtime handles mixed together.
 - `src/tui/app/*.rs` acts like a distributed reducer, but mutation is expressed as direct `impl App` methods instead of typed actions and reducer entrypoints.
 - `src/tui/ui.rs` and `src/tui/ui_*.rs` are already mostly presentation-only, but they still depend on a very wide `TuiState` trait and a few process-global render caches.
-- `src/tui/workspace_client.rs` is process-global mutable state, which is the clearest current blocker for a true client-core split and for multi-surface clients.
+- `src/tui/workspace_client.rs` **used to be** process-global mutable state and was the clearest blocker for a true client-core split. That is fixed: `WorkspaceClientState` is now an ordinary struct owned by `App` (`crates/jcode-tui/src/tui/app.rs:1628`, constructed in `app/tui_lifecycle.rs:740`). Phase 3 below is the part of this plan that landed.
 
 The safest plan is:
 
@@ -93,7 +102,7 @@ Primary root:
 - remote client/session state
   - remote provider hints, session ids, server metadata, reconnect/startup state, split launch state
 - workspace state
-  - currently not in `App`, but in global `workspace_client.rs`
+  - now an `App` field (`workspace_client: WorkspaceClientState`), no longer global
 - surface-local UI state
   - scroll offsets, copy selection, diagram pane focus/scroll, diff pane state, inline picker state, overlays, status notices
 - config and feature toggles
@@ -172,19 +181,25 @@ The main reducers are implicit:
 
 These should become named reducers over named state slices.
 
-### 3. Workspace state is process-global
+### 3. Workspace state is process-global — FIXED
 
-- `src/tui/workspace_client.rs`
-  - uses `static WORKSPACE_STATE: Mutex<Option<WorkspaceClientState>>`
+- `src/tui/workspace_client.rs` previously used
+  `static WORKSPACE_STATE: Mutex<Option<WorkspaceClientState>>`.
 
-This is incompatible with:
+That global is gone. `WorkspaceClientState` is a plain `#[derive(Default)]`
+struct (`workspace_client.rs:18-25`) held as an `App` field
+(`app.rs:1628`), initialized per instance in `app/tui_lifecycle.rs:740` and
+`:1173`. Callers go through `app.workspace_client.*`
+(e.g. `app/remote/workspace.rs:13-25`, `app/remote/server_events.rs:1759`),
+and tests reset per-instance state rather than a process global
+(`tui/tests/state_model_poke_01/part_01.rs:1179`).
+
+This removed the blocker for:
 
 - multiple client instances in one process
 - test isolation without global resets
 - future multi-surface clients
 - a clean client-core extraction
-
-This state must become instance-owned.
 
 ### 4. Render layer still relies on globals
 
@@ -626,7 +641,7 @@ The following should remain presentation-owned for the first split:
 
 - `src/tui/markdown*.rs`
 - `src/tui/mermaid*.rs`
-- `src/tui/image.rs`
+- `src/tui/ui_inline_image.rs`
 - `src/tui/visual_debug.rs`
 - render cache structs in `ui.rs`, `ui_messages_cache.rs`, `ui_file_diff.rs`, `ui_pinned.rs`
 
@@ -653,7 +668,7 @@ The following should remain presentation-owned for the first split:
 | `src/tui/app/remote/server_events.rs` | `src/client_core/reducer/server_event.rs` | Highest-value reducer split |
 | `src/tui/app/remote/queue_recovery.rs` | `src/client_core/reducer/queue_recovery.rs` | Already isolated |
 | `src/tui/app/remote/workspace.rs` | `src/client_core/reducer/workspace.rs` + runtime adapter | Split commands from transport calls |
-| `src/tui/workspace_client.rs` | `src/client_core/state/workspace.rs` | Must stop being global |
+| `src/tui/workspace_client.rs` | `src/client_core/state/workspace.rs` | **Done, partially:** already instance-owned on `App`; only the move into a `client_core` module is outstanding |
 | `src/tui/app/navigation.rs` | `src/client_core/reducer/navigation.rs` | Move non-ratatui navigation state |
 | `src/tui/app/copy_selection.rs` | `src/client_core/reducer/copy_selection.rs` | Surface interaction state |
 | `src/tui/app/inline_interactive.rs` | `src/client_core/reducer/inline_ui.rs` | State transitions, not drawing |
@@ -698,13 +713,13 @@ This keeps crossterm and ratatui out of core.
 
 ## Proposed Extraction Order
 
-## Phase 0: docs and naming
+## Phase 0: docs and naming — DONE (docs only)
 
 - Land this document.
 - Freeze naming for the future core slices.
 - Do not move code yet.
 
-## Phase 1: introduce state slices inside the current crate
+## Phase 1: introduce state slices inside the current crate — NOT STARTED
 
 Create empty or lightly-populated modules:
 
@@ -725,7 +740,7 @@ Safe rule:
 - move types first
 - keep method bodies where they are until state compiles cleanly
 
-## Phase 2: extract the easiest pure reducers
+## Phase 2: extract the easiest pure reducers — NOT STARTED
 
 First extractions should be the least coupled files:
 
@@ -741,22 +756,29 @@ Why first:
 - low terminal/runtime coupling
 - easy to cover with unit tests
 
-## Phase 3: move workspace state into the app instance
+## Phase 3: move workspace state into the app instance — LANDED
 
-This is the highest-leverage architectural fix.
+This was the highest-leverage architectural fix, and it is the only phase of
+this plan that shipped.
 
-Do this before large event-loop refactors:
+What was done:
 
-1. replace `workspace_client.rs` global static state with `WorkspaceState` inside app/core
-2. keep the same commands and behavior
-3. adjust `remote/workspace.rs` to operate on instance-owned state
+1. the `workspace_client.rs` global static was replaced with a
+   `WorkspaceClientState` field on `App` (`app.rs:1628`,
+   `app/tui_lifecycle.rs:740` and `:1173`)
+2. commands and behavior were unchanged
+3. `remote/workspace.rs` operates on the instance-owned state
+   (`app/remote/workspace.rs:13-25`)
 
-Why now:
+Still outstanding: the state lives on `App`, not in a `client_core` module,
+because no such module exists yet.
+
+Why it was done first:
 
 - removes the clearest multi-surface blocker
 - lowers future complexity for everything else
 
-## Phase 4: extract remote event reduction
+## Phase 4: extract remote event reduction — NOT STARTED
 
 Split `src/tui/app/remote/server_events.rs` into:
 
@@ -772,7 +794,7 @@ Split `src/tui/app/remote/server_events.rs` into:
 
 This is the single most important reducer extraction after workspace state.
 
-## Phase 5: extract normalized terminal intents
+## Phase 5: extract normalized terminal intents — NOT STARTED
 
 Do not put raw `crossterm::Event` into core.
 
@@ -788,7 +810,7 @@ Instead:
    - `NavigateWorkspace(Direction)`
 3. reduce those intents in core
 
-## Phase 6: narrow the renderer boundary
+## Phase 6: narrow the renderer boundary — NOT STARTED
 
 Replace the current wide `TuiState` dependency with either:
 
@@ -801,7 +823,7 @@ Recommended direction:
 
 This keeps expensive derived computations out of ad hoc trait methods.
 
-## Phase 7: move runtime adapters behind effects
+## Phase 7: move runtime adapters behind effects — NOT STARTED
 
 Once reducers return `ClientEffect`, update:
 
@@ -817,7 +839,7 @@ to become thin shells that:
 - run returned effects
 - schedule redraws
 
-## Phase 8: optional crate split
+## Phase 8: optional crate split — NOT STARTED
 
 Only after ratatui/crossterm have been removed from core APIs:
 
@@ -840,21 +862,23 @@ Recommended checks:
 
 ## Recommended First PR Sequence
 
-If this work starts immediately, the first sequence should be:
+Where this stands:
 
-1. docs only
+1. docs only — **done**
    - this plan
-2. type-only move
+2. type-only move — **not done**
    - introduce `client_core::state::workspace::WorkspaceState`
    - no behavior change yet
-3. safe behavioral move
-   - make workspace state instance-owned
-4. reducer move
+3. safe behavioral move — **done, without the `client_core` module**
+   - workspace state is instance-owned on `App` (see Phase 3)
+4. reducer move — **not done**
    - extract `state_ui_messages.rs`
-5. reducer move
+5. reducer move — **not done**
    - extract `remote/server_events.rs`
 
-That order minimizes risk while unlocking the most important future architecture work.
+Step 3 landed ahead of step 2, so the state is instance-owned but still lives
+in `tui/workspace_client.rs`. That order minimizes risk while unlocking the
+most important future architecture work.
 
 ## Non-Goals For The First Split
 

@@ -100,9 +100,7 @@ impl MultiProvider {
             LoginProviderTarget::Antigravity => Some("antigravity"),
             LoginProviderTarget::AutoImport
             | LoginProviderTarget::Jcode
-            | LoginProviderTarget::Azure
-            | LoginProviderTarget::GrokBuild
-            | LoginProviderTarget::Google => None,
+            | LoginProviderTarget::Azure => None,
         }
     }
 

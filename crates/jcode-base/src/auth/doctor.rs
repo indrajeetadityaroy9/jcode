@@ -290,13 +290,13 @@ mod tests {
         let validation = assessment.last_validation.as_mut().unwrap();
         validation.success = false;
         validation.provider_smoke_ok = Some(false);
-        validation.summary = "provider_smoke: API error (status 402 Payment Required): Grok Build usage balance exhausted".to_string();
+        validation.summary = "provider_smoke: API error (status 402 Payment Required): usage balance exhausted".to_string();
 
         let actions = recommended_actions(
             crate::provider_catalog::login_providers()
                 .iter()
                 .copied()
-                .find(|provider| provider.id == "grok-build")
+                .find(|provider| provider.id == "copilot")
                 .unwrap(),
             &assessment,
             None,

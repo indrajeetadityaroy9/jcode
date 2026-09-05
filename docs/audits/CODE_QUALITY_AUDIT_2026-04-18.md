@@ -1,3 +1,46 @@
+> **Staleness note (added 2026-09-05).** This is a **point-in-time snapshot**
+> taken on 2026-04-18. Every metric, count, and ranking below is preserved as
+> it was measured and has not been re-run; treat the numbers as history, not
+> as the current state of the repo.
+>
+> **All `src/**` paths predate the crate split.** The root `src/` now contains
+> only `main.rs`, `lib.rs`, `cli/`, and `bin/`; everything else moved under
+> `crates/jcode-{base,app-core,tui,...}/src/`. So, for example,
+> `src/tool/communicate.rs` is now
+> `crates/jcode-app-core/src/tool/communicate.rs`,
+> `src/server/comm_control.rs` is
+> `crates/jcode-app-core/src/server/comm_control.rs`, and
+> `src/provider/openai.rs` is `crates/jcode-base/src/provider/openai.rs`.
+> The repo-metrics section counts "`crates/` Rust files: 14" — that was the
+> pre-split handful of extracted crates, not today's 77-member workspace.
+> Of the 193 distinct `src/**.rs` paths cited below, only 11 still resolve:
+> `src/main.rs`, `src/bin/tui_bench.rs`, and nine files under `src/cli/`
+> (`args.rs`, `auth_test.rs`, `commands.rs`, `commands/restart.rs`,
+> `dispatch.rs`, `login.rs`, `provider_init.rs`, `provider_init_tests.rs`,
+> `tui_launch.rs`). Even for those, the cited line ranges are now past
+> end-of-file, so their function-size figures are historical too.
+>
+> **Rows for purged subsystems no longer apply.** These files are gone from
+> this fork entirely, so their LOC, `unwrap`, function-size, suppression, and
+> TODO entries are not actionable: `src/telemetry.rs` and its
+> `emit_lifecycle_event`; `src/tool/browser.rs`, `src/browser.rs`, and
+> `bridge_request` (browser automation); `src/tool/gmail.rs` and its
+> `execute`; every `src/tool/selfdev/**` and `src/cli/selfdev.rs` entry
+> (self-development, including `do_build`, `do_reload`, and
+> `selfdev_status_output`); and `docs/IOS_CLIENT.md` in the TODO table. The
+> `stream_response_websocket_persistent` row refers to the provider streaming
+> path, which survives as
+> `crates/jcode-provider-openai-runtime/src/openai_stream_runtime.rs:1014` —
+> the purged WebSocket work was the iOS gateway, not this function.
+> `docs/CODE_QUALITY_AUDIT_2026-04-18.md` in the TODO table is this file, now
+> at `docs/audits/`.
+>
+> **"Checked in CI" is not a thing here.** The `Current positives` clippy and
+> formatting claims were a local observation on 2026-04-18; this fork has no
+> `.github/` workflows. The equivalent gate today is
+> `scripts/check_guardrails.sh`, which runs `cargo fmt --all --check` (`:68`),
+> `cargo clippy -- -D warnings` (`:77`), and a warning budget (`:84`).
+
 # Code Quality Audit - 2026-04-18
 
 This report inventories the repo-wide code-quality issues detectable with static scanning and targeted structural heuristics. It is intended as a comprehensive backlog seed, not just a shortlist.

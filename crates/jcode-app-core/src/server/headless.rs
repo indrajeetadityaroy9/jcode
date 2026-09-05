@@ -308,7 +308,7 @@ pub(super) async fn create_headless_session(
 
 /// Whether a resolved provider model satisfies a requested model id.
 ///
-/// Routes legitimately canonicalize ids (dated aliases, `[1m]`/`[web]` suffixes,
+/// Routes legitimately canonicalize ids (dated aliases, `[1m]` suffixes,
 /// and vendor prefixes like `anthropic/`), so compare on a normalized form and
 /// allow either side to be a prefix of the other. This exists only to decide
 /// whether to log a mismatch, so it errs toward staying quiet.

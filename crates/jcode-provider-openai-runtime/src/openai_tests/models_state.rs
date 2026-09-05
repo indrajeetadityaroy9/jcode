@@ -62,12 +62,18 @@ fn test_openai_switching_models_include_dynamic_catalog_entries() {
 }
 
 #[test]
-fn test_chatgpt_web_model_bypasses_live_api_catalog() {
+fn test_openai_model_environment_override_is_trimmed() {
     let _guard = jcode_base::storage::lock_test_env();
-    jcode_base::auth::codex::set_active_account_override(Some("web-model-test".to_string()));
-    jcode_base::provider::populate_account_models(vec!["gpt-5.6-sol".to_string()]);
-    let _model = EnvVarGuard::set("JCODE_OPENAI_MODEL", CHATGPT_WEB_MODEL);
-
+    // Pick a live catalog entry other than the default: an untrimmed value is
+    // rejected as unknown and silently replaced by the default, so comparing
+    // against a non-default id is what actually proves the trim happened.
+    let known = jcode_base::provider::known_openai_model_ids();
+    let target = known
+        .iter()
+        .find(|model| model.as_str() != jcode_provider_core::DEFAULT_OPENAI_MODEL)
+        .expect("catalog has a non-default OpenAI model")
+        .clone();
+    let _model = EnvVarGuard::set("JCODE_OPENAI_MODEL", &format!("  {target}  "));
     let provider = OpenAIProvider::new(CodexCredentials {
         access_token: "test".to_string(),
         refresh_token: String::new(),
@@ -75,55 +81,7 @@ fn test_chatgpt_web_model_bypasses_live_api_catalog() {
         account_id: None,
         expires_at: None,
     });
-
-    assert_eq!(provider.model(), CHATGPT_WEB_MODEL);
-    assert_eq!(provider.transport().as_deref(), Some("browser"));
-    assert!(
-        provider
-            .available_models_for_switching()
-            .contains(&CHATGPT_WEB_MODEL.to_string())
-    );
-    provider.set_model("gpt-5.6-sol").unwrap();
-    provider.set_model(CHATGPT_WEB_MODEL).unwrap();
-    assert_eq!(provider.model(), CHATGPT_WEB_MODEL);
-
-    jcode_base::auth::codex::set_active_account_override(None);
-}
-
-#[test]
-fn test_chatgpt_browser_only_runtime_rejects_api_models_and_uses_local_compaction() {
-    let _guard = jcode_base::storage::lock_test_env();
-    let provider = OpenAIProvider::new_browser_only();
-
-    assert_eq!(provider.model(), CHATGPT_WEB_MODEL);
-    assert_eq!(provider.available_models(), vec![CHATGPT_WEB_MODEL]);
-    assert_eq!(
-        provider.available_models_for_switching(),
-        vec![CHATGPT_WEB_MODEL.to_string()]
-    );
-    assert!(provider.supports_compaction());
-    assert!(provider.uses_jcode_compaction());
-    assert_eq!(provider.available_transports(), vec!["browser"]);
-    provider.set_transport("browser").unwrap();
-    assert!(provider.set_transport("auto").is_err());
-    let err = provider
-        .set_model("gpt-5.6-sol")
-        .expect_err("browser-only runtime must not expose API models");
-    assert!(err.to_string().contains("OpenAI API credentials"));
-}
-
-#[test]
-fn test_chatgpt_web_model_environment_override_is_trimmed() {
-    let _guard = jcode_base::storage::lock_test_env();
-    let _model = EnvVarGuard::set("JCODE_OPENAI_MODEL", "  gpt-5.6-pro[web]  ");
-    let provider = OpenAIProvider::new(CodexCredentials {
-        access_token: "test".to_string(),
-        refresh_token: String::new(),
-        id_token: None,
-        account_id: None,
-        expires_at: None,
-    });
-    assert_eq!(provider.model(), CHATGPT_WEB_MODEL);
+    assert_eq!(provider.model(), target);
 }
 
 #[test]
@@ -282,8 +240,8 @@ async fn test_set_model_clears_persistent_ws_state() {
 async fn test_switching_to_https_clears_persistent_ws_state() {
     // Serialize with the tests that set JCODE_OPENAI_MODEL via EnvVarGuard:
     // provider construction reads that process-global env var, so an
-    // unsynchronized overlap can construct this provider pinned to the
-    // browser-only web model and fail the HTTPS transport switch below.
+    // unsynchronized overlap can construct this provider pinned to another
+    // test's model and fail the HTTPS transport switch below.
     let _guard = jcode_base::storage::lock_test_env();
     let provider = OpenAIProvider::new(CodexCredentials {
         access_token: "test".to_string(),

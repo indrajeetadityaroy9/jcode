@@ -4,14 +4,14 @@ This document defines the target structure for keeping `jcode` modular without t
 
 ## Goals
 
-Primary goal: make normal development and `--profile selfdev` builds faster by shrinking the root crate's recompilation surface. Structural cleanliness is valuable because it supports that compile-time goal.
+Primary goal: make normal development and `--profile selfdev` builds faster by shrinking the recompilation surface of the three spine crates (`jcode-base` -> `jcode-app-core` -> `jcode-tui`). Structural cleanliness is valuable because it supports that compile-time goal.
 
-- Move stable DTOs and protocol-safe state into small crates so changes in root behavior do not recompile those contracts, and changes in contracts recompile only focused dependents.
+- Move stable DTOs and protocol-safe state into small crates so changes in spine behavior do not recompile those contracts, and changes in contracts recompile only focused dependents.
 - Keep dependency-light crates dependency-light so they compile quickly and do not pull large runtime/TUI/provider graphs into unrelated builds.
-- Keep root-only behavior, storage, process, TUI, server, and provider runtime logic in the root crate until a full dependency boundary can move without increasing dependency fan-out.
-- Avoid cyclic dependencies and hidden coupling through broad `jcode-core` re-exports.
-- Preserve serde compatibility and root re-exports during migrations unless all call sites are intentionally updated.
-- Measure success by compile impact: fewer root edits, fewer root-owned DTOs, smaller dependency fan-out, and faster `cargo check --profile selfdev` after common changes.
+- Keep spine-crate behavior — storage, process, TUI, server, and provider runtime logic — where it is until a full dependency boundary can move without increasing dependency fan-out.
+- Avoid cyclic dependencies and hidden coupling through broad `jcode-core` re-exports, or through the whole-crate glob ladder (`crates/jcode-app-core/src/lib.rs:24`, `crates/jcode-tui/src/lib.rs:23`, `src/lib.rs:22`).
+- Preserve serde compatibility and compatibility re-exports during migrations unless all call sites are intentionally updated.
+- Measure success by compile impact: fewer spine edits, fewer spine-owned DTOs, smaller dependency fan-out, and faster `cargo check --profile selfdev` after common changes.
 
 ## Ownership rules
 
@@ -26,16 +26,23 @@ A `*-types` crate should contain:
 
 Examples: `jcode-session-types`, `jcode-side-panel-types`, `jcode-dev-types`, `jcode-background-types`.
 
-### Domain behavior modules own root runtime behavior
+### Spine-crate modules own runtime behavior
 
-Root modules should keep behavior when it needs:
+There is no root `src/` module layer any more: the root package holds only
+`main.rs`, `lib.rs`, `cli/`, and `bin/`. Runtime behavior lives in the three
+spine crates, and a module should stay there when it needs:
 
-- `crate::storage`, `crate::config`, `crate::logging`, `crate::server`, or process spawning.
+- `crate::storage`, `crate::config`, `crate::logging`, `crate::server`, or
+  process spawning. Those `crate::` paths still resolve anywhere in the spine
+  because each layer glob-re-exports the one below it.
 - Provider HTTP clients and auth managers.
-- Tokio runtime, background tasks, channels, global caches, file locks, or PID registries.
+- Tokio runtime, background tasks, channels, global caches, file locks, or PID
+  registries.
 - TUI rendering and crossterm/ratatui state.
 
-If a type has inherent methods that need these APIs, either leave the type in root or move behavior and dependencies together into a domain crate. Do not move only the struct if that forces illegal inherent impls in root.
+If a type has inherent methods that need these APIs, either leave the type in its
+spine crate or move behavior and dependencies together into a domain crate. Do
+not move only the struct if that forces illegal inherent impls behind it.
 
 ### `jcode-core` is for genuinely shared primitives
 
@@ -61,29 +68,35 @@ Prefer a split when it reduces root crate churn or dependency fan-out. Do not sp
 During migrations:
 
 1. Move the type to the target crate.
-2. Keep the old root path as `pub use ...` to preserve call sites.
+2. Keep the old path as `pub use ...` to preserve call sites
+   (`crates/jcode-base/src/protocol.rs:1` and
+   `crates/jcode-base/src/storage.rs:3` are the pattern).
 3. Validate focused tests and a full build.
-4. Later, remove obsolete root re-exports only after downstream crates can depend directly on the domain crate.
+4. Later, remove the obsolete re-export only after downstream crates can depend
+   directly on the domain crate. Note that whole-crate globs of the
+   `pub use jcode_base::*;` kind never reach step 4, which is why the wildcard
+   re-export budget (`scripts/wildcard_reexport_budget.json`) exists to stop new
+   ones appearing.
 
 ## Move checklist
 
 Use this checklist for every type or pure-helper migration. Copy it into the PR/commit notes when a move is non-trivial.
 
 1. Classify the candidate.
-   - [ ] Is it a stable data contract or pure helper rather than root runtime behavior?
+   - [ ] Is it a stable data contract or pure helper rather than spine runtime behavior?
    - [ ] Does it have inherent methods?
-   - [ ] Do those methods require root-only APIs such as storage, network clients, TUI state, process management, or globals?
+   - [ ] Do those methods require spine-only APIs such as storage, network clients, TUI state, process management, or globals?
    - [ ] If behavior must move too, can the full dependency boundary move without increasing fan-out?
 2. Check compatibility.
    - [ ] Does its serde representation stay identical?
    - [ ] Are defaults, skips, renames, and enum discriminants preserved?
    - [ ] Are all field visibilities still appropriate?
-   - [ ] Can root keep a compatibility re-export?
+   - [ ] Can the old crate keep a compatibility re-export?
 3. Check crate health.
    - [ ] Does the target crate already have the needed dependency policy?
    - [ ] Are new dependencies limited to type-crate-appropriate libraries, usually `serde`, `serde_json`, `chrono`, or sibling type crates?
    - [ ] Is the target crate still acyclic?
-   - [ ] Did `cargo metadata`/`cargo check` avoid pulling root, TUI, provider, storage, server, or process dependencies into the type crate?
+   - [ ] Did `cargo metadata`/`cargo check` avoid pulling spine, provider, storage, or process dependencies into the type crate?
 4. Validate.
    - [ ] Is there a focused test filter that covers the moved type?
    - [ ] Did `cargo check --profile selfdev -p <type-crate> -p jcode --bin jcode` pass?
@@ -99,7 +112,44 @@ Run this guard after adding or changing any type crate dependency:
 python3 scripts/check_dependency_boundaries.py
 ```
 
-The guard blocks direct dependencies from `jcode-*-types` crates to root/runtime-heavy internal crates such as `jcode`, `jcode-core`, provider crates, TUI crates, protocol/runtime crates, and desktop crates. Type crates may depend on external lightweight libraries and other type crates. If a new internal dependency is needed, first decide whether it should itself be a type crate.
+It is not optional: it runs as a gate from `scripts/check_guardrails.sh:89`, so a
+violation fails the guardrail sweep.
+
+What it actually blocks: a crate whose name matches `jcode-*-types`
+(`scripts/check_dependency_boundaries.py:61-62`) may not directly depend on any
+of the 18 crates in `FORBIDDEN_INTERNAL_DEPS` (`:28-47`):
+
+`jcode`, `jcode-agent-runtime`, `jcode-azure-auth`, `jcode-core`,
+`jcode-embedding`, `jcode-pdf`, `jcode-plan`, `jcode-protocol`,
+`jcode-provider-core`, `jcode-provider-gemini`, `jcode-provider-metadata`,
+`jcode-provider-openrouter`, `jcode-terminal-launch`, `jcode-tui-core`,
+`jcode-tui-markdown`, `jcode-tui-mermaid`, `jcode-tui-render`,
+`jcode-tui-workspace`.
+
+`jcode-message-types` is the only allowed internal dependency
+(`ALLOWED_INTERNAL_TYPE_DEPS`, `:21-23`); external lightweight libraries are
+unrestricted. `jcode-core` is on the forbidden list deliberately, so it cannot
+become the backdoor catch-all for DTO crates (`:25-27`).
+
+Two things the guard does **not** do, and you should not assume it does:
+
+- The forbidden list contains no spine crate. `jcode-base`, `jcode-app-core`, and
+  `jcode-tui` are absent, so a type crate that depends on one of them — the worst
+  possible direction — passes the gate. Treat that as a review rule, not a
+  checked one.
+- It says nothing about any pair of non-`-types` crates. Provider, TUI, and
+  runtime crates can depend on each other freely as far as tooling is concerned.
+
+The companion static report is **advisory**:
+
+```sh
+python3 scripts/compile_isolation_report.py
+```
+
+It prints LOC, inline-test, `async_trait`, and target-state dependency
+advisories, and exits non-zero only when `--strict-target-state` is passed
+(`scripts/compile_isolation_report.py:4-5`, `:174-178`, `:244-246`). It is not
+wired into `scripts/check_guardrails.sh`.
 
 ## Test policy
 
@@ -116,126 +166,128 @@ Document precise filters next to each domain crate/module. Broad filters are sti
 
 Focused validation matrix after the current DTO splits:
 
-| Area | Fast compile check | Focused root tests used during split | Notes |
+| Area | Fast compile check | Focused tests used during split | Notes |
 | --- | --- | --- | --- |
-| Usage DTOs | `cargo check --profile selfdev -p jcode-usage-types -p jcode --bin jcode` | Prefer exact tests under usage/copilot usage modules. Avoid bare `usage` as a required gate because it selects display/UI tests too. | DTO crate owns report and local counter contracts. Runtime fetch/cache/display stay root. |
-| Ambient DTOs | `cargo check --profile selfdev -p jcode-ambient-types -p jcode --bin jcode` | Scheduler/type consumers only. | Ambient DTO crate owns usage records only. Queue/runtime/prompt behavior stays root. |
-| Ambient behavior modules | `cargo check --profile selfdev -p jcode --bin jcode` | `cargo test --profile selfdev -p jcode ambient::ambient_tests --lib`; `cargo test --profile selfdev -p jcode ambient::scheduler::tests --lib`; `cargo test --profile selfdev -p jcode ambient::runner::runner_tests --lib` | Avoid bare `ambient` as a required gate for module-only refactors because it selects cross-module TUI/config state tests. |
-| Memory activity DTOs | `cargo check --profile selfdev -p jcode-memory-types -p jcode-core -p jcode --bin jcode` | `cargo test --profile selfdev -p jcode runtime_memory_log --lib`; `cargo test --profile selfdev -p jcode tui::info_widget::tests --lib` | `memory::activity` currently matches no tests, so use consumer tests. |
-| Goal/todo/catchup core DTOs | `cargo check --profile selfdev -p jcode-core -p jcode --bin jcode` | Exact goal/todo/catchup filters if behavior changes. | Currently small/stable enough to leave in `jcode-core`; revisit if churn grows. |
+| Usage DTOs | `cargo check --profile selfdev -p jcode-usage-types -p jcode --bin jcode` | Prefer exact tests under usage/copilot usage modules. Avoid bare `usage` as a required gate because it selects display/UI tests too. | DTO crate owns report and local counter contracts. Runtime fetch/cache/display live in `crates/jcode-base/src/usage/` and `crates/jcode-app-core/src/usage_display.rs`. |
+| Ambient DTOs | `cargo check --profile selfdev -p jcode-ambient-types -p jcode --bin jcode` | Scheduler/type consumers only. | Ambient DTO crate owns usage records only. Queue/runtime/prompt behavior lives in `crates/jcode-app-core/src/ambient/`. |
+| Ambient behavior modules | `cargo check --profile selfdev -p jcode-app-core` | `cargo test --profile selfdev -p jcode-app-core ambient::ambient_tests --lib`; `cargo test --profile selfdev -p jcode-app-core ambient::scheduler::tests --lib`; `cargo test --profile selfdev -p jcode-app-core ambient::runner::runner_tests --lib` | Those three test modules are at `crates/jcode-app-core/src/ambient.rs:196-197`, `ambient/scheduler.rs:284`, and `ambient/runner.rs:1041`. Avoid bare `ambient` as a required gate for module-only refactors because it selects cross-module TUI/config state tests. |
+| Memory activity DTOs | `cargo check --profile selfdev -p jcode-memory-types -p jcode --bin jcode` | `cargo test --profile selfdev -p jcode-base runtime_memory_log --lib`; `cargo test --profile selfdev -p jcode-tui tui::info_widget::tests --lib` | `memory::activity` matches no tests, so use consumer tests. The log tests are at `crates/jcode-base/src/runtime_memory_log.rs:823`; the widget tests at `crates/jcode-tui/src/tui/info_widget.rs:2110-2112`. |
+| Goal/todo/catchup DTOs | `cargo check --profile selfdev -p jcode-base -p jcode-app-core` | Exact goal/todo/catchup filters if behavior changes. | These never got their own crates. The DTOs are inline in `crates/jcode-base/src/goal.rs`, `crates/jcode-base/src/todo.rs`, and `crates/jcode-app-core/src/catchup.rs`. |
 
 
 ## Compile baseline observations
 
-Measured on 2026-04-30 with `scripts/dev_cargo.sh check --profile selfdev -p jcode --bin jcode` after the compile-speed boundary doc commit. This is a coarse mtime-touch benchmark, not a full statistical study, but it is enough to guide priorities.
+Measured on 2026-04-30 with `scripts/dev_cargo.sh check --profile selfdev -p jcode --bin jcode`, **before** the root crate was split into the `jcode-base`/`jcode-app-core`/`jcode-tui` spine. The paths named in the table no longer exist (`src/usage.rs` is now `crates/jcode-base/src/usage.rs`, and `crates/jcode-core/src/usage_types.rs` was moved out to `jcode-usage-types`), so treat this as a historical datapoint. The *conclusion* still holds and is the reason `jcode-core` stayed a utility crate. This is a coarse mtime-touch benchmark, not a full statistical study.
 
 | Scenario | Observed time | Interpretation |
 | --- | ---: | --- |
 | No-op check after recent doc-only commit | ~65.8s | Environment/cache state can dominate a first check. Treat as warmup/noise baseline, not pure no-op steady state. |
-| Touch root behavior module `src/usage.rs` | ~6.25s | A root-only behavior edit can be relatively cheap when dependencies are already built. |
-| Touch `crates/jcode-core/src/usage_types.rs` | ~65.35s | Editing `jcode-core` invalidates broad downstream dependents. Avoid adding high-churn domain DTOs to `jcode-core`. |
+| Touch behavior module `src/usage.rs` (now `crates/jcode-base/src/usage.rs`) | ~6.25s | A behavior-only edit can be relatively cheap when dependencies are already built. |
+| Touch `crates/jcode-core/src/usage_types.rs` (since moved to `jcode-usage-types`) | ~65.35s | Editing `jcode-core` invalidates broad downstream dependents. Avoid adding high-churn domain DTOs to `jcode-core`. |
 
-Implication: the compile-speed target is not simply "move things out of root". Moving stable, low-churn contracts out of root is good, but putting many high-churn domain DTOs into `jcode-core` can be counterproductive because `jcode-core` has high fan-out. Prefer focused leaf crates such as `jcode-usage-types` and `jcode-ambient-types` for domain DTOs that are likely to change.
+Implication: the compile-speed target is not simply "move things out of the spine". Moving stable, low-churn contracts down is good, but putting many high-churn domain DTOs into `jcode-core` can be counterproductive because `jcode-core` has high fan-out. Prefer focused leaf crates such as `jcode-usage-types` and `jcode-ambient-types` for domain DTOs that are likely to change.
 
 ## `jcode-core` fan-out audit
 
-At this checkpoint, the root crate is the only direct Cargo dependency on `jcode-core`, but root re-exports many `jcode-core` modules and root is the high-cost recompilation target. A touch to `jcode-core` invalidated broad downstream checks in the baseline above. Therefore `jcode-core` should be treated as a high-fan-out crate even if Cargo.toml direct dependents are currently few.
+`jcode-core` now has 10 direct Cargo dependents: `jcode-app-core`, `jcode-base`,
+`jcode-build-support`, `jcode-logging`, `jcode-provider-env`,
+`jcode-provider-openai`, `jcode-provider-openrouter`, `jcode-setup-hints`,
+`jcode-storage`, and `jcode-tui`. Two of those are spine crates, and
+`jcode-storage`/`jcode-logging` are themselves depended on broadly, so a touch to
+`jcode-core` still invalidates most of the workspace. Treat it as a high-fan-out
+crate.
 
-Observed root re-export/use paths:
+It is also on the boundary guard's forbidden list for type crates
+(`scripts/check_dependency_boundaries.py:32`), specifically so it cannot become
+the DTO backdoor.
 
-- `src/catchup.rs` -> `catchup_types`
-- `src/goal.rs` -> `goal_types`
-- `src/todo.rs` -> `todo_types`
-- `src/env.rs`, `src/id.rs`, `src/stdin_detect.rs`, `src/util.rs`, and panic UI helpers -> general utilities
+The DTO-staging modules this audit was written about are gone: `jcode-core` now
+contains only general utilities.
+
+| Module | Contents | Status |
+| --- | --- | --- |
+| `console` | Terminal/console output helpers | stay in core |
+| `env` | Environment variable helpers | stay in core |
+| `fs` | Filesystem helpers | stay in core |
+| `id` | ID helpers | stay in core |
+| `output_style` | Output-style primitives | stay in core |
+| `panic_util` | Panic formatting helpers | stay in core |
+| `stdin_detect` | stdin detection helpers | stay in core |
+| `util` | Misc utilities | audit later; should not become a catch-all |
+
+Domain DTOs that used to be staged here have all left: `ambient_usage_types` ->
+`jcode-ambient-types`; `copilot_usage_types` and `usage_types` ->
+`jcode-usage-types`; `memory_types` -> `jcode-memory-types` (re-exported at
+`crates/jcode-base/src/memory_types.rs`). `catchup_types`, `goal_types`, and
+`todo_types` were never split into crates — their DTOs are inline in
+`crates/jcode-app-core/src/catchup.rs`, `crates/jcode-base/src/goal.rs`, and
+`crates/jcode-base/src/todo.rs`.
 
 Compile-speed priority from this audit:
 
-1. Move clustered, likely-changing domain DTOs from `jcode-core` to focused leaf crates.
+1. Keep clustered, likely-changing domain DTOs out of `jcode-core`.
 2. Keep stable general utilities in `jcode-core`.
-3. Avoid adding new domain DTOs to `jcode-core` unless they are very stable or temporary staging.
-
-| Module | Current contents | Preferred long-term home | Notes |
-| --- | --- | --- | --- |
-| `ambient_usage_types` | Ambient scheduler usage records/rate limit DTOs | moved to `jcode-ambient-types` | Compatibility re-export remains in root module. |
-| `catchup_types` | Catch-up persisted state and rendered brief DTOs | `jcode-catchup-types` or stay in core | Small and low churn. Split only if catch-up grows. |
-| `copilot_usage_types` | Local Copilot usage counters | moved to `jcode-usage-types` | Compatibility re-export remains in root module. |
-| `goal_types` | Goal state, milestones, status, updates | `jcode-goal-types` or `jcode-task-types` | Larger domain. Worth splitting if goal/tool work grows. |
-| `memory_types` | Memory activity DTOs | moved to `jcode-memory-types` | Memory has enough domain weight for its own type crate. |
-| `todo_types` | Todo item DTO | `jcode-task-types`, `jcode-todo-types`, or core | Tiny. Could join goal/catchup task-state crate. |
-| `usage_types` | Provider usage report DTOs | moved to `jcode-usage-types` | Runtime fetch/cache/display remain root. |
-| `env` | Environment variable helpers | stay in core | General utility, no domain crate needed. |
-| `id` | ID helpers | stay in core | General utility. |
-| `panic_util` | Panic formatting helpers | stay in core | General runtime utility. |
-| `stdin_detect` | stdin detection helpers | stay in core | General platform/runtime utility. |
-| `util` | Misc utilities | audit later | Should not become a catch-all. |
+3. Do not add new domain DTOs to `jcode-core`; the guard will not stop you, but a
+   focused leaf crate is the right home.
 
 ## Target domain type crates
 
-Completed/high-value domain type splits:
+Landed domain type splits:
 
-1. `jcode-usage-types`
-   - `usage_types`
-   - `copilot_usage_types`
-   - pure account usage DTOs if/when separated from root formatting/runtime helpers
+1. `jcode-usage-types` — provider usage report DTOs and local Copilot counters
+2. `jcode-ambient-types` — ambient scheduler usage records and rate-limit DTOs
+3. `jcode-memory-types` — memory activity DTOs plus the memory graph
 
-2. `jcode-ambient-types`
-   - `ambient_usage_types`
-   - ambient state/request/result DTOs, but only after root-only `AmbientState::load/save/record_cycle` methods are separated into root free functions or a persistence layer
+Not built, and no longer proposed: a task-state crate for goal/todo/catchup
+DTOs. Those DTOs still live inline next to their behavior
+(`crates/jcode-base/src/goal.rs`, `crates/jcode-base/src/todo.rs`,
+`crates/jcode-app-core/src/catchup.rs`), which is fine while they stay small; the
+existing `jcode-task-types` crate is the natural home if they ever need one.
 
-3. `jcode-memory-types`
-   - `memory_types`
-   - any memory protocol/activity DTOs used across server/TUI/tools
-
-5. Optional task-state crate
-   - `goal_types`
-   - `todo_types`
-   - `catchup_types` if the product model wants these grouped
+Ambient state/request/result DTOs still have not moved, for the original reason:
+`AmbientState::load/save/record_cycle` behavior would have to separate from the
+struct first (see `crates/jcode-app-core/src/ambient/persistence.rs`).
 
 ## Big module refactor targets
 
 These are not simple DTO moves. Refactor behavior boundaries first.
 
-### `src/session.rs`
+### `crates/jcode-base/src/session.rs` (1601 lines)
 
-Target split:
+Target split — partly landed. Already extracted into
+`crates/jcode-base/src/session/`: `model.rs`, `persistence.rs`, `journal.rs`,
+`memory_profile.rs`, `storage_paths.rs`, `maintenance.rs`, `load_telemetry.rs`,
+plus the pre-existing `render.rs` and `crash.rs`.
 
-- metadata/session model
-- persistence and journal replay
+Still in the parent file and worth continuing:
+
+- remaining metadata/session-model surface
 - startup stubs and remote startup snapshots
-- memory profiling/cache attribution
-- rendering lives in existing `session/render.rs`
-- crash recovery lives in existing `session/crash.rs`
 
-### `src/ambient.rs`
+### `crates/jcode-app-core/src/ambient.rs` (197 lines)
 
-Target split:
+Target split — **landed.** `crates/jcode-app-core/src/ambient/` now holds
+`persistence.rs`, `directives.rs`, `scheduler.rs`, `prompt.rs`, `manager.rs`,
+`runner.rs`, and `paths.rs`, with `ambient_runner.rs`/`ambient_scheduler.rs` as
+re-export modules.
 
-- visible cycle context I/O
-- state persistence
-- directive persistence
-- schedule queue and locking
-- prompt building
-- manager/runtime orchestration
+Do not move `AmbientState` as a DTO until load/save/record behavior is separated
+from the struct.
 
-Do not move `AmbientState` as a DTO until load/save/record behavior is separated from the struct.
+### `crates/jcode-base/src/usage.rs` (658 lines)
 
-### `src/usage.rs`
-
-Target split:
-
-- API fetch providers
-- provider response parsing
-- local caches/sync
-- display formatting
-- account selection/guidance
-- public report DTOs in `jcode-usage-types`
+Target split — **landed.** `crates/jcode-base/src/usage/` holds
+`provider_fetch.rs`, `openai_helpers.rs`, `cache.rs`, `display.rs`, `model.rs`,
+`api_keys.rs`, and `accessors.rs`; the public report DTOs live in
+`jcode-usage-types`. Account selection/guidance and the higher-level display
+surface live in `crates/jcode-app-core/src/usage_display.rs`.
 
 ## Definition of “optimal enough”
 
 The structure is good enough when:
 
 - Each type crate has a clear domain and minimal dependency set.
-- `jcode-core` contains only true primitives or documented temporary staging modules.
-- Root modules no longer mix large DTO blocks, persistence, runtime orchestration, and rendering in one file.
+- `jcode-core` contains only true primitives — as of this revision it does.
+- Spine-crate modules no longer mix large DTO blocks, persistence, runtime orchestration, and rendering in one file.
 - Every domain has focused validation commands.
 - A full build works cleanly after every structural change.

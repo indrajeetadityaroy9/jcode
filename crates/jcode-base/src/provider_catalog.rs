@@ -417,7 +417,6 @@ pub fn openai_compatible_profile_static_models(profile: OpenAiCompatibleProfile)
             push("zai-glm-5-1");
             push("claude-haiku-4-5");
             push("claude-sonnet-4-6");
-            push("grok-code-fast-1");
             push("gemini-2.5-flash");
         }
         "huggingface" => {

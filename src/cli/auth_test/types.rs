@@ -17,7 +17,6 @@ pub(crate) enum AuthTestTarget {
     Openai,
     Gemini,
     Antigravity,
-    Google,
     Copilot,
     Cursor,
 }
@@ -29,7 +28,6 @@ impl AuthTestTarget {
             Self::Openai => super::provider_init::ProviderChoice::Openai,
             Self::Gemini => super::provider_init::ProviderChoice::Gemini,
             Self::Antigravity => super::provider_init::ProviderChoice::Antigravity,
-            Self::Google => super::provider_init::ProviderChoice::Google,
             Self::Copilot => super::provider_init::ProviderChoice::Copilot,
             Self::Cursor => super::provider_init::ProviderChoice::Cursor,
         }
@@ -41,14 +39,9 @@ impl AuthTestTarget {
             Self::Openai => "openai",
             Self::Gemini => "gemini",
             Self::Antigravity => "antigravity",
-            Self::Google => "google",
             Self::Copilot => "copilot",
             Self::Cursor => "cursor",
         }
-    }
-
-    fn supports_smoke(self) -> bool {
-        !matches!(self, Self::Google)
     }
 
     #[allow(deprecated)]
@@ -59,7 +52,6 @@ impl AuthTestTarget {
             super::provider_init::ProviderChoice::Openai => Some(Self::Openai),
             super::provider_init::ProviderChoice::Gemini => Some(Self::Gemini),
             super::provider_init::ProviderChoice::Antigravity => Some(Self::Antigravity),
-            super::provider_init::ProviderChoice::Google => Some(Self::Google),
             super::provider_init::ProviderChoice::Copilot => Some(Self::Copilot),
             super::provider_init::ProviderChoice::Cursor => Some(Self::Cursor),
             _ => None,
@@ -117,12 +109,6 @@ impl AuthTestTarget {
                 crate::storage::user_home_path(".pi/agent/auth.json")?
                     .display()
                     .to_string(),
-            ]),
-            Self::Google => Ok(vec![
-                crate::auth::google::credentials_path()?
-                    .display()
-                    .to_string(),
-                crate::auth::google::tokens_path()?.display().to_string(),
             ]),
             Self::Copilot => Ok(vec![
                 crate::storage::user_home_path(".copilot/config.json")?
@@ -270,10 +256,6 @@ impl AuthTestSmokeKind {
             Self::Provider => "Skipped by --no-smoke.",
             Self::Tool => "Skipped by --no-tool-smoke.",
         }
-    }
-
-    fn unsupported_detail(self) -> &'static str {
-        "Skipped: provider is auth/tool-only and has no model runtime smoke step."
     }
 
     fn success_detail(self) -> &'static str {

@@ -154,7 +154,7 @@ pub struct AmbientCycleResult {
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
     pub status: CycleStatus,
-    /// Full conversation transcript (markdown) for email notifications
+    /// Full conversation transcript (markdown) for detailed notifications
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub conversation: Option<String>,
 }

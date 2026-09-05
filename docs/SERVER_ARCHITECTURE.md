@@ -2,9 +2,9 @@
 
 See also:
 
-- [`SERVER_SERVICE_SPLIT_PLAN.md`](./SERVER_SERVICE_SPLIT_PLAN.md)
+- [`plans/SERVER_SERVICE_SPLIT_PLAN.md`](./plans/SERVER_SERVICE_SPLIT_PLAN.md)
 - [`SWARM_ARCHITECTURE.md`](./SWARM_ARCHITECTURE.md)
-- [`MULTI_SESSION_CLIENT_ARCHITECTURE.md`](./MULTI_SESSION_CLIENT_ARCHITECTURE.md)
+- [`plans/MULTI_SESSION_CLIENT_ARCHITECTURE.md`](./plans/MULTI_SESSION_CLIENT_ARCHITECTURE.md)
 
 ## Overview
 
@@ -17,8 +17,8 @@ can reconnect transparently after disconnects or server reloads.
 │                              SERVER (🔥 blazing)                              │
 │                                                                             │
 │  jcode serve                                                                │
-│  ├── Unix socket:  /run/user/$UID/jcode.sock                                │
-│  ├── Debug socket: /run/user/$UID/jcode-debug.sock                          │
+│  ├── Unix socket:  $TMPDIR/jcode.sock  (macOS default)                      │
+│  ├── Debug socket: $TMPDIR/jcode-debug.sock                                 │
 │  ├── Registry:     ~/.jcode/servers.json                                    │
 │  ├── Provider (Claude/OpenAI/OpenRouter)                                    │
 │  ├── MCP pool (shared across sessions)                                      │
@@ -129,11 +129,50 @@ reload, network issue, etc.):
 
 ## Socket Paths
 
+Both sockets live side by side in the *runtime directory*. This is a macOS-only
+fork, so in practice that is the per-user `$TMPDIR` (something like
+`/var/folders/xx/…/T/`):
+
 ```
-/run/user/$UID/
-├── jcode.sock          # Main communication socket
-└── jcode-debug.sock    # Debug/testing socket
+$TMPDIR/
+├── jcode.sock          # Main client/server socket
+├── jcode-debug.sock    # Debug/introspection listener
+└── jcode-daemon.lock   # Exclusive flock held for the daemon's lifetime
 ```
+
+The runtime directory is resolved in this order
+(`crates/jcode-storage/src/lib.rs:97-118`):
+
+1. `JCODE_RUNTIME_DIR`, if set.
+2. `XDG_RUNTIME_DIR`, if set. Nothing on macOS sets this by default, but a
+   wrapper or service manager may.
+3. `TMPDIR` — the normal macOS case.
+4. Fallback: `<system temp dir>/jcode-<euid>`, created `0700`.
+
+The socket paths themselves are then
+(`crates/jcode-app-core/src/server/socket.rs:7-24`):
+
+- **Main socket**: `JCODE_SOCKET` verbatim if set, else
+  `<runtime dir>/jcode.sock`.
+- **Debug socket**: always derived from the main socket path by replacing the
+  trailing `.sock` with `-debug.sock`. Overriding `JCODE_SOCKET` therefore moves
+  both sockets together, and `--socket <path>` (which exports `JCODE_SOCKET`)
+  behaves the same way.
+
+The daemon lock lives at `<runtime dir>/jcode-daemon.lock`
+(`socket.rs:160-162`) and is what makes stale-socket reaping safe: a socket with
+no live listener whose lock can be acquired is provably orphaned.
+
+### Debug socket listener
+
+The debug socket is a second accept loop in the server process
+(`crates/jcode-app-core/src/server.rs:2238`, `2298`), routed by
+`server/debug.rs::handle_debug_client`. It exists for testing and
+introspection: snapshots of server/swarm state, session admin, debug jobs.
+
+This is a *server-side listener*, not an agent tool. The old `debug_socket`
+agent tool was removed in this fork; nothing in `crates/jcode-app-core/src/tool`
+references it. Only out-of-band tooling talks to the debug socket.
 
 ## Key Behaviors
 

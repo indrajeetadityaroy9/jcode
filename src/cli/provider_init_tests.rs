@@ -44,8 +44,6 @@ fn test_provider_choice_arg_values() {
     assert_eq!(ProviderChoice::Deepinfra.as_arg_value(), "deepinfra");
     assert_eq!(ProviderChoice::Fireworks.as_arg_value(), "fireworks");
     assert_eq!(ProviderChoice::Minimax.as_arg_value(), "minimax");
-    assert_eq!(ProviderChoice::Xai.as_arg_value(), "xai");
-    assert_eq!(ProviderChoice::GrokBuild.as_arg_value(), "grok-build");
     assert_eq!(ProviderChoice::XiaomiMimo.as_arg_value(), "xiaomi-mimo");
     assert_eq!(ProviderChoice::MetaMuse.as_arg_value(), "meta-muse");
     assert_eq!(ProviderChoice::Celeris.as_arg_value(), "celeris");
@@ -65,7 +63,6 @@ fn test_provider_choice_arg_values() {
     assert_eq!(ProviderChoice::Copilot.as_arg_value(), "copilot");
     assert_eq!(ProviderChoice::Gemini.as_arg_value(), "gemini");
     assert_eq!(ProviderChoice::Antigravity.as_arg_value(), "antigravity");
-    assert_eq!(ProviderChoice::Google.as_arg_value(), "google");
     assert_eq!(ProviderChoice::Auto.as_arg_value(), "auto");
 }
 

@@ -728,13 +728,6 @@ pub const ENDORSED_SKILLS: &[EndorsedSkill] = &[
         source: "bundled with jcode / Claude Code skills",
         install: None,
     },
-    EndorsedSkill {
-        name: "firefox-browser",
-        description: "Control the user's Firefox browser with their logins and cookies intact to browse, fill forms, click, screenshot, and read authenticated pages.",
-        category: "jcode",
-        source: "bundled with jcode / Claude Code skills",
-        install: None,
-    },
     // Anthropic official skills (github.com/anthropics/skills, Apache-2.0).
     EndorsedSkill {
         name: "frontend-design",
@@ -1075,20 +1068,20 @@ mod tests {
     #[test]
     fn skill_as_memory_entry_formats_invocation_and_prompt() {
         let skill = test_skill(
-            "firefox-browser",
-            "Control Firefox browser sessions and logged-in pages",
-            "Use this skill when you need to open websites, click buttons, or interact with browser pages.",
+            "code-review",
+            "Review a diff for correctness and risk",
+            "Use this skill when you need a structured review of staged or proposed changes.",
         );
 
         let entry = skill.as_memory_entry();
 
-        assert_eq!(entry.id, "skill:firefox-browser");
+        assert_eq!(entry.id, "skill:code-review");
         assert!(matches!(
             entry.category,
             crate::memory::MemoryCategory::Custom(ref name) if name == "Skills"
         ));
-        assert!(entry.content.contains("/firefox-browser"));
-        assert!(entry.content.contains("# Skill: firefox-browser"));
+        assert!(entry.content.contains("/code-review"));
+        assert!(entry.content.contains("# Skill: code-review"));
         assert_eq!(entry.source.as_deref(), Some("skill_registry"));
     }
 

@@ -78,10 +78,6 @@ fn matrix_login_provider_aliases_resolve_to_canonical_ids() {
         resolve_login_provider("bailian").map(|provider| provider.id),
         Some("alibaba-coding-plan")
     );
-    assert_eq!(
-        resolve_login_provider("gmail").map(|provider| provider.id),
-        Some("google")
-    );
 }
 
 #[test]
@@ -392,7 +388,6 @@ fn matrix_tui_login_selection_supports_numbers_and_names() {
         resolve_login_selection("cgc", &providers).map(|provider| provider.id),
         Some("comtegra")
     );
-    assert!(resolve_login_selection("google", &providers).is_none());
 }
 
 #[test]

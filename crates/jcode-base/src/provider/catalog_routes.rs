@@ -2,10 +2,9 @@ use crate::auth::{AuthState, AuthStatus};
 
 use super::pricing::cheapness_for_route;
 use super::{
-    ALL_OPENAI_MODELS, AccountModelAvailabilityState, CHATGPT_WEB_MODEL, GROK_BUILD_PROFILE_ID,
-    ModelRoute, MultiProvider, ProviderRegistry, anthropic_api_key_route_availability,
-    anthropic_oauth_route_availability, build_anthropic_oauth_route,
-    build_chatgpt_web_route, build_copilot_route, build_openai_api_key_route,
+    ALL_OPENAI_MODELS, AccountModelAvailabilityState, ModelRoute, MultiProvider,
+    anthropic_api_key_route_availability, anthropic_oauth_route_availability,
+    build_anthropic_oauth_route, build_copilot_route, build_openai_api_key_route,
     build_openai_oauth_route, build_openrouter_auto_route, build_openrouter_endpoint_route,
     build_openrouter_fallback_provider_route, configured_standard_openrouter_profile_routes,
     copilot, dedupe_model_routes, direct_openai_compatible_profile_routes,
@@ -29,10 +28,6 @@ pub fn simplified_model_routes_for_picker(
     let mut routes = Vec::new();
 
     for model in display_models {
-        if model == CHATGPT_WEB_MODEL {
-            routes.push(build_chatgpt_web_route());
-            continue;
-        }
         if !model.contains('/') && provider_for_model(&model) == Some("openai") {
             // Platform-API-only GPT Pro models: never advertise an OAuth route.
             if jcode_provider_core::is_openai_api_only_pro_model(&model) {
@@ -290,18 +285,6 @@ pub(super) fn multiprovider_model_routes(provider: &MultiProvider) -> Vec<ModelR
         total_ms,
     );
 
-    if let Some(grok) = ProviderRegistry::new(provider).compatible_profile(GROK_BUILD_PROFILE_ID) {
-        for mut route in grok.model_routes() {
-            route.model = format!("grok-build:{}", route.model);
-            route.provider = "Grok Build".to_string();
-            route.api_method = "grok-build-acp".to_string();
-            if !routes.iter().any(|existing| {
-                existing.model == route.model && existing.api_method == route.api_method
-            }) {
-                routes.push(route);
-            }
-        }
-    }
     routes
 }
 
@@ -371,10 +354,6 @@ fn append_openai_routes(
     };
 
     for model in openai_models {
-        if model == CHATGPT_WEB_MODEL {
-            routes.push(build_chatgpt_web_route());
-            continue;
-        }
         let availability = model_availability_for_account(&model);
         let (available, detail) = if provider.openai_provider().is_none() {
             (false, "no credentials".to_string())

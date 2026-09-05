@@ -158,7 +158,7 @@ the grant persists across updates (otherwise each new binary path re-prompts).
 
 ### Single tool, progressive disclosure
 
-One `computer` tool, `action`-dispatched (like `browser`). To keep always-on
+One `computer` tool, `action`-dispatched. To keep always-on
 context flat regardless of how many tiers exist, the schema uses **progressive
 disclosure**:
 

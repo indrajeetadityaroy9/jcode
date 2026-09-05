@@ -548,10 +548,6 @@ Additional scriptable cases:
 # Copilot device flow: print URL + user code, then complete later
 jcode login --provider copilot --print-auth-url --json
 jcode login --provider copilot --complete
-
-# Gmail/Google OAuth after credentials are already configured
-jcode login --provider google --print-auth-url --google-access-tier readonly
-jcode login --provider google --callback-url 'http://127.0.0.1:8456?...'
 ```
 
 Pending scriptable login state is stored under `~/.jcode/pending-login/`, automatically expires, and stale entries are cleaned up when new scriptable logins start or resume.
@@ -566,7 +562,7 @@ The above image is the first page of provider logins
 
 - **Native / first-party style providers:** `claude`, `openai`, `copilot`, `gemini`, `azure`, `alibaba-coding-plan`
 - **Aggregator / compatibility providers:** `openrouter`, `openai-compatible`
-- **Additional provider integrations:** `opencode`, `opencode-go`, `zai` / `kimi`, `302ai`, `baseten`, `cortecs`, `deepseek`, `firmware`, `huggingface`, `moonshotai`, `nebius`, `scaleway`, `stackit`, `groq`, `mistral`, `perplexity`, `togetherai`, `deepinfra`, `fireworks`, `minimax`, `xai`, `lmstudio`, `ollama`, `chutes`, `cerebras`, `cursor`, `antigravity`, `google`
+- **Additional provider integrations:** `opencode`, `opencode-go`, `zai` / `kimi`, `302ai`, `baseten`, `cortecs`, `deepseek`, `firmware`, `huggingface`, `moonshotai`, `nebius`, `scaleway`, `stackit`, `groq`, `mistral`, `perplexity`, `togetherai`, `deepinfra`, `fireworks`, `minimax`, `lmstudio`, `ollama`, `chutes`, `cerebras`, `cursor`, `antigravity`, `google`
 
 Jcode also supports easy multi-account switching. Ran out of tokens on your first ChatGPT Pro subscription? /account and quickly switch to your second. 
 
@@ -577,8 +573,6 @@ Jcode also supports easy multi-account switching. Ran out of tokens on your firs
 The devil is in the details. There are many undocumented optimizations and niceties that jcode implements. Some examples: 
 
 Anthropic's Claude cache goes cold after 5 minutes. If you initiate Claude after these 5 minutes, you have a cache miss, potentially costing you lots of tokens. The ui warns you when the cache went cold, and notfies you if there was an unexpected cache miss. 
-
-jcode comes with instructions on how to set up Firefox Agent Bridge. Ask you agent to set it up, and then you will have browser automation in jcode as well. 
 
 Agent grep is a grep tool I made for the jcode agent. It adds file strucuture information (ie the list of functions, their displacement, etc) to the grep return, so that the agent can infer more of what the file doesn without actually reading the file. It also implements a harness-level integration that adaptively truncates returns based on what the agent has already seen. This saves on context a lot. 
 
@@ -631,51 +625,9 @@ and hotkey-friendly dictation without requiring a bundled speech-to-text stack.
 
 ---
 
-## Browser Automation
-
-jcode includes a first-class built-in `browser` tool for browser control inside agent sessions.
-
-Current built-in backend:
-- Firefox via Firefox Agent Bridge
-
-Current built-in tool actions include:
-- `status`
-- `setup`
-- `open`
-- `snapshot`
-- `get_content`
-- `interactables`
-- `click`
-- `type`
-- `fill_form`
-- `select`
-- `wait`
-- `screenshot`
-- `eval`
-- `scroll`
-- `upload`
-- `press`
-
-Quick setup:
-
-```bash
-jcode browser status
-jcode browser setup
-```
-
-Once setup is complete, the model can use the built-in `browser` tool directly. The UI also summarizes browser tool calls compactly, for example opening a URL, clicking a selector, or typing into a field without echoing sensitive typed text.
-
-Notes:
-- the provider/tool architecture is in place for additional backends
-- Firefox is the wired built-in backend today
-- Chrome bridge / remote debugging style providers can be added on top of the same browser tool later
-
----
-
 ## Further Reading
 
 - [Ambient Mode / OpenClaw](docs/AMBIENT_MODE.md)
-- [Browser Provider Protocol](docs/BROWSER_PROVIDER_PROTOCOL.md)
 - [Memory Architecture](docs/MEMORY_ARCHITECTURE.md)
 - [Swarm Architecture](docs/SWARM_ARCHITECTURE.md)
 - [Server Architecture](docs/SERVER_ARCHITECTURE.md)
@@ -733,8 +685,7 @@ Set up jcode on this machine for me.
    - OpenRouter: help me set `OPENROUTER_API_KEY`
    - Anthropic direct API: help me set `ANTHROPIC_API_KEY`
 7. After setup, run a simple smoke test with `jcode run "say hello"` and confirm it works.
-8. If I want browser automation, also check `jcode browser status`. If browser automation is not ready, run `jcode browser setup`, verify the built-in `browser` tool works, and explain any remaining manual step.
-9. Explain any manual step that still needs me, especially browser OAuth, device login, API key entry, or browser extension approval.
+8. Explain any manual step that still needs me, especially browser OAuth, device login, or API key entry.
 ```
 
 This is intended to be a copy-paste bootstrap prompt for jcode itself or any other coding agent.

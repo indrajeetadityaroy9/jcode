@@ -15,7 +15,6 @@ pub(super) fn auto_scriptable_flow_reason(
             | LoginProviderTarget::OpenAi
             | LoginProviderTarget::Gemini
             | LoginProviderTarget::Antigravity
-            | LoginProviderTarget::Google
             | LoginProviderTarget::Copilot
     );
     if !supports_scriptable {
@@ -47,42 +46,6 @@ pub(super) async fn run_scriptable_login_provider(
         );
     }
     complete_scriptable_login(provider, account_label, options, input).await
-}
-
-/// Run the normal Google OAuth flow when the caller is noninteractive but a
-/// browser is available. The scriptable flow is normally used in that
-/// environment to avoid prompts, but Google needs a live localhost callback
-/// listener or the browser lands on a confusing connection error page.
-pub(super) async fn run_automatic_google_login(
-    provider_id: &str,
-    options: &LoginOptions,
-) -> Result<LoginFlowOutcome> {
-    let tier = options
-        .google_access_tier
-        .unwrap_or(auth::google::GmailAccessTier::Full);
-    let tokens = auth::google::login(tier, options.no_browser).await?;
-    let credentials_path = auth::google::credentials_path()?;
-    let tokens_path = auth::google::tokens_path()?;
-
-    emit_scriptable_auth_success(
-        options.json,
-        ScriptableAuthSuccess {
-            status: "authenticated",
-            provider: provider_id.to_string(),
-            account_label: None,
-            credentials_path: Some(credentials_path.display().to_string()),
-            email: tokens.email.clone(),
-        },
-    )?;
-    if !options.json {
-        eprintln!("\nGmail setup complete!");
-        if let Some(email) = tokens.email {
-            eprintln!("Account: {}", email);
-        }
-        eprintln!("Access tier: {}", tokens.tier.label());
-        eprintln!("Tokens saved to {}", tokens_path.display());
-    }
-    Ok(LoginFlowOutcome::Completed)
 }
 
 pub(super) async fn start_scriptable_login(
@@ -185,37 +148,6 @@ pub(super) async fn start_scriptable_login(
                 .default_expires_at_ms(),
             )
         }
-        LoginProviderTarget::Google => {
-            let creds = auth::google::load_credentials().context(
-                "Google/Gmail scriptable auth requires saved OAuth credentials first. Run `jcode login --provider google` once or save google credentials manually.",
-            )?;
-            let tier = options
-                .google_access_tier
-                .unwrap_or(auth::google::GmailAccessTier::Full);
-            let (verifier, challenge) = auth::oauth::generate_pkce_public();
-            let state = auth::oauth::generate_state_public();
-            let redirect_uri = format!("http://127.0.0.1:{}", auth::google::DEFAULT_PORT);
-            let auth_url =
-                auth::google::build_auth_url(&creds, tier, &redirect_uri, &challenge, &state);
-            (
-                PendingScriptableLogin::Google {
-                    verifier,
-                    state,
-                    redirect_uri,
-                    tier,
-                },
-                auth_url,
-                "callback_url",
-                None,
-                PendingScriptableLogin::Google {
-                    verifier: String::new(),
-                    state: String::new(),
-                    redirect_uri: String::new(),
-                    tier,
-                }
-                .default_expires_at_ms(),
-            )
-        }
         LoginProviderTarget::Copilot => {
             let client = crate::provider::shared_http_client();
             let device_resp = auth::copilot::initiate_device_flow(&client).await?;
@@ -234,7 +166,7 @@ pub(super) async fn start_scriptable_login(
         }
         _ => {
             anyhow::bail!(
-                "`--print-auth-url` is currently supported for: claude, openai, gemini, antigravity, google, copilot."
+                "`--print-auth-url` is currently supported for: claude, openai, gemini, antigravity, copilot."
             )
         }
     };
@@ -291,10 +223,6 @@ pub(super) async fn complete_scriptable_login(
             )
             .await
         }
-        LoginProviderTarget::Google => {
-            complete_scriptable_google_login(provider.id, options, require_scriptable_input(input)?)
-                .await
-        }
         LoginProviderTarget::Copilot => {
             if input.is_some() {
                 anyhow::bail!(
@@ -307,7 +235,7 @@ pub(super) async fn complete_scriptable_login(
             complete_scriptable_copilot_login(provider.id, options).await
         }
         _ => anyhow::bail!(
-            "Scriptable completion is currently supported for: claude, openai, gemini, antigravity, google, copilot."
+            "Scriptable completion is currently supported for: claude, openai, gemini, antigravity, copilot."
         ),
     }
 }
@@ -511,62 +439,6 @@ pub(super) async fn complete_scriptable_antigravity_login(
         if let Some(project_id) = tokens.project_id.as_deref() {
             eprintln!("Resolved Antigravity project: {}", project_id);
         }
-    }
-    Ok(LoginFlowOutcome::Completed)
-}
-
-pub(super) async fn complete_scriptable_google_login(
-    provider_id: &str,
-    options: &LoginOptions,
-    input: ProvidedAuthInput,
-) -> Result<LoginFlowOutcome> {
-    let pending_path = pending_login_path("google")?;
-    let PendingScriptableLogin::Google {
-        verifier,
-        state,
-        redirect_uri,
-        tier,
-    } = load_pending_login(&pending_path, "google")?
-    else {
-        anyhow::bail!("Pending Google login state is invalid.");
-    };
-
-    let callback_input = match input {
-        ProvidedAuthInput::CallbackUrl(value) => value,
-        ProvidedAuthInput::AuthCode(_) => {
-            anyhow::bail!("Google completion requires --callback-url.")
-        }
-    };
-    let creds = auth::google::load_credentials().context(
-        "Google/Gmail completion requires saved OAuth credentials first. Run `jcode login --provider google` once or save google credentials manually.",
-    )?;
-    let tokens = auth::google::exchange_callback_input(
-        &creds,
-        &verifier,
-        &callback_input,
-        &state,
-        &redirect_uri,
-        tier,
-    )
-    .await?;
-    clear_pending_login(&pending_path);
-    emit_scriptable_auth_success(
-        options.json,
-        ScriptableAuthSuccess {
-            status: "authenticated",
-            provider: provider_id.to_string(),
-            account_label: None,
-            credentials_path: Some(auth::google::tokens_path()?.display().to_string()),
-            email: tokens.email.clone(),
-        },
-    )?;
-    if !options.json {
-        eprintln!("Successfully logged in to Google/Gmail!");
-        if let Some(email) = tokens.email.as_deref() {
-            eprintln!("Account: {}", email);
-        }
-        eprintln!("Access tier: {}", tokens.tier.label());
-        eprintln!("Tokens saved to {}", auth::google::tokens_path()?.display());
     }
     Ok(LoginFlowOutcome::Completed)
 }

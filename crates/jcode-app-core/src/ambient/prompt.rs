@@ -445,7 +445,7 @@ pub fn build_ambient_system_prompt(
     ));
     prompt.push('\n');
 
-    // --- User Directives (from email/Telegram replies) ---
+    // --- User Directives (from Telegram/Discord replies) ---
     let pending_directives = take_pending_directives();
     if !pending_directives.is_empty() {
         prompt.push_str("## User Directives (from replies)\n");
@@ -473,7 +473,6 @@ pub fn build_ambient_system_prompt(
          - `todo` — plan and track what you'll do this cycle.\n\
          - `end_ambient_cycle` — REQUIRED to finish the cycle (see below).\n\
          - `schedule_ambient` — schedule your next wake time.\n\
-         - `request_permission` — get approval before any code change.\n\
          - `send_message` — keep the user informed.\n\
          Standard tools (`bash`, `read`, `write`, `edit`, `memory`, etc.) are \
          also available.\n\n\
@@ -491,15 +490,9 @@ pub fn build_ambient_system_prompt(
          have budget left.\n\n\
          For proactive work: be conservative. A bad surprise is worse than \
          no surprise. Check the user feedback memories -- if they've rejected \
-         similar work before, don't do it. Code changes must go on a worktree \
-         branch with a PR via request_permission.\n\n\
-         Every request_permission call must be reviewer-ready. Include:\n\
-         - description: concise summary of what you are about to do\n\
-         - rationale: why approval is needed right now\n\
-         - context.summary: what you are working on in this cycle\n\
-         - context.why_permission_needed: explicit justification for permission\n\
-         - context.planned_steps, context.files, context.commands (if known)\n\
-         - context.risks and context.rollback_plan (if relevant)\n\n\
+         similar work before, don't do it. Code changes must go on their own \
+         branch, never on the user's checked-out branch, and you must report \
+         them with `send_message` before the cycle ends.\n\n\
          Good sources for scouting proactive work:\n\
          - Todoist (via MCP) — check for relevant tasks and deadlines\n\
          - Canvas (via MCP) — check for upcoming assignments or deadlines\n\

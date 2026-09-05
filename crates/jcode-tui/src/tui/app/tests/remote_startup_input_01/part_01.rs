@@ -669,7 +669,7 @@ fn configure_test_remote_models_with_copilot(app: &mut App) {
         "gpt-5.3-codex".to_string(),
         "claude-opus-4.6".to_string(),
         "gemini-3-pro-preview".to_string(),
-        "grok-code-fast-1".to_string(),
+        "deepseek-v4-flash".to_string(),
     ];
 }
 
@@ -733,8 +733,8 @@ fn test_model_picker_includes_copilot_models_in_remote_mode() {
             model_names
         );
         assert!(
-            has_model("grok-code-fast-1"),
-            "picker should contain copilot model grok-code-fast-1, got: {:?}",
+            has_model("deepseek-v4-flash"),
+            "picker should contain copilot model deepseek-v4-flash, got: {:?}",
             model_names
         );
     });
@@ -754,7 +754,7 @@ fn test_available_models_updated_event_surfaces_authed_provider_in_remote_model_
             provider_model: Some("claude-opus-4.6".to_string()),
             available_models: vec![
                 "claude-opus-4.6".to_string(),
-                "grok-code-fast-1".to_string(),
+                "deepseek-v4-flash".to_string(),
             ],
             available_model_routes: vec![
                 crate::provider::ModelRoute {
@@ -766,7 +766,7 @@ fn test_available_models_updated_event_surfaces_authed_provider_in_remote_model_
                     cheapness: None,
                 },
                 crate::provider::ModelRoute {
-                    model: "grok-code-fast-1".to_string(),
+                    model: "deepseek-v4-flash".to_string(),
                     provider: "Copilot".to_string(),
                     api_method: "copilot".to_string(),
                     available: true,
@@ -795,7 +795,7 @@ fn test_available_models_updated_event_surfaces_authed_provider_in_remote_model_
         picker
             .entries
             .iter()
-            .any(|entry| entry.name == "grok-code-fast-1"),
+            .any(|entry| entry.name == "deepseek-v4-flash"),
         "all auth-updated remote models should appear in /model"
     );
     assert!(copilot_entry.options.iter().any(|route| {

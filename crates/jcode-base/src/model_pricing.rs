@@ -117,7 +117,6 @@ pub fn models_dev_provider_id(jcode_provider: &str) -> Option<&'static str> {
         "cerebras" => "cerebras",
         "groq" => "groq",
         "mistral" => "mistral",
-        "xai" => "xai",
         "minimax" => "minimax",
         "togetherai" => "togetherai",
         "fireworks" => "fireworks-ai",

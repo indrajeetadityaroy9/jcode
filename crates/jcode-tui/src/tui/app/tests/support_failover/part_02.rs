@@ -157,7 +157,7 @@ impl Provider for AuthRefreshingMockProvider {
         if *self.logged_in.lock().unwrap() {
             vec![
                 "claude-opus-4.6".to_string(),
-                "grok-code-fast-1".to_string(),
+                "deepseek-v4-flash".to_string(),
             ]
         } else {
             vec!["gpt-5.4".to_string()]
@@ -176,7 +176,7 @@ impl Provider for AuthRefreshingMockProvider {
                     cheapness: None,
                 },
                 crate::provider::ModelRoute {
-                    model: "grok-code-fast-1".to_string(),
+                    model: "deepseek-v4-flash".to_string(),
                     provider: "Copilot".to_string(),
                     api_method: "copilot".to_string(),
                     available: true,

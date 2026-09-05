@@ -122,7 +122,6 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
         },
         openai: AuthState::NotConfigured,
         gemini: AuthState::Available,
-        google: AuthState::Expired,
         copilot: AuthState::Available,
         cursor: AuthState::NotConfigured,
         openrouter: AuthState::Available,
@@ -145,7 +144,6 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
     }));
 
     assert!(!targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Openai)));
-    assert!(!targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Google)));
     assert!(!targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Cursor)));
 }
 
@@ -623,26 +621,19 @@ fn cli_provider_choice_filter_uses_typed_api_methods() {
         test_route("claude-opus-4-6", "Anthropic", "claude-api"),
         test_route("gpt-5.5", "OpenAI", "openai-oauth"),
         test_route("gpt-5.5", "OpenAI", "openai-api-key"),
-        test_route("gpt-5.6-pro[web]", "OpenAI", "chatgpt-web"),
         test_route("deepseek/deepseek-v4-pro", "auto", "openrouter"),
-        test_route("grok-code-fast-1", "Copilot", "copilot"),
+        test_route("gpt-5.5-codex", "Copilot", "copilot"),
     ];
 
     let openai = filter_cli_model_routes_for_choice(
         &super::super::provider_init::ProviderChoice::Openai,
         &routes,
     );
-    assert_eq!(openai.len(), 2);
+    assert_eq!(openai.len(), 1);
     assert!(openai.iter().any(|route| matches!(
         route.api_method_kind(),
         crate::provider::ModelRouteApiMethod::OpenAIOAuth
     )));
-    assert!(openai.iter().any(|route| {
-        matches!(
-            route.api_method_kind(),
-            crate::provider::ModelRouteApiMethod::Other(ref value) if value == "chatgpt-web"
-        )
-    }));
 
     let claude = filter_cli_model_routes_for_choice(
         &super::super::provider_init::ProviderChoice::Claude,
@@ -1224,7 +1215,7 @@ fn list_cli_providers_includes_auto_and_openai() {
             && provider.auth_kind.as_deref() == Some("OAuth")
     }));
     assert!(providers.iter().any(|provider| provider.id == "groq"));
-    assert!(providers.iter().any(|provider| provider.id == "xai"));
+    assert!(providers.iter().any(|provider| provider.id == "cursor"));
 }
 
 #[test]

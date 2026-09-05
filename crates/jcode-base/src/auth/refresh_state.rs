@@ -490,7 +490,7 @@ mod tests {
                 "Cursor refresh token was rejected; Cursor requested logout/login. Re-run Cursor login, then retry auth-test.",
             ),
             (
-                "google",
+                "gemini",
                 "invalid_grant: Token has been expired or revoked.",
             ),
         ] {

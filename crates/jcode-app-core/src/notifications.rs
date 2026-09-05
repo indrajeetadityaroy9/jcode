@@ -3,17 +3,12 @@
 //! Sends notifications via:
 //! - ntfy.sh (push notifications to phone)
 //! - Desktop notifications (notify-send)
-//! - Email (SMTP via lettre)
 //!
 //! All sends are fire-and-forget: errors are logged, never block.
 
 use crate::config::{SafetyConfig, config};
 use crate::logging;
 use crate::safety::AmbientTranscript;
-
-use jcode_notify_email::{
-    ReplyAction, SendEmailRequest, poll_imap_once, send_email,
-};
 
 /// Stable schema version for files handed to the bundled macOS notification
 /// broker. The broker ignores payloads with a newer schema instead of guessing
@@ -126,49 +121,19 @@ impl NotificationDispatcher {
         let safe_body = format_cycle_body_safe(transcript);
         let detailed_body = format_cycle_body_detailed(transcript);
 
-        self.send_all(
-            &title,
-            &safe_body,
-            &detailed_body,
-            Priority::Default,
-            Some(&transcript.session_id),
-        );
+        self.send_all(&title, &safe_body, &detailed_body, Priority::Default);
     }
 
     /// Send through all configured channels (fire-and-forget).
     ///
     /// `safe_body` is sanitized (no secrets) — used for ntfy (potentially public).
-    /// `detailed_body` includes full info — used for email and desktop (private channels).
-    /// `cycle_id` is embedded as Message-ID in emails for reply tracking.
+    /// `detailed_body` includes full info — used for desktop and message channels.
     fn send_all(
         &self,
         title: &str,
         safe_body: &str,
         detailed_body: &str,
         priority: Priority,
-        cycle_id: Option<&str>,
-    ) {
-        self.send_all_with_email_override(
-            title,
-            safe_body,
-            detailed_body,
-            priority,
-            cycle_id,
-            None,
-        );
-    }
-
-    /// Like `send_all`, but with an optional pre-built HTML body for the email channel.
-    /// When `email_html_override` is Some, it's used directly as the email body instead
-    /// of converting `detailed_body` through `markdown_to_html_email`.
-    fn send_all_with_email_override(
-        &self,
-        title: &str,
-        safe_body: &str,
-        detailed_body: &str,
-        priority: Priority,
-        cycle_id: Option<&str>,
-        email_html_override: Option<&str>,
     ) {
         // Guard: only dispatch if inside a tokio runtime
         if tokio::runtime::Handle::try_current().is_err() {
@@ -199,45 +164,6 @@ impl NotificationDispatcher {
             };
             tokio::spawn(async move {
                 send_desktop(&title, &body, urgency);
-            });
-        }
-
-        // Email — uses DETAILED body (sent to your own address, private)
-        // If email_html_override is provided, send it directly as HTML.
-        if self.config.email_enabled
-            && let (Some(to), Some(host), Some(from)) = (
-                &self.config.email_to,
-                &self.config.email_smtp_host,
-                &self.config.email_from,
-            )
-        {
-            let to = to.clone();
-            let host = host.clone();
-            let from = from.clone();
-            let port = self.config.email_smtp_port;
-            let password = self.config.email_password.clone();
-            let title = title.to_string();
-            let body = detailed_body.to_string();
-            let cycle_id = cycle_id.map(|s| s.to_string());
-            let html_override = email_html_override.map(|s| s.to_string());
-            tokio::spawn(async move {
-                if let Err(e) = send_email(SendEmailRequest {
-                    smtp_host: &host,
-                    smtp_port: port,
-                    from: &from,
-                    to: &to,
-                    password: password.as_deref(),
-                    subject: &title,
-                    body: &body,
-                    cycle_id: cycle_id.as_deref(),
-                    html_override: html_override.as_deref(),
-                })
-                .await
-                {
-                    logging::error(&format!("Email notification failed: {}", e));
-                } else {
-                    logging::info(&format!("Email notification sent to {}: {}", to, title));
-                }
             });
         }
 
@@ -729,80 +655,6 @@ fn send_desktop(title: &str, body: &str, urgency: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// IMAP reply polling
-// ---------------------------------------------------------------------------
-
-/// Run an IMAP polling loop checking for replies to ambient emails.
-/// Should be spawned as a tokio task alongside the ambient runner.
-pub async fn imap_reply_loop(config: SafetyConfig) {
-    let host = match config.email_imap_host.as_ref() {
-        Some(h) => h.clone(),
-        None => {
-            logging::error("IMAP reply loop: no imap_host configured");
-            return;
-        }
-    };
-    let port = config.email_imap_port;
-    let user = match config.email_from.as_ref() {
-        Some(u) => u.clone(),
-        None => {
-            logging::error("IMAP reply loop: no email_from configured");
-            return;
-        }
-    };
-    let pass = match config.email_password.as_ref() {
-        Some(p) => p.clone(),
-        None => {
-            logging::error("IMAP reply loop: no email password configured");
-            return;
-        }
-    };
-
-    logging::info(&format!(
-        "IMAP reply loop: starting ({}:{}, user: {})",
-        host, port, user
-    ));
-
-    loop {
-        // Run synchronous IMAP in a blocking task
-        let h = host.clone();
-        let u = user.clone();
-        let p = pass.clone();
-        let pt = port;
-        let result = tokio::task::spawn_blocking(move || poll_imap_once(&h, pt, &u, &p)).await;
-
-        match result {
-            Ok(Ok(actions)) => {
-                for action in &actions {
-                    match action {
-                        ReplyAction::DirectiveReply { cycle_id, text } => {
-                            if let Err(e) =
-                                crate::ambient::add_directive(text.clone(), cycle_id.clone())
-                            {
-                                logging::error(&format!("Failed to save directive: {}", e));
-                            }
-                        }
-                    }
-                }
-
-                if !actions.is_empty() {
-                    logging::info(&format!("IMAP: processed {} email replies", actions.len()));
-                }
-            }
-            Ok(Err(e)) => {
-                logging::error(&format!("IMAP poll error: {}", e));
-            }
-            Err(e) => {
-                logging::error(&format!("IMAP poll task panicked: {}", e));
-            }
-        }
-
-        // Poll every 60 seconds
-        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Formatting helpers
 // ---------------------------------------------------------------------------
 
@@ -822,9 +674,9 @@ fn format_cycle_body_safe(transcript: &AmbientTranscript) -> String {
     lines.join("\n")
 }
 
-/// Full detailed body for private channels (email, desktop).
+/// Full detailed body for private channels (desktop, message channels).
 /// Includes the model-generated summary and provider info.
-/// Output is markdown — rendered to HTML for email, plain text for desktop.
+/// Output is markdown — rendered as plain text by every remaining channel.
 fn format_cycle_body_detailed(transcript: &AmbientTranscript) -> String {
     let mut lines = Vec::new();
 

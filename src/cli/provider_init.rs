@@ -86,11 +86,6 @@ pub enum ProviderChoice {
     Fireworks,
     #[value(alias = "minimax-ai", alias = "minimaxi")]
     Minimax,
-    #[value(alias = "x.ai", alias = "x-ai", alias = "grok")]
-    Xai,
-    /// Grok Build subscription via the authenticated Grok CLI ACP transport.
-    #[value(name = "grok-build")]
-    GrokBuild,
     #[value(alias = "nvidia", alias = "nim")]
     NvidiaNim,
     #[value(alias = "xiaomi", alias = "mimo", alias = "xiaomi-mimo-api")]
@@ -131,7 +126,6 @@ pub enum ProviderChoice {
     )]
     GeminiApi,
     Antigravity,
-    Google,
     Auto,
 }
 
@@ -170,8 +164,6 @@ impl ProviderChoice {
             Self::Deepinfra => "deepinfra",
             Self::Fireworks => "fireworks",
             Self::Minimax => "minimax",
-            Self::Xai => "xai",
-            Self::GrokBuild => "grok-build",
             Self::NvidiaNim => "nvidia-nim",
             Self::XiaomiMimo => "xiaomi-mimo",
             Self::MetaMuse => "meta-muse",
@@ -187,7 +179,6 @@ impl ProviderChoice {
             Self::Gemini => "gemini",
             Self::GeminiApi => "gemini-api",
             Self::Antigravity => "antigravity",
-            Self::Google => "google",
             Self::Auto => "auto",
         }
     }
@@ -320,14 +311,6 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
         crate::provider_catalog::MINIMAX_LOGIN_PROVIDER,
     ),
     (
-        ProviderChoice::Xai,
-        crate::provider_catalog::XAI_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::GrokBuild,
-        crate::provider_catalog::GROK_BUILD_LOGIN_PROVIDER,
-    ),
-    (
         ProviderChoice::NvidiaNim,
         crate::provider_catalog::NVIDIA_NIM_LOGIN_PROVIDER,
     ),
@@ -386,10 +369,6 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
     (
         ProviderChoice::Antigravity,
         crate::provider_catalog::ANTIGRAVITY_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Google,
-        crate::provider_catalog::GOOGLE_LOGIN_PROVIDER,
     ),
 ];
 
@@ -1247,7 +1226,7 @@ pub fn apply_login_provider_profile_env(provider: LoginProviderDescriptor) {
             // not clear these inherited runtime vars before credential detection.
             crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
         }
-        LoginProviderTarget::AutoImport | LoginProviderTarget::Google => {}
+        LoginProviderTarget::AutoImport => {}
         _ => {
             // A later non-compatible login selection must not inherit a stale
             // compatible-provider profile from an earlier bootstrap/login path.
@@ -1285,13 +1264,6 @@ pub async fn login_and_bootstrap_provider(
         LoginProviderTarget::OpenAi => {
             disable_subscription_runtime_mode();
             Arc::new(provider::MultiProvider::with_preference(true))
-        }
-        LoginProviderTarget::GrokBuild => {
-            disable_subscription_runtime_mode();
-            crate::provider::external::instantiate_external_provider(
-                crate::provider::external::GROK_BUILD_RUNTIME,
-            )
-            .ok_or_else(|| anyhow::anyhow!("Grok Build runtime is not registered"))?
         }
         LoginProviderTarget::OpenAiApiKey => {
             disable_subscription_runtime_mode();
@@ -1345,9 +1317,6 @@ pub async fn login_and_bootstrap_provider(
             clear_initial_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new())
-        }
-        LoginProviderTarget::Google => {
-            anyhow::bail!("Google login cannot be used as a model provider bootstrap");
         }
     };
 
@@ -1505,16 +1474,6 @@ async fn init_provider_with_options(
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
             Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new())
         }
-        ProviderChoice::GrokBuild => {
-            disable_subscription_runtime_mode();
-            init_notice("Using Grok Build subscription via the authenticated Grok CLI");
-            clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "grok-build");
-            crate::provider::external::instantiate_external_provider(
-                crate::provider::external::GROK_BUILD_RUNTIME,
-            )
-            .ok_or_else(|| anyhow::anyhow!("Grok Build runtime is not registered"))?
-        }
         ProviderChoice::Openrouter => {
             disable_subscription_runtime_mode();
             ensure_external_api_key_auth_allowed_for_explicit_choice("OPENROUTER_API_KEY")?;
@@ -1555,7 +1514,6 @@ async fn init_provider_with_options(
         | ProviderChoice::Deepinfra
         | ProviderChoice::Fireworks
         | ProviderChoice::Minimax
-        | ProviderChoice::Xai
         | ProviderChoice::NvidiaNim
         | ProviderChoice::XiaomiMimo
         | ProviderChoice::MetaMuse
@@ -1621,17 +1579,6 @@ async fn init_provider_with_options(
             clear_initial_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new())
-        }
-        ProviderChoice::Google => {
-            disable_subscription_runtime_mode();
-            init_notice(
-                "Note: Google/Gmail is not a model provider. Using auto-detect for model provider.",
-            );
-            init_notice(
-                "Gmail credentials can be configured with `jcode login google`; the gmail tool is enabled by default in the full tool profile.",
-            );
-            clear_initial_model_provider();
-            Arc::new(provider::MultiProvider::new_fast())
         }
         ProviderChoice::Auto => {
             disable_subscription_runtime_mode_preserving_active_provider_profile();

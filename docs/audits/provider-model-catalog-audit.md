@@ -1,3 +1,30 @@
+> **Staleness note (added 2026-09-05).** This is a **point-in-time snapshot**
+> of provider documentation as it read when the audit was taken; the findings
+> below are preserved as written and have not been re-verified. Two things have
+> moved since:
+>
+> - **Scope path.** The `OpenAiCompatibleProfile` *struct* is still in
+>   `crates/jcode-provider-metadata/src/lib.rs:116-125`, but the profile
+>   constants and the array live in
+>   `crates/jcode-provider-metadata/src/catalog.rs` —
+>   `OPENAI_COMPAT_PROFILES: [OpenAiCompatibleProfile; 37]` at `catalog.rs:435`.
+>   The sibling login catalog is
+>   `LOGIN_PROVIDERS: [LoginProviderDescriptor; 46]` at `catalog.rs:1089`.
+> - **Coverage.** The table below has 29 rows: 28 named vendor profiles plus
+>   the generic user-supplied endpoint (`OPENAI_COMPAT_PROFILE`, which is
+>   itself one of the array entries). That is 29 of the 37 profiles now in
+>   `OPENAI_COMPAT_PROFILES`. The 8 never audited are OpenRouter, Anthropic
+>   API, OpenAI API, and Gemini API (the OpenAI-compatible shims for
+>   first-party providers), plus NVIDIA NIM, Xiaomi MiMo, Meta Model API, and
+>   Celeris.
+>
+> No row here covers a purged provider: xAI/Grok, AWS Bedrock, Gmail/Google
+> login, and the ChatGPT-web route were never OpenAI-compatible profiles and
+> are gone from this fork, so nothing in this audit needs retracting on that
+> account. Display names have drifted slightly (`Nebius` is now "Nebius Token
+> Factory", `Comtegra` is "Comtegra GPU Cloud", `DeepInfra` is "Deep Infra");
+> the rows still refer to the same profiles.
+
 # OpenAI-compatible provider `/models` audit
 
 Scope: built-in `OpenAiCompatibleProfile` entries in `crates/jcode-provider-metadata/src/lib.rs`.
@@ -36,7 +63,6 @@ Legend:
 | DeepInfra | Official OpenAI-compatible docs point to static model catalog, no `/models` page found | catalog/static only | Live `/models` unverified. |
 | Fireworks | Official list-models docs found for account model API `{ models: [...] }`; OpenAI compat endpoint also exists | verified models[] variant for account API | Parser supports `models[]` and `name`. Need live base endpoint shape still unverified. |
 | MiniMax | Official text generation docs show OpenAI-compatible base and static supported-models table | catalog/static only | No `/models` endpoint found. |
-| xAI | API reference includes Models section | verified data[] likely | Covered. |
 | LM Studio | Official OpenAI compatibility docs list `GET /v1/models` | supported endpoint, shape not shown | OpenAI local server expected data[]. |
 | Ollama | Official OpenAI compatibility blog/docs cover chat; `/v1/models` docs not found in fetched page | unknown | Need raw docs/source or live local test. |
 | Chutes | Live user response showed `{ object:"list", data:[...] }` with numeric pricing | verified data[] plus numeric pricing | Parser fixed and stale default removed. |

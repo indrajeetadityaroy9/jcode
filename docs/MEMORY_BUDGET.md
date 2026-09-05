@@ -1,7 +1,7 @@
 # Memory Regression Budget
 
 Status: active guardrail
-Updated: 2026-04-18
+Updated: 2026-09-05
 
 This document defines the current memory regression budget for jcode.
 
@@ -28,13 +28,20 @@ Use existing debug surfaces instead of ad hoc instrumentation:
 - Full server attribution: `server:memory`
 - Process-lifetime timeline: `python scripts/analyze_runtime_memory_log.py --days 1`
 
-Primary sources in code:
-- `src/tui/app/debug_cmds.rs`
-- `src/tui/memory_profile.rs`
-- `src/session.rs`
-- `src/tui/markdown.rs`
-- `src/tui/mermaid.rs`
-- `src/runtime_memory_log.rs`
+On this macOS-only fork the *process* figures inside those reports (RSS, peak RSS, virtual, PSS) are
+always absent: `process_memory::snapshot_with_source` is `#[cfg(target_os = "linux")]` and the
+non-Linux build returns `ProcessMemorySnapshot::default()`
+(`crates/jcode-base/src/process_memory.rs:180`). Every cap and counter in this document is an
+application-level accounting number and is unaffected, but do not expect an RSS delta to corroborate
+them. See [the runbook caveat](./MEMORY_INCIDENT_RUNBOOK.md) before relying on process-level numbers.
+
+Primary sources in code (post workspace split):
+- `crates/jcode-tui/src/tui/app/debug_cmds.rs`
+- `crates/jcode-tui/src/tui/memory_profile.rs`
+- `crates/jcode-base/src/session.rs`
+- `crates/jcode-tui-markdown/src/lib.rs`
+- `crates/jcode-tui-mermaid/src/lib.rs`
+- `crates/jcode-base/src/runtime_memory_log.rs`
 
 ## Budget model
 
@@ -52,11 +59,11 @@ We use two kinds of budgets:
 
 ### Markdown cache budget
 
-Source: `src/tui/markdown.rs`
+Source: `crates/jcode-tui-markdown/src/lib.rs`
 
 | Metric | Budget | Why |
 |---|---:|---|
-| `highlight_cache_entries` | `<= 256` | Explicit cache cap (`HIGHLIGHT_CACHE_LIMIT`) |
+| `highlight_cache_entries` | `<= 256` | Explicit cache cap (`HIGHLIGHT_CACHE_LIMIT`, `lib.rs:168`) |
 
 Required review action if violated:
 - explain why the cache limit changed
@@ -66,17 +73,27 @@ Required review action if violated:
 ### Mermaid cache budget
 
 Sources:
-- `src/tui/mermaid.rs`
-- `src/tui/mermaid_cache_render.rs`
+- `crates/jcode-tui-mermaid/src/lib.rs`
+- `crates/jcode-tui-mermaid/src/mermaid_cache_render.rs`
 
 | Metric | Budget | Why |
 |---|---:|---|
-| `render_cache_entries` | `<= 64` | Explicit render-cache cap (`RENDER_CACHE_MAX`) |
-| `image_state_entries` | `<= 12` | Explicit protocol-state cap (`IMAGE_STATE_MAX`) |
-| `source_cache_entries` | `<= 8` | Explicit decoded-source cap (`SOURCE_CACHE_MAX`) |
-| `active_diagrams` | `<= 128` | Explicit active-diagram cap (`ACTIVE_DIAGRAMS_MAX`) |
-| `cache_disk_png_bytes` | `<= 50 MiB` | Explicit on-disk cache cap (`CACHE_MAX_SIZE_BYTES`) |
-| `cache_disk_max_age_secs` | `<= 259200` | 3-day expiry (`CACHE_MAX_AGE_SECS`) |
+| `render_cache_entries` | `<= 512` | Explicit render-cache cap (`RENDER_CACHE_MAX`, `mermaid_cache_render.rs:12`) |
+| `layout_cache_entries` | `<= 32` | Explicit layout-tier cap (`LAYOUT_CACHE_MAX`, `mermaid_cache_render.rs:30`) |
+| `image_state_entries` | `<= 24` | Explicit protocol-state cap (`IMAGE_STATE_MAX`, `lib.rs:484`) |
+| `image_state_source_limit_bytes` | `<= 48 MiB` | Decoded source bytes held by protocol states (`IMAGE_STATE_MAX_SOURCE_BYTES`, `lib.rs:492`) |
+| `source_cache_entries` | `<= 16` | Explicit decoded-source cap (`SOURCE_CACHE_MAX`, `lib.rs:726`) |
+| `source_cache_limit_bytes` | `<= 48 MiB` | Decoded bytes held by the source cache (`SOURCE_CACHE_MAX_BYTES`, `lib.rs:730`) |
+| `fitted_source_cache_entries` | `<= 16` | Pre-scaled non-Kitty sources (`FITTED_SOURCE_CACHE_MAX`, `lib.rs:735`) |
+| `fitted_source_cache_limit_bytes` | `<= 32 MiB` | Decoded bytes held by pre-scaled sources (`FITTED_SOURCE_CACHE_MAX_BYTES`, `lib.rs:736`) |
+| `kitty_viewport_state_entries` | `<= 256` | Kitty virtual-placement states (`KITTY_VIEWPORT_STATE_MAX`, `lib.rs:506`) |
+| `kitty_pending_transmit_limit_bytes` | `<= 32 MiB` | Not-yet-drawn Kitty transmit bytes (`KITTY_VIEWPORT_PENDING_MAX_BYTES`, `lib.rs:515`) |
+| `active_diagrams` | `<= 128` | Explicit active-diagram cap (`ACTIVE_DIAGRAMS_MAX`, `lib.rs:602`) |
+| `cache_disk_png_bytes` | `<= 50 MiB` | Explicit on-disk cache cap (`CACHE_MAX_SIZE_BYTES`, `lib.rs:1389`) |
+| `cache_disk_max_age_secs` | `<= 259200` | 3-day expiry (`CACHE_MAX_AGE_SECS`, `lib.rs:1386`) |
+
+Every metric name above is a field of `MermaidMemoryProfile` (`lib.rs:1214`), so `:debug
+mermaid:memory` reports each value next to its own `*_limit` field.
 
 Required review action if violated:
 - document the new limit and reason
@@ -87,7 +104,7 @@ Required review action if violated:
 
 ### Session and transcript memory
 
-Source: `src/session.rs`, `src/tui/memory_profile.rs`
+Source: `crates/jcode-base/src/session.rs`, `crates/jcode-tui/src/tui/memory_profile.rs`
 
 These are not strict caps yet, but they are expected relationships.
 
@@ -105,7 +122,7 @@ Required review action if violated:
 
 ### Runtime memory log expectations
 
-Source: `src/runtime_memory_log.rs`
+Source: `crates/jcode-base/src/runtime_memory_log.rs`
 
 Runtime memory logs are the regression detection mechanism, not just a debug feature.
 
@@ -147,10 +164,15 @@ When changing memory-heavy code, capture and include:
 These are the concrete enforced limits today:
 
 - Markdown highlight cache entries: 256
-- Mermaid render cache entries: 64
-- Mermaid protocol image-state entries: 12
-- Mermaid decoded source-cache entries: 8
+- Mermaid render cache entries: 512
+- Mermaid layout cache entries: 32
+- Mermaid protocol image-state entries: 24, decoded source bytes 48 MiB
+- Mermaid decoded source-cache entries: 16, bytes 48 MiB
+- Mermaid pre-scaled (fitted) source-cache entries: 16, bytes 32 MiB
+- Mermaid Kitty viewport states: 256, pending transmit bytes 32 MiB
 - Mermaid active diagrams: 128
 - Mermaid on-disk PNG cache: 50 MiB, max age 3 days
+- TUI side-panel render cache entries: 12 (`SIDE_PANEL_RENDER_CACHE_LIMIT`,
+  `crates/jcode-tui/src/tui/ui_pinned.rs:533`)
 
 Any intentional change to those limits must update this document in the same PR.

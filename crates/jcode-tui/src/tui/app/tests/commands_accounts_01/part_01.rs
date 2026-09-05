@@ -1043,7 +1043,7 @@ fn test_mission_and_goal_commands_are_disabled() {
     crate::env::set_var("JCODE_HOME", temp.path());
 
     let mut app = create_test_app();
-    app.input = "/mission make browser control reliable".to_string();
+    app.input = "/mission make session resume reliable".to_string();
     app.submit_input();
     assert!(!app.is_processing, "/mission must not start a turn");
     assert!(
@@ -1117,12 +1117,12 @@ fn test_goals_legacy_alias_is_not_captured_by_goal_mission_alias() {
 #[test]
 fn test_test_command_queues_layered_verification_prompt() {
     let mut app = create_test_app();
-    app.input = "/test browser control is reliable".to_string();
+    app.input = "/test session resume is reliable".to_string();
     app.submit_input();
 
     assert!(app.pending_queued_dispatch);
     let queued = app.queued_messages.last().expect("missing /test prompt");
-    assert!(queued.contains("browser control is reliable"));
+    assert!(queued.contains("session resume is reliable"));
     assert!(queued.contains("Reproduction-first"));
     assert!(queued.contains("End-to-end/user-flow smoke tests"));
     assert!(queued.contains("Property-based tests"));

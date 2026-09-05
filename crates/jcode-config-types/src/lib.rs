@@ -1263,7 +1263,7 @@ impl Default for AmbientConfig {
 
 /// Desktop notification configuration for interactive sessions.
 ///
-/// Unlike `[safety]` (ambient-mode ntfy/email/channel notifications), this
+/// Unlike `[safety]` (ambient-mode ntfy/desktop/channel notifications), this
 /// section controls lightweight local desktop notifications for the normal
 /// interactive TUI, e.g. "agent finished a long turn".
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1310,24 +1310,6 @@ pub struct SafetyConfig {
     pub ntfy_server: String,
     /// Enable desktop notifications via notify-send (default: true)
     pub desktop_notifications: bool,
-    /// Enable email notifications (default: false)
-    pub email_enabled: bool,
-    /// Email recipient
-    pub email_to: Option<String>,
-    /// SMTP host (e.g. smtp.gmail.com)
-    pub email_smtp_host: Option<String>,
-    /// SMTP port (default: 587)
-    pub email_smtp_port: u16,
-    /// Email sender address
-    pub email_from: Option<String>,
-    /// SMTP password (prefer JCODE_SMTP_PASSWORD env var)
-    pub email_password: Option<String>,
-    /// IMAP host for receiving email replies (e.g. imap.gmail.com)
-    pub email_imap_host: Option<String>,
-    /// IMAP port (default: 993)
-    pub email_imap_port: u16,
-    /// Enable email reply → agent directive feature (default: false)
-    pub email_reply_enabled: bool,
     /// Enable Telegram notifications (default: false)
     pub telegram_enabled: bool,
     /// Telegram bot token (from @BotFather)
@@ -1372,15 +1354,6 @@ impl Default for SafetyConfig {
             ntfy_topic: None,
             ntfy_server: "https://ntfy.sh".to_string(),
             desktop_notifications: true,
-            email_enabled: false,
-            email_to: None,
-            email_smtp_host: None,
-            email_smtp_port: 587,
-            email_from: None,
-            email_password: None,
-            email_imap_host: None,
-            email_imap_port: 993,
-            email_reply_enabled: false,
             telegram_enabled: false,
             telegram_bot_token: None,
             telegram_chat_id: None,

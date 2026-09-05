@@ -7,10 +7,11 @@ use super::paths::ambient_dir;
 use crate::storage;
 
 // ---------------------------------------------------------------------------
-// User Directives (from email replies)
+// User Directives (from message-channel replies)
 // ---------------------------------------------------------------------------
 
-/// A user directive received via email reply to an ambient cycle notification.
+/// A user directive received as a message-channel reply to an ambient cycle
+/// notification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDirective {
     pub id: String,
@@ -41,7 +42,7 @@ fn save_directives(directives: &[UserDirective]) -> Result<()> {
     storage::write_json(&directives_path()?, directives)
 }
 
-/// Store a new directive from an email reply.
+/// Store a new directive from a message-channel reply.
 pub fn add_directive(text: String, in_reply_to: String) -> Result<()> {
     let mut directives = load_directives();
     directives.push(UserDirective {

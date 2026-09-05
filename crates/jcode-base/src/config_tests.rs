@@ -420,7 +420,7 @@ fn tool_config_defaults_to_full_toolset() {
 #[test]
 fn tool_config_explicit_enabled_uses_allow_list() {
     let cfg = ToolConfig {
-        enabled: vec!["gmail".to_string()],
+        enabled: vec!["websearch".to_string()],
         ..ToolConfig::default()
     };
     let selection = cfg.selection();
@@ -428,8 +428,8 @@ fn tool_config_explicit_enabled_uses_allow_list() {
         .allowed_tools
         .expect("explicit enabled is an allow-list");
 
-    assert!(allowed.contains("gmail"));
-    assert!(!selection.disabled_tools.contains("gmail"));
+    assert!(allowed.contains("websearch"));
+    assert!(!selection.disabled_tools.contains("websearch"));
 }
 
 #[test]
@@ -441,20 +441,20 @@ fn tool_config_all_enabled_sentinel_keeps_unrestricted_toolset() {
     let selection = cfg.selection();
 
     assert!(selection.allowed_tools.is_none());
-    assert!(!selection.disabled_tools.contains("gmail"));
+    assert!(!selection.disabled_tools.contains("websearch"));
 }
 
 #[test]
 fn tool_config_explicit_disabled_overrides_all_enabled_sentinel() {
     let cfg = ToolConfig {
         enabled: vec!["*".to_string()],
-        disabled: vec!["gmail".to_string()],
+        disabled: vec!["websearch".to_string()],
         ..ToolConfig::default()
     };
     let selection = cfg.selection();
 
     assert!(selection.allowed_tools.is_none());
-    assert!(selection.disabled_tools.contains("gmail"));
+    assert!(selection.disabled_tools.contains("websearch"));
 }
 
 #[test]
@@ -499,7 +499,7 @@ fn tool_config_minimal_profile_allows_core_coding_tools() {
     assert!(allowed.contains("write"));
     assert!(allowed.contains("apply_patch"));
     assert!(allowed.contains("agentgrep"));
-    assert!(!allowed.contains("browser"));
+    assert!(!allowed.contains("websearch"));
     assert!(!allowed.contains("swarm"));
 }
 
@@ -509,9 +509,9 @@ fn tool_config_explicit_enabled_and_disabled_lists_compose() {
         enabled: vec![
             "shell".to_string(),
             "read_file".to_string(),
-            "browser".to_string(),
+            "websearch".to_string(),
         ],
-        disabled: vec!["browser".to_string()],
+        disabled: vec!["websearch".to_string()],
         ..ToolConfig::default()
     };
     let selection = cfg.selection();
@@ -523,8 +523,8 @@ fn tool_config_explicit_enabled_and_disabled_lists_compose() {
     assert!(allowed.contains("read"));
     assert!(!allowed.contains("shell"));
     assert!(!allowed.contains("read_file"));
-    assert!(!allowed.contains("browser"));
-    assert!(selection.disabled_tools.contains("browser"));
+    assert!(!allowed.contains("websearch"));
+    assert!(selection.disabled_tools.contains("websearch"));
 }
 
 #[test]
@@ -543,15 +543,15 @@ fn tool_config_none_profile_disables_all_tools() {
 #[test]
 fn tool_config_disabled_only_keeps_full_profile_with_deny_list() {
     let cfg = ToolConfig {
-        disabled: vec!["browser".to_string(), "swarm".to_string()],
+        disabled: vec!["webfetch".to_string(), "swarm".to_string()],
         ..ToolConfig::default()
     };
     let selection = cfg.selection();
 
     assert!(selection.allowed_tools.is_none());
-    assert!(selection.disabled_tools.contains("browser"));
+    assert!(selection.disabled_tools.contains("webfetch"));
     assert!(selection.disabled_tools.contains("swarm"));
-    assert!(!selection.disabled_tools.contains("gmail"));
+    assert!(!selection.disabled_tools.contains("memory"));
 }
 
 #[test]

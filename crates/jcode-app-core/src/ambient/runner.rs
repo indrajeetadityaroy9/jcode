@@ -47,7 +47,7 @@ struct AmbientRunnerInner {
     running: RwLock<bool>,
     /// Safety system shared with ambient tools
     safety: Arc<SafetySystem>,
-    /// Notification dispatcher for push/email/desktop alerts
+    /// Notification dispatcher for push/desktop alerts
     notifier: NotificationDispatcher,
     /// Number of active user sessions (for pause logic)
     active_user_sessions: RwLock<usize>,
@@ -546,16 +546,6 @@ impl AmbientRunnerHandle {
         // infrastructure.
         if ambient_enabled {
             let safety_config = config().safety.clone();
-            if safety_config.email_reply_enabled
-                && safety_config.email_imap_host.is_some()
-                && safety_config.email_enabled
-            {
-                let imap_config = safety_config.clone();
-                tokio::spawn(async move {
-                    crate::notifications::imap_reply_loop(imap_config).await;
-                });
-                logging::info("Ambient runner: IMAP reply poller spawned");
-            }
 
             // Spawn reply pollers for all configured message channels
             // (Telegram, Discord, etc.)
@@ -621,7 +611,7 @@ impl AmbientRunnerHandle {
                         let mut qp = self.inner.next_queue_preview.write().await;
                         *qp = mgr.queue().peek_next().map(|i| i.context.clone());
                     }
-                    // Also run if there are pending email reply directives
+                    // Also run if there are pending channel-reply directives
                     (
                         ambient_allowed && (mgr.should_run() || ambient::has_pending_directives()),
                         ready_direct_items,

@@ -1,21 +1,22 @@
-# Memory Architecture Design
+# Memory Architecture
 
-> **Status:** Implemented (Core), Planned (Graph-Based Hybrid)
-> **Updated:** 2026-01-27
-
-Local embeddings + lightweight sidecar (GPT-5.3 Codex Spark) are implemented and running in production. This document describes both the current implementation and the planned graph-based hybrid architecture.
+> **Status:** Implemented — local embeddings + hybrid (dense + BM25 + RRF) retrieval + listwise consensus LLM rerank.
+> The memory *graph* is written every turn but is **not read** by the live turn path; graph traversal
+> (`cascade_retrieve`) is reachable only from the `memory` tool. Sections below are marked
+> **Not implemented** where they describe designs that were never built.
+> **Updated:** 2026-09-05
 
 ## Overview
 
 See also: [Memory Regression Budget](./MEMORY_BUDGET.md) for the current measurable guardrails and review expectations.
 
-A multi-layered memory system for cross-session learning that mimics how human memory works - relevant memories "pop up" when triggered by context rather than requiring explicit recall.
+A multi-layered memory system for cross-session learning that mimics how human memory works — relevant memories "pop up" when triggered by context rather than requiring explicit recall.
 
-**Key Design Decisions:**
-1. **Fully async and non-blocking** - The main agent never waits for memory; results from turn N are available at turn N+1
-2. **Graph-based organization** - Memories form a connected graph with tags, clusters, and semantic links
-3. **Cascade retrieval** - Embedding hits trigger BFS traversal to find related memories
-4. **Hybrid grouping** - Combines explicit tags, automatic clusters, and semantic links
+**Key design decisions (as built):**
+1. **Fully async and non-blocking** — the main agent never waits for memory; results from turn N are available at turn N+1 (`memory_agent.rs:268` `try_send`, `memory_agent.rs:854` `set_pending_memory_*`).
+2. **Hybrid first-stage retrieval** — dense cosine over embeddings fused with BM25 by Reciprocal Rank Fusion; no cosine floor (`memory.rs:642`, `memory.rs:668`).
+3. **The LLM judge is the precision layer** — one listwise consensus rerank per fired turn decides what is injected (`memory_rerank.rs:249`).
+4. **Graph organization is write-mostly** — tags, clusters and semantic edges are maintained after every retrieval (`memory_agent.rs:1200`), but the live turn path never traverses them.
 
 ---
 
@@ -31,31 +32,36 @@ graph TB
 
     subgraph "Memory Agent"
         CH[Context Handler]
-        EMB[Embedder<br/>all-MiniLM-L6-v2]
-        SR[Similarity Search]
-        CR[Cascade Retrieval]
-        HC[Sidecar<br/>GPT-5.3 Codex Spark]
+        EMB[Embedder<br/>all-MiniLM-L6-v2, 384-d]
+        HY[find_similar_hybrid<br/>dense + BM25 + RRF]
+        RR[Listwise consensus rerank<br/>Sidecar LLM]
+        MT[post_retrieval_maintenance]
     end
 
-    subgraph "Memory Graph"
-        MG[(petgraph<br/>DiGraph)]
-        MS[Memory Nodes]
-        TN[Tag Nodes]
-        CN[Cluster Nodes]
+    subgraph "Memory Store"
+        MG[(MemoryGraph<br/>HashMap, one JSON per scope)]
+        MS[Memory nodes]
+        TN[Tag nodes]
+        CN[Cluster nodes]
     end
 
     MA -->|mpsc channel| CH
     CH --> EMB
-    EMB --> SR
-    SR -->|initial hits| CR
-    CR -->|BFS traversal| MG
+    EMB --> HY
+    MG --> HY
+    HY -->|candidates| RR
+    RR -->|judged| TP
+    TP -->|next turn| MA
+    RR --> MT
+    MT -->|edges, clusters, tags, confidence| MG
     MG --> MS
     MG --> TN
     MG --> CN
-    CR -->|candidates| HC
-    HC -->|verified| TP
-    TP -->|next turn| MA
 ```
+
+The dashed line that used to run from a graph BFS into the live path does not exist in the shipped
+code: `find_similar_hybrid` reads the graph only as a flat pool of active memories
+(`memory.rs:734` `collect_memories_with_embeddings_scoped`).
 
 ---
 
@@ -82,54 +88,72 @@ graph LR
     style C fill:#f3e5f5
 ```
 
-| Node Type | Description | Storage |
-|-----------|-------------|---------|
-| **Memory** | Core memory entry (fact, preference, procedure) | Content, metadata, embedding |
-| **Tag** | Explicit label (user-defined or inferred) | Name, description, count |
-| **Cluster** | Automatic grouping via embedding similarity | Centroid embedding, member count |
+| Node Type | Description | Storage | Source |
+|-----------|-------------|---------|--------|
+| **Memory** | Core memory entry | `MemoryEntry` (content, category, tags, embedding, confidence, …) | `jcode-memory-types/src/lib.rs:233` |
+| **Tag** | Explicit label, id `tag:{name}` | Name, optional description, count, `created_at` | `graph.rs:149` |
+| **Cluster** | Co-relevance grouping, id `cluster:{id}` | Optional name, centroid, member count, timestamps | `graph.rs:183` |
+
+Nodes are not stored in a graph library. Each scope is one `MemoryGraph` (`graph.rs:231`) made of plain
+`HashMap`s — `memories`, `tags`, `clusters`, `edges` (`source_id -> Vec<Edge>`) and `reverse_edges`
+(`target_id -> Vec<source_id>`), plus `GraphMetadata` (`graph.rs:217`) and a `graph_version`
+(`GRAPH_VERSION = 2`, `graph.rs:16`). The `HashMap` layout was chosen for clean JSON serialization;
+no third-party graph library is used anywhere in the workspace.
 
 ### Edge Types
 
-| Edge Type | From → To | Description |
-|-----------|-----------|-------------|
-| `HasTag` | Memory → Tag | Memory has this explicit tag |
-| `InCluster` | Memory → Cluster | Memory belongs to auto-discovered cluster |
-| `RelatesTo` | Memory → Memory | Semantic relationship (weighted) |
-| `Supersedes` | Memory → Memory | Newer memory replaces older |
-| `Contradicts` | Memory → Memory | Conflicting information |
-| `DerivedFrom` | Memory → Memory | Procedural knowledge derived from facts |
+| Edge Type | From → To | Description | BFS traversal weight |
+|-----------|-----------|-------------|---------------------:|
+| `HasTag` | Memory → Tag | Memory has this explicit tag | `0.8` |
+| `InCluster` | Memory → Cluster | Memory belongs to an auto co-relevance cluster | `0.6` |
+| `RelatesTo { weight }` | Memory → Memory | Semantic relationship (weight defaults to `1.0`) | `weight` |
+| `Supersedes` | Memory → Memory | Newer memory replaces older | `0.9` |
+| `Contradicts` | Memory → Memory | Conflicting information (both kept, flagged) | `0.3` |
+| `DerivedFrom` | Memory → Memory | Procedural knowledge derived from facts | `0.7` |
+
+`EdgeKind` is defined at `graph.rs:92`; the weights come from `EdgeKind::traversal_weight`
+(`graph.rs:116`) and are used only by `cascade_retrieve`.
 
 ### Rust Implementation
 
 ```rust
-use petgraph::graph::DiGraph;
-
-/// Node in the memory graph
-#[derive(Debug, Clone)]
-pub enum MemoryNode {
-    Memory(MemoryEntry),
-    Tag(TagEntry),
-    Cluster(ClusterEntry),
-}
-
-/// Edge relationships
-#[derive(Debug, Clone)]
+// crates/jcode-memory-types/src/graph.rs:92
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EdgeKind {
     HasTag,
     InCluster,
-    RelatesTo { weight: f32 },
+    RelatesTo { #[serde(default = "default_weight")] weight: f32 },
     Supersedes,
     Contradicts,
     DerivedFrom,
 }
 
-/// The memory graph
+// crates/jcode-memory-types/src/graph.rs:130
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Edge {
+    pub target: String,
+    #[serde(flatten)]
+    pub kind: EdgeKind,
+}
+
+/// The memory graph - HashMap-based for clean JSON serialization
+// crates/jcode-memory-types/src/graph.rs:231
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryGraph {
-    graph: DiGraph<MemoryNode, EdgeKind>,
-    // Indexes for fast lookup
-    memory_index: HashMap<String, NodeIndex>,
-    tag_index: HashMap<String, NodeIndex>,
-    cluster_index: HashMap<String, NodeIndex>,
+    pub graph_version: u32,
+    pub memories: HashMap<String, MemoryEntry>,
+    pub tags: HashMap<String, TagEntry>,
+    #[serde(default)]
+    pub clusters: HashMap<String, ClusterEntry>,
+    /// Forward edges: source_id -> Vec<Edge>
+    #[serde(default)]
+    pub edges: HashMap<String, Vec<Edge>>,
+    /// Reverse edges for efficient BFS: target_id -> Vec<source_id>
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub reverse_edges: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub metadata: GraphMetadata,
 }
 ```
 
@@ -137,481 +161,433 @@ pub struct MemoryGraph {
 
 ## Hybrid Grouping System
 
-The memory system uses three complementary organization methods:
-
-```mermaid
-graph TB
-    subgraph "Explicit: Tags"
-        T1["rust"]
-        T2["auth-system"]
-        T3["user-preference"]
-    end
-
-    subgraph "Automatic: Clusters"
-        C1[("Error Handling<br/>Cluster")]
-        C2[("API Patterns<br/>Cluster")]
-    end
-
-    subgraph "Semantic: Links"
-        L1["relates_to"]
-        L2["supersedes"]
-        L3["contradicts"]
-    end
-
-    M1((Memory 1)) --> T1
-    M1 --> C1
-    M1 -.-> L1
-    L1 -.-> M2((Memory 2))
-    M2 --> T1
-    M2 --> C2
-    M3((Memory 3)) --> T2
-    M3 ==> L2
-    L2 ==> M4((Memory 4))
-```
+The memory system organizes memories three ways. All three are *written*; only tags participate in
+retrieval, and then only lexically (tags are folded into the BM25 search text via
+`normalize_memory_search_text`, `jcode-memory-types/src/lib.rs:814`).
 
 ### 1. Tags (Explicit)
 
-User-defined or automatically inferred labels.
-
 **Sources:**
-- User explicitly tags: `memory { action: "remember", tags: ["rust", "auth"] }`
-- Inferred from context (file paths, topics, entities)
-- Extracted by sidecar during end-of-session processing
+- User/agent explicitly tags: `memory { action: "remember", tags: ["rust", "auth"] }` (`tool/memory.rs:118`)
+- Inferred during maintenance from the shared retrieval context (`infer_context_tag`, `memory_agent.rs:1278`)
+- Extracted by the sidecar during incremental/final extraction
 
-**Examples:**
-- `#project:jcode` - Project-specific
-- `#rust`, `#python` - Language-specific
-- `#auth`, `#database` - Domain-specific
-- `#preference`, `#correction` - Category tags
+Tag nodes are created on demand (`ensure_tag`) with id `tag:{name}` and a member `count`
+(`graph.rs:164`).
 
-### 2. Clusters (Automatic)
+### 2. Clusters (Automatic co-relevance)
 
-Automatically discovered groupings based on embedding similarity.
+**Algorithm as built** (`refine_clusters`, `memory_agent.rs:1326`):
+1. Every `CLUSTER_REFINEMENT_INTERVAL = 50` maintenance ticks (`memory_agent.rs:95`), if ≥2 memories were
+   judged relevant this turn.
+2. A deterministic cluster id `auto-{scope}-{hash-of-member-ids}` is created or updated
+   (`memory_agent.rs:1440`).
+3. Centroid = mean of member embeddings (`average_embedding`, `memory_agent.rs:1442`); `InCluster`
+   edges are added for each member (`memory_agent.rs:1465`).
+4. The cluster is named by the sidecar LLM, falling back to `infer_candidate_tag` when the sidecar is
+   off (`name_cluster_with_sidecar`, `memory_agent.rs:1400`).
 
-**Algorithm:**
-1. Periodically run HDBSCAN on memory embeddings
-2. Create/update cluster nodes for dense regions
-3. Assign `InCluster` edges to nearby memories
-4. Track cluster centroids for fast lookup
-
-**Benefits:**
-- Discovers hidden patterns user didn't explicitly tag
-- Groups related memories even without shared tags
-- Enables "find similar" queries
+**Not implemented:** density-based clustering (HDBSCAN/k-means) over the whole embedding set. Clusters
+are co-retrieval sets, not discovered dense regions, and centroids are never queried.
 
 ### 3. Links (Semantic Relationships)
 
-Explicit relationships between memories.
-
-**Types:**
-- **RelatesTo**: General semantic connection (weighted 0.0-1.0)
-- **Supersedes**: Newer information replaces older
-- **Contradicts**: Conflicting information (both kept, flagged)
-- **DerivedFrom**: Procedural knowledge derived from facts
-
-**Discovery:**
-- Contradiction detection on write
-- Sidecar identifies relationships during verification
-- User can explicitly link memories
+- **RelatesTo**: created between every pair of co-relevant memories after a turn, at a fixed
+  `LINK_WEIGHT = 0.6` (`discover_links`, `memory_agent.rs:1682`). Cross-scope pairs are rejected
+  (`link_memories`, `memory.rs:1818`).
+- **Supersedes / Contradicts**: written by write-time dedup/contradiction handling and by legacy
+  migration (`graph.rs:651`, `mark_contradiction` `graph.rs:521`).
+- **DerivedFrom**: defined in the schema; no writer in the current code.
 
 ---
 
-## Cascade Retrieval
+## Cascade Retrieval (tool-only)
 
-When context triggers memory search, cascade retrieval finds related memories through graph traversal.
+`cascade_retrieve` is a BFS over the graph. It is **not** part of the live turn path. The only entry
+points are:
+
+- `memory { action: "recall", query: "..." }` — `mode` defaults to `"cascade"` whenever a query is
+  present (`tool/memory.rs:185-191`), so this is the ordinary tool recall path — via
+  `MemoryManager::find_similar_with_cascade_scoped` (`tool/memory.rs:236`, `memory.rs:1882`).
+- `memory { action: "related", id: "..." }` via `MemoryManager::get_related`
+  (`tool/memory.rs:411`, `memory.rs:1840`).
 
 ```mermaid
 sequenceDiagram
-    participant C as Context
+    participant T as memory tool
     participant E as Embedder
-    participant S as Similarity Search
-    participant G as Graph BFS
-    participant H as Sidecar (Codex Spark)
+    participant S as find_similar_scoped
+    participant G as MemoryGraph BFS
     participant R as Results
 
-    C->>E: Current context
-    E->>S: Context embedding
-    S->>S: Find top-k similar memories
-    S->>G: Initial hits (seed nodes)
+    T->>E: query text
+    E->>S: query embedding
+    S->>S: cosine >= 0.5, top-N
+    S->>G: seed ids + scores
 
-    loop BFS Traversal depth 2
-        G->>G: Follow HasTag edges
-        G->>G: Follow InCluster edges
-        G->>G: Follow RelatesTo edges
+    loop BFS to max_depth (2 from the tool)
+        G->>G: follow edges; tag targets fan out to tagged memories
+        G->>G: score = seed_score * edge_weight * 0.7^(depth+1)
     end
 
-    G->>H: Candidate memories
-    H->>H: Verify relevance to context
-    H->>R: Filtered, ranked memories
+    G->>R: top-k by score
 ```
 
 ### Algorithm
 
 ```rust
+// crates/jcode-memory-types/src/graph.rs:546
 pub fn cascade_retrieve(
-    &self,
-    context_embedding: &[f32],
+    &mut self,
+    seed_ids: &[String],
+    seed_scores: &[f32],
     max_depth: usize,
     max_results: usize,
-) -> Vec<(MemoryEntry, f32)> {
-    // Step 1: Embedding similarity search
-    let initial_hits = self.similarity_search(context_embedding, 10);
-
-    // Step 2: BFS traversal from hits
-    let mut visited: HashSet<NodeIndex> = HashSet::new();
-    let mut candidates: Vec<(NodeIndex, f32, usize)> = Vec::new();
-    let mut queue: VecDeque<(NodeIndex, usize)> = VecDeque::new();
-
-    for (node, score) in initial_hits {
-        queue.push_back((node, 0));
-        candidates.push((node, score, 0));
-    }
-
-    while let Some((node, depth)) = queue.pop_front() {
-        if depth >= max_depth || visited.contains(&node) {
-            continue;
-        }
-        visited.insert(node);
-
-        // Traverse edges
-        for edge in self.graph.edges(node) {
-            let neighbor = edge.target();
-            if visited.contains(&neighbor) {
-                continue;
-            }
-
-            let edge_weight = match edge.weight() {
-                EdgeKind::HasTag => 0.8,        // Strong signal
-                EdgeKind::InCluster => 0.6,     // Medium signal
-                EdgeKind::RelatesTo { weight } => *weight,
-                EdgeKind::Supersedes => 0.9,    // Very relevant
-                _ => 0.3,
-            };
-
-            // Decay score by depth
-            let decayed_score = edge_weight * (0.7_f32).powi(depth as i32 + 1);
-
-            if let MemoryNode::Memory(_) = &self.graph[neighbor] {
-                candidates.push((neighbor, decayed_score, depth + 1));
-            }
-
-            queue.push_back((neighbor, depth + 1));
-        }
-    }
-
-    // Step 3: Dedupe, sort, and return top results
-    candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-    candidates.into_iter()
-        .filter_map(|(node, score, _)| {
-            if let MemoryNode::Memory(entry) = &self.graph[node] {
-                Some((entry.clone(), score))
-            } else {
-                None
-            }
-        })
-        .take(max_results)
-        .collect()
-}
+) -> Vec<(String, f32)>
 ```
 
-### Retrieval Parameters
+- Seeds are the embedding hits; `metadata.retrieval_count` is incremented (`graph.rs:553`).
+- Each hop multiplies by `EdgeKind::traversal_weight` and a depth decay of `0.7^(depth+1)`
+  (`graph.rs:588-590`).
+- A `tag:` target is expanded through `reverse_edges` to every memory carrying that tag
+  (`graph.rs:593-604`).
+- Results are keyed by memory id, keeping the best score, then truncated by a top-k heap
+  (`graph.rs:617`).
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `similarity_threshold` | 0.4 | Minimum embedding similarity for initial hits |
-| `max_initial_hits` | 10 | Number of embedding search results |
-| `max_depth` | 2 | BFS traversal depth limit |
-| `max_results` | 10 | Final results to return |
-| `edge_decay` | 0.7 | Score decay per traversal step |
+### Retrieval Parameters (as called)
+
+| Parameter | Value | Where |
+|-----------|-------|-------|
+| Seed cosine threshold | `0.5` | `tool/memory.rs:236` (tool passes it) |
+| `max_depth` | `2` | `memory.rs:1915` / `1921` |
+| `max_results` | `limit * 2` per scope, merged then truncated to `limit` | `memory.rs:1915`, `memory.rs:1944` |
+| Edge decay | `0.7` per hop | `graph.rs:589` |
+| `get_related` results | `20`, depth from the tool call | `memory.rs:1857` |
+
+---
+
+## Live Retrieval Pipeline (the shipped per-turn path)
+
+This is what actually runs on every turn. Entry point: `memory_agent::process_context`
+(`memory_agent.rs:477`).
+
+```mermaid
+graph TB
+    A[Context update via mpsc] --> B{memory_runtime_active?}
+    B -->|no| Z[Dormant: no LLM backend]
+    B -->|yes| C[focus_query_text -> focused query]
+    C --> D{context signature unchanged<br/>within 30s?}
+    D -->|yes| Z2[Skip turn]
+    D -->|no| E[Embed context<br/>all-MiniLM-L6-v2, 384-d]
+    E --> F{cosine vs last < 0.3?}
+    F -->|yes| G[Topic change: reset surfaced,<br/>extract previous topic]
+    F --> H[find_similar_hybrid<br/>dense + BM25 + RRF, top 10]
+    G --> H
+    H --> I[Drop already-surfaced / injected ids]
+    I --> J{sidecar enabled?}
+    J -->|yes, cadence fires| K[Consensus listwise rerank<br/>N judges, min_agree]
+    J -->|yes, cadence gated| L[Carry last judge-verified set]
+    J -->|no| M[dynamic_gate_select]
+    K --> N[Top 5 -> pending memory for turn N+1]
+    L --> N
+    M --> N
+    N --> O[post_retrieval_maintenance in background]
+```
+
+### Stage 0 — Gating and query construction
+
+- If sidecar mode is requested but no LLM backend is reachable, the runtime goes **dormant** for the
+  turn rather than degrading to the no-LLM path: `memory_agent.rs:493` checks
+  `memory::memory_runtime_active` (`memory.rs:144`), which returns `true` either when the user
+  explicitly opted out of the sidecar or when `Sidecar::llm_backend_available` (`sidecar.rs:224`) is
+  true.
+- The **focused query** used for reranking is built by `format_focused_query_for_relevance`
+  (`memory_prompt.rs:156`) → `focus_query_text` (`memory_prompt.rs:163`): it strips
+  `<system-reminder>` blocks, drops `[Tool: …]` / `[Result: …]` / `[Image]` lines, keeps prose, and
+  places the most recent user message first. The unfocused blob
+  (`format_context_for_relevance`, `memory_prompt.rs:117`) is still what gets embedded.
+- Repeated identical contexts are suppressed for `RELEVANCE_CONTEXT_REPEAT_SUPPRESSION_SECS = 30`
+  (`memory_agent.rs:296`, checked at `memory_agent.rs:520`).
+
+### Stage 1 — Embedding
+
+- Backend-dispatched via `embedding_backend::embed_query_active` on a blocking task
+  (`memory_agent.rs:548`).
+- Default backend is the bundled local ONNX model: `MODEL_NAME = "all-MiniLM-L6-v2"`
+  (`jcode-embedding/src/lib.rs:10`), `EMBEDDING_DIM = 384`, `MAX_SEQ_LENGTH = 256`
+  (`jcode-embedding/src/lib.rs:85-86`). An opt-in remote OpenAI backend is selectable via
+  `agents.memory_embedding_backend` (`jcode-config-types/src/lib.rs:580`).
+- Topic change fires below `TOPIC_CHANGE_THRESHOLD = 0.3` cosine against the previous turn
+  (`memory_agent.rs:42`, `memory_agent.rs:582`), which clears `surfaced_memories` and triggers
+  extraction of the previous topic when at least `MIN_TURNS_FOR_EXTRACTION = 4` turns have passed
+  (`memory_agent.rs:289`). Independently, extraction runs every
+  `PERIODIC_EXTRACTION_INTERVAL = 12` turns (`memory_agent.rs:293`, `memory_agent.rs:636`).
+
+### Stage 2 — Hybrid candidate generation
+
+`MemoryManager::find_similar_hybrid` (`memory.rs:642`) → `hybrid_fuse` (`memory.rs:668`), called with
+`EMBEDDING_MAX_HITS = 10` (`memory.rs:1982`, call site `memory_agent.rs:657`):
+
+- Pool per retriever: `max(limit * 5, HYBRID_POOL_MIN)` where `HYBRID_POOL_MIN = 50`
+  (`memory.rs:683`, `memory.rs:1985`).
+- **Dense half:** batch cosine over embeddings, **no cosine floor**. Only entries whose
+  `effective_embedding_model()` equals the active backend's model participate, so a backend switch
+  cannot mix vector spaces (`memory.rs:691-706`).
+- **Sparse half:** `bm25_rank` (`memory.rs:1991`) over each memory's normalized search text
+  (content + tags), with `K1 = 1.2` and `B = 0.75` (`memory.rs:1992-1993`). Memories with zero query
+  term overlap are dropped. Entries excluded from the dense half by the vector-space gate remain
+  reachable here.
+- **Fusion:** Reciprocal Rank Fusion with `RRF_K = 60.0`, score `1 / (RRF_K + rank + 1)` summed across
+  both rankings (`memory.rs:712-719`).
+- The candidate pool is the **active** memories of the in-scope graphs that have an embedding
+  (`memory.rs:734`).
+
+Already-surfaced (per session) and already-injected ids are then filtered out
+(`memory_agent.rs:676-685`).
+
+The mode gate is `agents.memory_sidecar_enabled`, env `JCODE_MEMORY_SIDECAR_ENABLED`
+(`jcode-config-types/src/lib.rs:555`, `crates/jcode-base/src/config/env_overrides.rs:385`). It
+**defaults to `true`** (`default_memory_sidecar_enabled`, `jcode-config-types/src/lib.rs:612`), so
+Mode 2 is the shipped default and Mode 1 is an explicit opt-out.
+
+### Stage 3a — Mode 2 (sidecar on, the default): listwise consensus rerank
+
+- **Cadence gate:** `should_run_rerank` (`memory_agent.rs:314`, called at `memory_agent.rs:719`) fires
+  at most once every `agents.memory_rerank_cadence` turns (default `3`,
+  `jcode-config-types/src/lib.rs:561`, `:616`). A topic change or the first rerank of a session always
+  fires.
+- **Consensus judge:** `memory_rerank::rerank_candidates_consensus_attributed`
+  (`memory_rerank.rs:249`) runs `agents.memory_rerank_votes` independent listwise reranks
+  concurrently over the same prompt and keeps only memories selected by at least
+  `agents.memory_rerank_min_agree` of them. Defaults are `votes = 2`, `min_agree = 2`
+  (`jcode-config-types/src/lib.rs:568-573`, `:620-626`); `min_agree` is clamped to `1..=votes`
+  (`memory_agent.rs:729`). The prompt is built from the **focused query**, not the raw window.
+- **Failure policy:** any judge failure returns an empty set (`RerankOutcome`,
+  `memory_rerank.rs:208`); the caller then carries the last judge-verified set rather than injecting
+  unvetted hybrid order (`carry_verified`, `memory_agent.rs:909`, used at `memory_agent.rs:768` and
+  `:793`). A circuit breaker suppresses cross-session retry storms
+  (`failure_backoff_active`, `memory_rerank.rs:256`). Outcomes are attributed in
+  `memory_judge_metrics` (`memory_agent.rs:748`).
+- Surfaced set is capped at `MAX_MEMORIES_PER_TURN = 5` (`memory_agent.rs:45`).
+
+### Stage 3b — Mode 1 (sidecar explicitly off): dynamic gate
+
+`select_top_candidates_no_sidecar` (`memory_agent.rs:886`) → `dynamic_gate_select`
+(`memory_agent.rs:71`): walks the hybrid-ranked candidates in order and stops at the first score gap,
+keeping a candidate only while its score stays within `GATE_REL_FLOOR = 0.90` of the top score **and**
+within `GATE_DROP_RATIO = 0.95` of the previously kept score (`memory_agent.rs:61-62`,
+`memory_agent.rs:82`). This yields a variable `1..=5` memories instead of a padded top-5.
+
+Extraction is skipped entirely in Mode 1 — `extract_from_context` requires a live sidecar
+(`memory_agent.rs:935`), so memories are only created through the explicit `memory` tool.
+
+### Stage 4 — Handoff
+
+`set_pending_memory_with_ids_and_display` (`memory_agent.rs:854`) stores the formatted prompt for the
+main agent to pick up on the next turn; `format_relevant_prompt` /
+`format_relevant_display_prompt` do the rendering (`jcode-memory-types/src/lib.rs:656`, `:660`).
 
 ---
 
 ## Memory Entry Schema
 
 ```rust
+// crates/jcode-memory-types/src/lib.rs:233
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryEntry {
-    // Identity
-    pub id: String,
-    pub content: String,
+    pub id: String,                          // "mem_{millis}_{rand}"
     pub category: MemoryCategory,
-
-    // Classification
-    pub memory_type: MemoryType,  // Fact, Preference, Procedure, Correction
-    pub scope: MemoryScope,       // Global, Project, Session
-
-    // Source tracking
-    pub session_id: Option<String>,
-    pub message_range: Option<(u32, u32)>,
-    pub file_paths: Vec<String>,
-    pub provenance: Provenance,   // UserStated, Observed, Inferred
-
-    // Lifecycle
+    pub content: String,
+    pub tags: Vec<String>,
+    /// Pre-normalized lowercase search text for content + tags (BM25 input).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub search_text: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    pub last_accessed: DateTime<Utc>,
     pub access_count: u32,
-    pub strength: u32,            // Consolidation count
-
-    // Trust & status
-    pub confidence: f32,          // 0.0-1.0, decays over time
-    pub trust_score: f32,         // Source-based trust
+    pub source: Option<String>,
+    #[serde(default)]
+    pub trust: TrustLevel,
+    /// Consolidation strength (how many times this was reinforced)
+    #[serde(default)]
+    pub strength: u32,
+    #[serde(default = "default_active")]
     pub active: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub superseded_by: Option<String>,
-
-    // Embedding
+    /// Breadcrumbs of when/where this was reinforced
+    #[serde(default)]
+    pub reinforcements: Vec<Reinforcement>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub embedding: Option<Vec<f32>>,
+    /// e.g. "minilm-l6-v2" or "openai:text-embedding-3-small"; None = legacy MiniLM
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
+    #[serde(default = "default_confidence")]
+    pub confidence: f32,
 }
 
+// crates/jcode-memory-types/src/lib.rs:465
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum MemoryCategory { Fact, Preference, Entity, Correction, Custom(String) }
+
+// crates/jcode-memory-types/src/lib.rs:213 — source trust, not a provenance chain
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum TrustLevel { High, #[default] Medium, Low }
+
+// crates/jcode-memory-types/src/lib.rs:225
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MemoryType {
-    Fact,        // "This project uses PostgreSQL"
-    Preference,  // "User prefers 4-space indentation"
-    Procedure,   // "To deploy: run make deploy"
-    Correction,  // "Don't use deprecated API"
-    Negative,    // "Never commit .env files"
+pub struct Reinforcement {
+    pub session_id: String,
+    pub message_index: usize,
+    pub timestamp: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Provenance {
-    UserStated,     // User explicitly said it
-    UserCorrected,  // User corrected agent behavior
-    Observed,       // Agent observed from behavior
-    Inferred,       // Agent inferred from context
-    Extracted,      // Extracted from session summary
-}
+// crates/jcode-memory-types/src/lib.rs:518 — a query filter, not a per-entry field
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryScope { Project, Global, All }
 ```
+
+Notes on things the schema does **not** have: there is no `MemoryType` enum (category and
+`TrustLevel` carry that information), no `Provenance` enum, no `message_range`, no `file_paths`,
+no `trust_score`, no `last_accessed`, and no per-entry `scope` field — scope is determined by which
+file the entry lives in. `LEGACY_EMBEDDING_MODEL = "minilm-l6-v2"` labels entries written before
+embedding-model tagging existed (`jcode-memory-types/src/lib.rs:278`).
 
 ---
 
 ## Advanced Features
 
-### 1. Temporal Awareness
+### 1. Confidence Decay (implemented)
 
-Memories have temporal context:
+`MemoryEntry::effective_confidence` (`jcode-memory-types/src/lib.rs:352`) applies exponential decay by
+**category** and a mild access boost:
 
-```rust
-pub struct TemporalContext {
-    pub session_scope: bool,      // Only relevant in session
-    pub recency_weight: f32,      // Recent access boost
-    pub seasonal: Option<String>, // "end-of-sprint", "release-week"
-}
+| Category | Half-life |
+|----------|----------:|
+| Correction | 365 days |
+| Preference | 90 days |
+| Entity | 60 days |
+| Custom(_) | 45 days |
+| Fact | 30 days |
+
+```
+effective = min(1.0, confidence * exp(-age_days / half_life * 0.693)
+                              * (1.0 + 0.1 * ln(access_count + 1)))
 ```
 
-**Recency boost formula:**
-```
-boost = 1.0 + (0.5 * e^(-hours_since_access / 24))
-```
+`boost_confidence` (`:371`) adds to confidence and increments `access_count`; `decay_confidence`
+(`:378`) subtracts, floored at 0.
 
-### 2. Confidence Decay
+### 2. Feedback Loops (implemented)
 
-Confidence decays over time based on memory type:
+After each turn, verified memories are boosted and rejected candidates decayed in a single batched
+graph load/save per scope (`apply_confidence_updates`, `memory_agent.rs:1241`).
 
-| Memory Type | Half-life | Rationale |
-|-------------|-----------|-----------|
-| Correction | 365 days | User corrections are high value |
-| Preference | 90 days | Preferences may evolve |
-| Fact | 30 days | Codebase facts can become stale |
-| Procedure | 60 days | Procedures change less often |
-| Inferred | 7 days | Low-confidence inferences |
+### 3. Reinforcement Provenance (implemented)
 
-**Decay formula:**
-```
-confidence = initial_confidence * e^(-age_days / half_life)
-           * (1 + 0.1 * log(access_count + 1))
-           * trust_weight
-```
+`MemoryEntry::reinforcements` records `(session_id, message_index, timestamp)` breadcrumbs each time a
+memory is reinforced instead of duplicated.
 
-### 3. Negative Memories
+### 4. Weak-memory pruning (implemented)
 
-Things the agent should avoid doing:
+`prune_low_confidence` (`memory_agent.rs:1479`) runs every `CLUSTER_REFINEMENT_INTERVAL * 5` = 250
+maintenance ticks (`memory_agent.rs:1291`) and drops memories below `confidence 0.15` that are older
+than 24 hours.
 
-```rust
-MemoryEntry {
-    content: "Never use println! for logging in production code",
-    memory_type: MemoryType::Negative,
-    trigger_patterns: vec!["println!", "print!", "dbg!"],
-    ...
-}
-```
+### 5. Negative memories and trigger patterns — **Not implemented**
 
-**Surfacing:** Negative memories are surfaced when trigger patterns match current context.
+There is no `Negative` category and no `trigger_patterns` field; nothing matches memories against
+patterns in the current context.
 
-### 4. Procedural Memories
+### 6. Procedural memories — **Not implemented**
 
-How-to knowledge with structured steps:
+There is no `Procedure` type with steps/prerequisites/warnings. Procedural knowledge is stored as
+ordinary `Fact`/`Correction` content, and the `DerivedFrom` edge has no writer.
 
-```rust
-pub struct Procedure {
-    pub name: String,
-    pub trigger: String,        // "deploy to production"
-    pub steps: Vec<String>,
-    pub prerequisites: Vec<String>,
-    pub warnings: Vec<String>,
-}
-```
+### 7. Temporal awareness — **Not implemented**
 
-### 5. Provenance Tracking
+There is no `TemporalContext`, no recency-weight boost in the ranking, and no session-scoped memory
+type. The only time-based signal is the confidence half-life above.
 
-Every memory tracks its source:
+### 8. Post-Retrieval Maintenance (implemented)
 
-```rust
-pub struct ProvenanceChain {
-    pub source: Provenance,
-    pub session_id: String,
-    pub timestamp: DateTime<Utc>,
-    pub context_snippet: String,  // What was being discussed
-    pub confidence_reason: String, // Why this confidence level
-}
-```
-
-### 6. Feedback Loops
-
-Memories strengthen or weaken based on use:
-
-```rust
-impl MemoryEntry {
-    pub fn on_used(&mut self, helpful: bool) {
-        self.access_count += 1;
-        self.last_accessed = Utc::now();
-
-        if helpful {
-            self.strength = self.strength.saturating_add(1);
-            self.confidence = (self.confidence + 0.05).min(1.0);
-        } else {
-            self.confidence = (self.confidence - 0.1).max(0.0);
-        }
-    }
-}
-```
-
-### 7. Post-Retrieval Maintenance
-
-After serving memories to the main agent, the memory agent has valuable context it can use for background maintenance. This "opportunistic maintenance" happens asynchronously without blocking.
+After serving memories the agent runs maintenance in a detached task
+(`post_retrieval_maintenance`, `memory_agent.rs:1200`).
 
 ```mermaid
 graph LR
     subgraph "Retrieval Phase"
         R1[Context Embedding]
-        R2[Similarity Search]
-        R3[Cascade BFS]
-        R4[Sidecar Verify]
-        R5[Serve to Agent]
+        R2[Hybrid retrieval]
+        R3[Consensus rerank]
+        R4[Serve to Agent]
     end
 
     subgraph "Maintenance Phase (Background)"
         M1[Link Discovery]
         M2[Cluster Update]
-        M3[Confidence Boost]
+        M3[Confidence Boost/Decay]
         M4[Gap Detection]
+        M5[Tag Inference]
+        M6[Pruning]
     end
 
-    R5 --> M1
-    R5 --> M2
-    R5 --> M3
-    R5 --> M4
+    R4 --> M1
+    R4 --> M2
+    R4 --> M3
+    R4 --> M4
+    R4 --> M5
+    R4 --> M6
 
     style M1 fill:#1f6feb
     style M2 fill:#1f6feb
     style M3 fill:#1f6feb
     style M4 fill:#1f6feb
+    style M5 fill:#1f6feb
+    style M6 fill:#1f6feb
 ```
 
-**Available Context:**
-- Current context embedding
-- All memories that were retrieved (initial hits + BFS expansion)
-- Which memories passed sidecar verification (actually relevant)
-- Which were rejected (retrieved but not relevant)
-- Co-occurrence patterns (memories that appear together)
+**Available context** (`RetrievalContext`, populated at `memory_agent.rs:822`): the verified ids, the
+rejected ids, and a 200-char context snippet. The context embedding itself is *not* handed to
+maintenance.
 
-**Maintenance Tasks:**
+| Task | Trigger | Action | Source |
+|------|---------|--------|--------|
+| **Link discovery** | ≥2 verified | `RelatesTo` edge for every pair, weight `0.6` | `memory_agent.rs:1222`, `:1682` |
+| **Confidence boost/decay** | every turn | boost verified, decay rejected, one load/save per scope | `memory_agent.rs:1240` |
+| **Gap detection** | verified empty and rejected non-empty | log a memory gap event | `memory_agent.rs:1247` |
+| **Cluster refinement** | every 50 ticks and ≥2 verified | co-relevance cluster + centroid + `InCluster` edges + LLM name | `memory_agent.rs:1259`, `:1326` |
+| **Tag inference** | ≥2 verified | infer a shared tag from the context snippet | `memory_agent.rs:1277` |
+| **Pruning** | every 250 ticks | drop confidence <0.15, age >24h | `memory_agent.rs:1291` |
 
-| Task | Trigger | Action |
-|------|---------|--------|
-| **Link Discovery** | 2+ memories verified relevant | Create/strengthen `RelatesTo` edges between co-relevant memories |
-| **Cluster Refinement** | Retrieved memories span clusters | Update cluster centroids, consider merging nearby clusters |
-| **Confidence Boost** | Memory verified relevant | Increment access count, boost confidence |
-| **Confidence Decay** | Memory retrieved but rejected | Slightly decay confidence (may be stale) |
-| **Gap Detection** | Context has no relevant memories | Log potential memory gap for later extraction |
-| **Tag Inference** | Multiple memories share context | Infer common tag from context if none exists |
+Gap detection only emits an event and a log line — there is no persisted `MemoryGap` record and no
+later replay of gaps into extraction.
 
-**Implementation:**
-
-```rust
-impl MemoryAgent {
-    /// Called after serving memories, runs maintenance in background
-    async fn post_retrieval_maintenance(&self, ctx: RetrievalContext) {
-        // Don't block - spawn maintenance tasks
-        tokio::spawn(async move {
-            // 1. Strengthen links between co-relevant memories
-            if ctx.verified_memories.len() >= 2 {
-                self.discover_links(&ctx.verified_memories, &ctx.embedding).await;
-            }
-
-            // 2. Boost confidence for verified memories
-            for mem_id in &ctx.verified_memories {
-                self.boost_confidence(mem_id).await;
-            }
-
-            // 3. Decay confidence for rejected memories
-            for mem_id in &ctx.rejected_memories {
-                self.decay_confidence(mem_id, 0.02).await;  // Gentle decay
-            }
-
-            // 4. Detect gaps (context had no relevant memories)
-            if ctx.verified_memories.is_empty() && ctx.initial_hits > 0 {
-                self.log_memory_gap(&ctx.embedding, &ctx.context_snippet).await;
-            }
-
-            // 5. Periodic cluster update (every N retrievals)
-            if self.retrieval_count.fetch_add(1, Ordering::Relaxed) % 50 == 0 {
-                self.update_clusters().await;
-            }
-        });
-    }
-}
-```
-
-**Gap Detection for Future Learning:**
-
-When retrieval finds no relevant memories but the context seems important, log it:
-
-```rust
-struct MemoryGap {
-    context_embedding: Vec<f32>,
-    context_snippet: String,
-    timestamp: DateTime<Utc>,
-    session_id: String,
-}
-```
-
-These gaps can be reviewed during end-of-session extraction to create new memories for topics the system didn't know about.
-
-### 8. Scope Levels
-
-Memories exist at different scopes:
+### 9. Scope Levels
 
 ```mermaid
 graph TB
     subgraph "Scope Hierarchy"
-        G[Global<br/>User-wide preferences]
-        P[Project<br/>Codebase-specific]
-        S[Session<br/>Current conversation]
+        G[Global<br/>User-wide]
+        P[Project<br/>Per working directory]
     end
 
     G --> P
-    P --> S
 
     style G fill:#e8f5e9
     style P fill:#e3f2fd
-    style S fill:#fff3e0
 ```
 
-| Scope | Lifetime | Examples |
-|-------|----------|----------|
-| Global | Permanent | "User prefers vim keybindings" |
-| Project | Until deleted | "This project uses async/await" |
-| Session | Current session | "Working on auth refactor" |
+| Scope | Storage | Lifetime |
+|-------|---------|----------|
+| Global | `~/.jcode/memory/global.json` | Permanent |
+| Project | `~/.jcode/memory/projects/<hash>.json` | Until deleted |
+
+`MemoryScope::All` (`jcode-memory-types/src/lib.rs:518`) is the query-side union, and it is what the
+live path uses. There is **no** persisted session scope.
 
 ---
 
@@ -623,8 +599,8 @@ sequenceDiagram
     participant CH as mpsc Channel
     participant MEM as Memory Agent<br/>Background Task
     participant EMB as Embedder
-    participant GR as Graph Store
-    participant HC as Sidecar (Codex Spark)
+    participant GR as MemoryGraph store
+    participant HC as Sidecar judge
 
     Note over MA,MEM: Turn N
 
@@ -632,244 +608,224 @@ sequenceDiagram
     MA->>MA: take_pending_memory()
     Note right of MA: Returns Turn N-1 results
 
-    MA->>CH: try_send(ContextUpdate)
+    MA->>CH: try_send(AgentMessage::Context)
     Note right of CH: Non-blocking
 
     MA->>MA: Continue with LLM call
 
-    CH->>MEM: update_context_sync()
+    CH->>MEM: process_context()
 
     MEM->>EMB: Embed context
-    EMB-->>MEM: Context embedding
+    EMB-->>MEM: 384-d embedding
 
-    MEM->>GR: Similarity search
-    GR-->>MEM: Initial hits
+    MEM->>MEM: Topic change check (sim < 0.3)
 
-    MEM->>GR: BFS traversal
-    GR-->>MEM: Related memories
+    MEM->>GR: Load active memories
+    GR-->>MEM: Candidate pool
+    MEM->>MEM: dense + BM25 + RRF -> top 10
 
-    MEM->>HC: Verify relevance
-    HC-->>MEM: Filtered results
-
-    MEM->>MEM: Topic change detection
-    Note right of MEM: Clear surfaced if sim < 0.3
+    MEM->>HC: One listwise rerank per judge (focused query)
+    HC-->>MEM: Consensus-selected memories
 
     MEM->>MEM: set_pending_memory()
     Note right of MEM: Available at Turn N+1
+
+    MEM->>GR: post_retrieval_maintenance
 ```
 
-**Key Points:**
-- Memory agent is a **singleton** (OnceCell) - only one instance ever runs
-- Communication is **non-blocking** via `try_send()` on mpsc channel
-- Results arrive **one turn behind** (processed in background)
-- **Topic change detection** resets surfaced set when conversation shifts
-- **Cascade retrieval** traverses graph for related memories
+**Key points:**
+- The memory agent is a **singleton** (`tokio::sync::OnceCell`, `memory_agent.rs:98`).
+- Communication is **non-blocking** via `try_send()` on an mpsc channel (`memory_agent.rs:268`);
+  the protocol is just `AgentMessage::Context { .. }` and `AgentMessage::Reset` (`memory_agent.rs:278`).
+- Results arrive **one turn behind**.
+- **Topic change detection** clears the per-session surfaced set; injected-memory ids are
+  deliberately *not* cleared and age out via TTL instead (`memory_agent.rs:613-621`).
 
 ---
 
 ## Storage Layout
 
+One JSON file per scope. The whole `MemoryGraph` — memories, tags, clusters and edges — is serialized
+into that single file; there are no separate embedding, cluster or tag files, and embeddings live
+inline on each entry.
+
 ```
 ~/.jcode/memory/
-├── graph.json                    # Serialized petgraph
 ├── projects/
-│   └── <project_hash>.json       # Per-directory memories
-├── global.json                   # User-wide memories
-├── embeddings/
-│   └── <memory_id>.vec           # Embedding vectors
-├── clusters/
-│   └── cluster_metadata.json     # Cluster centroids and metadata
-└── tags/
-    └── tag_index.json            # Tag → memory mappings
+│   └── <project_hash>.json       # MemoryGraph for one working directory
+│   └── <project_hash>.json.bak   # one-time backup written on legacy migration
+├── global.json                   # MemoryGraph for user-wide memories
+└── test/                         # only when the manager is in test mode
+    ├── test_project.json
+    └── test_global.json
 ```
+
+- `project_memory_path` (`memory.rs:252`): `<jcode_dir>/memory/projects/{hash}.json`, where the hash is
+  a 16-hex `DefaultHasher` digest of the working directory path (`memory.rs:265-274`).
+- `global_memory_path` (`memory.rs:354`): `<jcode_dir>/memory/global.json`.
+- Load path (`load_project_graph`, `memory.rs:1658`; `load_global_graph`, `memory.rs:1723`) tries
+  `MemoryGraph` first, and falls back to the legacy flat `MemoryStore` shape, migrating via
+  `MemoryGraph::from_legacy_store` (`graph.rs:625`) after copying a `.json.bak` (`memory.rs:1696`).
+- Legacy `remember` notes at `<jcode_dir>/notes/{hash}.json` are imported once into the project graph
+  (`legacy_notes_path`, `memory.rs:277`; `import_legacy_notes_into_graph`, `memory.rs:316`).
+- Loaded graphs are memoized in a process cache (`cached_graph` / `cache_graph`) outside test mode.
+
+---
+
+## The Memory Sidecar
+
+`Sidecar` (`crates/jcode-base/src/sidecar.rs`) is the lightweight LLM client used for reranking,
+extraction, dedup/contradiction checks and cluster naming.
+
+Model selection (`Sidecar::new` → `with_configured_model` → `auto_select_backend`,
+`sidecar.rs:154-211`):
+
+1. `agents.memory_model` override, routed by `provider_for_model` to the OpenAI or Claude backend; an
+   unroutable value logs a warning and falls through to auto-selection (`sidecar.rs:160-174`).
+2. Codex credentials present → OpenAI `SIDECAR_OPENAI_MODEL = "gpt-5.6-luna"` at
+   `reasoning = "none"` (`sidecar.rs:17-18`). On an OAuth account without access to that model the
+   request falls back to `SIDECAR_OPENAI_OAUTH_FALLBACK_MODEL = "gpt-5.4"` at `reasoning = "low"`
+   (`sidecar.rs:19-20`, resolved in `resolve_openai_request_model`, `sidecar.rs:765-777`), and then to
+   Claude if that also fails (`sidecar.rs:392-398`).
+3. Claude credentials present → `SIDECAR_CLAUDE_MODEL = "claude-haiku-4-5-20251001"` (`sidecar.rs:23`).
+4. Otherwise dispatch through whatever provider the agent is already running on
+   (`SidecarBackend::Provider`, `sidecar.rs:201-205`).
+5. No credentials and no provider → Claude, so the eventual error is actionable
+   (`sidecar.rs:206-209`).
+
+`Sidecar::llm_backend_available` (`sidecar.rs:224`) is re-evaluated live and is what makes memory go
+dormant instead of silently degrading when a login is lost. Sidecar responses are capped at
+`DEFAULT_MAX_TOKENS = 1024` (`sidecar.rs:48`).
 
 ---
 
 ## Memory Tools
 
-Available to the main agent:
+Available to the main agent. The advertised parameter schema
+(`crates/jcode-app-core/src/tool/memory.rs:101`) is deliberately narrow: `action`, `content`,
+`category`, `query`, `id`, `tags`, `scope`, `from_id`, `to_id`, `limit`. `mode`, `depth` and `weight`
+are accepted by the deserializer but intentionally **not** advertised (regression-pinned by
+`schema_only_advertises_core_memory_fields`, `tool/memory.rs:465`), so callers get the defaults.
 
 ```
-memory { action: "remember", content: "...", category: "fact|preference|correction",
+memory { action: "remember", content: "...", category: "fact|preference|entity|correction",
          scope: "project|global", tags: ["tag1", "tag2"] }
-memory { action: "recall" }                    # Get relevant memories for context
-memory { action: "search", query: "..." }      # Semantic search
-memory { action: "list", tag: "..." }          # List by tag
-memory { action: "forget", id: "..." }         # Deactivate memory
-memory { action: "link", from: "id1", to: "id2", relation: "relates_to" }
+memory { action: "recall", limit: 10 }                # recent memories (no query -> mode "recent")
+memory { action: "recall", query: "..." }             # mode defaults to "cascade": cosine >= 0.5 seeds + graph BFS
+memory { action: "search", query: "..." }             # normalized substring search
+memory { action: "list", scope: "project" }           # list every memory in scope
+memory { action: "forget", id: "..." }                # deactivate memory
 memory { action: "tag", id: "...", tags: ["new", "tags"] }
+memory { action: "link", from_id: "id1", to_id: "id2" }   # RelatesTo, default weight 0.5
+memory { action: "related", id: "..." }               # graph neighbors, default depth 2
 ```
+
+Handlers: `remember` `:138`, `recall` `:182`, `search` `:283`, `list` `:311`, `forget` `:333`,
+`tag` `:348`, `link` `:375` (weight default `0.5`, `:382`), `related` `:403` (depth default `2`,
+`:405`). `list` ignores `tags` — it returns everything in scope (`:317`).
+
+CLI surface (`src/cli/args.rs:961`): `jcode memory list|search|export|import|stats|clear-test`. There
+is no `jcode memory remember`/`forget` — writes go through the tool.
 
 ---
 
 ## Implementation Status
 
-### Phase 1: Basic Memory Tools ✅
+### Phase 1: Basic Memory Tools — done
 - [x] Memory store with file persistence
-- [x] Basic memory tool
-- [x] Integration with agent
+- [x] `memory` tool
+- [x] Integration with the agent
 
-### Phase 2: Embedding Search ✅
-- [x] Local all-MiniLM-L6-v2 via tract-onnx
-- [x] Background embedding process
-- [x] Similarity search with cosine distance
+### Phase 2: Embedding Search — done
+- [x] Local all-MiniLM-L6-v2 (384-d) via tract-onnx
+- [x] Background embedding
+- [x] Cosine similarity search
+- [x] Opt-in remote OpenAI embedding backend (`embedding_backend.rs`)
 
-### Phase 3: Memory Agent ✅
+### Phase 3: Memory Agent — done
 - [x] Async channel communication
-- [x] Lightweight sidecar for relevance verification (currently GPT-5.3 Codex Spark)
+- [x] Sidecar for relevance/extraction (`gpt-5.6-luna`, Claude haiku, or the live provider)
 - [x] Topic change detection
-- [x] Surfaced memory tracking
+- [x] Surfaced/injected memory tracking
+- [x] Dormancy when sidecar mode is on but no LLM backend is reachable
 
-### Phase 4: Graph-Based Architecture ✅
-- [x] HashMap-based graph structure (simpler than petgraph for JSON serialization)
-- [x] Tag nodes and HasTag edges
-- [x] Cluster discovery and InCluster edges
-- [x] Semantic link edges (RelatesTo)
-- [x] Cascade retrieval algorithm with BFS traversal
+### Phase 4: Graph Structure — done (write path only)
+- [x] `HashMap`-based graph, one JSON per scope
+- [x] Tag nodes and `HasTag` edges
+- [x] Co-relevance clusters and `InCluster` edges
+- [x] `RelatesTo` / `Supersedes` / `Contradicts` edges
+- [x] `cascade_retrieve` BFS
+- [ ] **Graph structure read back by the live turn path** (tool-only today)
 
-### Phase 5: Post-Retrieval Maintenance ✅
-- [x] Link discovery (co-relevant memories)
-- [x] Confidence boost/decay on retrieval
-- [x] Gap detection for missing knowledge
-- [x] Periodic cluster refinement
-- [x] Tag inference from context
+### Phase 5: Post-Retrieval Maintenance — done
+- [x] Link discovery, confidence boost/decay, gap events, cluster refinement, tag inference, pruning
 
-### Phase 6: Advanced Features ✅
-- [x] Confidence decay system (time-based with category-specific half-lives)
+### Phase 6: Advanced Features — partial
+- [x] Category-based confidence decay
+- [x] Feedback loops (boost on use, decay on rejection)
+- [x] Reinforcement breadcrumbs
 - [ ] Negative memories and trigger patterns
 - [ ] Procedural memory support
-- [x] Provenance tracking
-- [x] Feedback loops (boost on use, decay on rejection)
 - [ ] Temporal awareness
 
-### Phase 7: Full Integration ✅
-- [x] End-of-session extraction
-- [x] Sidecar consolidation on write (see below)
-- [x] User control CLI (`jcode memory` commands)
-- [x] Memory export/import
+### Phase 7: Integration — done
+- [x] End-of-session extraction (`trigger_final_extraction_with_dir`, `memory_agent.rs:1853`;
+      invoked from the TUI and server session-teardown paths, e.g.
+      `crates/jcode-tui/src/tui/app/conversation_state.rs:526`)
+- [x] Incremental extraction on topic change and every 12 turns
+- [x] Write-time dedup (`STORAGE_DEDUP_THRESHOLD = 0.85`, `memory.rs:394`) and contradiction handling
+- [x] `jcode memory` CLI
+- [x] Export/import
 
-### Phase 7.5: Sidecar Consolidation (Inline, Per-Turn) ✅
+### Phase 8: Hybrid + Rerank Retrieval — done
+- [x] `find_similar_hybrid`: dense + BM25 + RRF, no cosine floor
+- [x] Vector-space gate on the dense half so backend switches do not mix embedding spaces
+- [x] Focused-query listwise LLM rerank
+- [x] Multi-judge consensus voting, cadence gating, verified-set carry, circuit breaker
+- [x] Judge outcome attribution (`memory_judge_metrics`)
 
-Lightweight consolidation that runs in the memory sidecar after returning results to the main agent. Only operates on memories already retrieved — no extra lookups, zero added latency.
+### Phase 9: Deep Memory Consolidation — not started
+See [AMBIENT_MODE.md](./AMBIENT_MODE.md) for the ambient background-cycle design that would host it.
 
-`extract_from_context()` now performs inline write-time consolidation:
-
-- [x] **Duplicate detection on write** — semantically similar memories are reinforced instead of duplicated.
-- [x] **Contradiction detection on write** — contradictory memories are superseded during incremental extraction.
-- [x] **Reinforcement provenance** — `MemoryEntry` tracks `Vec<Reinforcement>` breadcrumbs (`session_id`, `message_index`, `timestamp`).
-
-### Phase 8: Deep Memory Consolidation (Ambient Garden) 📋
-
-Full graph-wide consolidation that runs during ambient mode background cycles. See [AMBIENT_MODE.md](./AMBIENT_MODE.md) for the ambient mode design.
-
-- [ ] Graph-wide similarity-based memory merging
-- [ ] Redundancy detection and deduplication (beyond sidecar's local scope)
-- [ ] Contradiction resolution (across full graph, not just retrieved set)
-- [ ] Fact verification against codebase (check if factual memories are still true)
-- [ ] Retroactive session extraction (crashed/missed sessions)
+- [ ] Graph-wide similarity-based merging
+- [ ] Redundancy detection beyond the retrieved set
+- [ ] Contradiction resolution across the full graph
+- [ ] Fact verification against the codebase
+- [ ] Retroactive extraction for crashed/missed sessions
 - [ ] Cluster reorganization
-- [ ] Weak memory pruning (confidence < 0.05 AND strength <= 1)
 - [ ] Relationship discovery across sessions
-- [ ] Embedding backfill for memories missing embeddings
-- [ ] Knowledge graph optimization
+- [ ] Embedding backfill for entries missing embeddings
 
 ---
 
 ## Privacy & Security
 
-### Do Not Remember
-- API keys, secrets, credentials
-- Passwords or tokens
-- Personal identifying information
-- File contents marked sensitive
+### User control (implemented)
+- All memories are stored as human-readable JSON under `~/.jcode/memory/`.
+- `jcode memory list|search|stats|export|import` for inspection and backup.
+- `agents.memory_sidecar_enabled = false` disables all LLM memory work (extraction stops entirely, so
+  nothing is auto-learned).
 
-### Filtering
-Before storing any memory, scan for:
-- Regex patterns for secrets (API keys, passwords)
-- Files in `.gitignore` or `.secretsignore`
-- Content from `.env` files
+### Content filtering — **Not implemented**
 
-### User Control
-- All memories stored in human-readable JSON
-- CLI for viewing/editing/deleting
-- Option to disable memory entirely
-- Export/import for backup
-
----
-
-## Future: Memory Consolidation (Sleep-Like Processing)
-
-> **Status:** TODO - Design pending
-
-Similar to how humans consolidate memories during sleep, jcode can run background consolidation to optimize the memory graph:
-
-### Concept
-
-```mermaid
-graph LR
-    subgraph "Active Use"
-        A[Raw Memories]
-        B[Redundant Facts]
-        C[Weak Links]
-        D[Scattered Tags]
-    end
-
-    subgraph "Consolidation"
-        E[Merge Similar]
-        F[Detect Contradictions]
-        G[Prune Weak]
-        H[Reorganize Clusters]
-    end
-
-    subgraph "Optimized"
-        I[Unified Facts]
-        J[Resolved Conflicts]
-        K[Strong Connections]
-        L[Clean Taxonomy]
-    end
-
-    A --> E --> I
-    B --> E
-    B --> F --> J
-    C --> G --> K
-    D --> H --> L
-```
-
-### Potential Features
-
-| Feature | Description |
-|---------|-------------|
-| **Similarity Merge** | Combine memories with >0.95 embedding similarity |
-| **Redundancy Detection** | Find memories that express the same fact differently |
-| **Contradiction Resolution** | Surface conflicting memories for user decision |
-| **Weak Pruning** | Remove memories with low confidence + low access |
-| **Cluster Optimization** | Re-run clustering, merge small clusters |
-| **Link Strengthening** | Increase weights on frequently co-accessed pairs |
-| **Tag Cleanup** | Merge similar tags, remove orphans |
-
-### Architecture Options (TBD)
-
-1. **Periodic daemon** - Run consolidation every N hours
-2. **On-idle trigger** - Run when no active sessions for M minutes
-3. **Capacity-based** - Run when memory count exceeds threshold
-4. **Manual command** - User-triggered via `/consolidate`
-
-### Open Questions for Consolidation
-
-- How to handle user confirmation for destructive merges?
-- Should consolidation be reversible?
-- What's the right frequency/trigger?
-- How to balance between "perfect organization" and "keep everything"?
+There is no secret scanner in the memory path: no regex secret detection, no `.gitignore`/
+`.secretsignore` check, and no `.env` exclusion before a memory is written. Nothing prevents the
+extraction sidecar from storing a credential it saw in the transcript. Treat
+`~/.jcode/memory/*.json` as potentially sensitive, and prefer disabling extraction on repositories
+where transcripts routinely carry secrets.
 
 ---
 
 ## Open Questions
 
-1. **Multi-machine sync:** Should memories sync across devices via encrypted backup?
-2. **Team sharing:** Should some memories be shareable across a team?
-3. **Cluster algorithm:** HDBSCAN vs k-means vs hierarchical clustering?
-4. **Graph persistence:** JSON serialization vs SQLite for larger graphs?
+1. **Making the graph earn its keep:** which edges, if any, should the live path read? See
+   [plans/MEMORY_GRAPH_PLAN.md](./plans/MEMORY_GRAPH_PLAN.md).
+2. **Multi-machine sync:** should memories sync across devices via encrypted backup?
+3. **Team sharing:** should some memories be shareable across a team?
+4. **Persistence:** JSON is rewritten wholesale per scope on every maintenance write; at what graph
+   size does that need SQLite?
+5. **Secret hygiene:** what is the right pre-write filter, given extraction is LLM-driven?
 
 ---
 
-*Last updated: 2026-01-27*
+*Last updated: 2026-09-05*

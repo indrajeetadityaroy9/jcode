@@ -1,10 +1,18 @@
 # Compile-Time Isolation Refactor
 
-This is the active migration plan for making full-feature debug/selfdev builds faster without removing features from the developer binary.
+This is the migration plan for making full-feature debug/selfdev builds faster
+without removing features from the developer binary.
+
+Status: Phase 0 and Phase 2 landed (measurement scripts exist; the four-crate
+split is in place and the glob ladder is now ratcheted). **Phase 1 is unbuilt** —
+none of its target crates exist. Phases 3 and 4 are not started. Details in each
+phase below.
 
 ## Goal
 
-Keep the normal debug/selfdev binary production-like, including PDF, embeddings, providers, update/selfdev tooling, and other integrations, while reducing the amount of Rust code that must be recompiled after common edits.
+Keep the normal debug/selfdev binary production-like, including PDF, embeddings,
+providers, update tooling, and other integrations, while reducing the amount of
+Rust code that must be recompiled after common edits.
 
 The target is not just "more crates". The target is a wider dependency DAG with smaller serial front-end units and cleaner invalidation boundaries.
 
@@ -14,12 +22,15 @@ The workspace already has many crates, but the critical path is dominated by a s
 
 ```mermaid
 graph LR
-    base["jcode-base\n~100k+ LOC"] --> appcore["jcode-app-core\n~100k LOC"]
-    appcore --> tui["jcode-tui\n~100k+ LOC"]
+    base["jcode-base\n~100k LOC"] --> appcore["jcode-app-core\n~122k LOC"]
+    appcore --> tui["jcode-tui\n~199k LOC"]
     tui --> rootlib["jcode lib"]
     rootlib --> bin["jcode bin"]
-    small["50+ smaller crates"] -. mostly parallel .-> base
+    small["70+ smaller crates"] -. mostly parallel .-> base
 ```
+
+(LOC measured over each crate's `src/**/*.rs` on 2026-09-05; the timing table
+below is from the original 2026-05 report and has not been re-measured.)
 
 From the last available Cargo timing report parsed with `scripts/compile_time_probe.sh --skip-build`:
 
@@ -55,7 +66,6 @@ For broader repeated measurements, continue using:
 
 ```bash
 scripts/bench_compile.sh selfdev-jcode --runs 3 --touch <path> --json
-scripts/bench_selfdev_checkpoints.sh --skip-cold --touch <path> --runs 1
 ```
 
 Track at least:
@@ -65,9 +75,15 @@ Track at least:
 3. `jcode-base -> jcode-app-core -> jcode-tui -> jcode lib -> jcode bin` stack span.
 4. Sum of frontend time in the serial stack.
 5. Incremental rebuild after touching representative high-churn files.
-6. Static report drift from `scripts/compile_isolation_report.py`: LOC, inline tests, `async_trait`, and target-state dependency advisories.
+6. Static report drift from `scripts/compile_isolation_report.py`: LOC, inline tests, `async_trait`, and target-state dependency advisories. Note this report is advisory and exits non-zero only with `--strict-target-state` (`scripts/compile_isolation_report.py:4-5`, `:174-178`, `:244-246`).
 
-## Target architecture
+## Target architecture (not built)
+
+None of `jcode-cli`, `jcode-server`, `jcode-agent`, `jcode-tool-registry`,
+`jcode-auth-core`, `jcode-session-core`, `jcode-memory-core`, or
+`jcode-client-api` exist in `[workspace] members` (`Cargo.toml:9-87`). The graph
+below is the destination, not the current shape — for the current shape see
+[Current diagnosis](#current-diagnosis).
 
 ```mermaid
 graph TD
@@ -98,7 +114,7 @@ Rules:
 
 - TUI and CLI depend on client API, protocol, view models, and small type crates, not full server/provider/tool implementations.
 - Provider implementations are leaf crates. Heavy vendor SDK dependencies live only in the provider crate that needs them.
-- Tool implementations are leaf crates. Heavy tools like PDF/browser/Gmail/search are isolated behind tool-core interfaces.
+- Tool implementations are leaf crates. Heavy tools like PDF and search are isolated behind tool-core interfaces.
 - Shared bottom crates are small and stable. Avoid putting high-churn behavior in protocol/type crates.
 - Avoid broad `pub use whole_crate::*` compatibility ladders in final architecture.
 
@@ -106,14 +122,14 @@ Rules:
 
 ### Phase 0: measurement and guardrails
 
-Status: started.
+Status: **done.**
 
 Deliverables:
 
-- `scripts/compile_time_probe.sh`
-- `scripts/compile_isolation_report.py`
+- `scripts/compile_time_probe.sh` (exists)
+- `scripts/compile_isolation_report.py` (exists, advisory)
 - this document
-- dependency boundary checks/advisory reports
+- `scripts/check_dependency_boundaries.py`, gated at `scripts/check_guardrails.sh:89`
 
 Success criteria:
 
@@ -122,7 +138,15 @@ Success criteria:
 
 ### Phase 1: widen the god-crate critical path
 
-Split the three long-pole crates into sibling domain crates. Priority is widening the graph, not extracting more tiny type crates.
+Status: **not started.** Every crate listed below is absent from
+`[workspace] members`. The only thing that moved in this direction is the
+provider layer: the eight `jcode-provider-*-runtime` crates plus
+`jcode-provider-doctor` were pulled out downstream of `jcode-base`
+(`Cargo.toml:182-195`), which is a narrower version of the "provider
+implementation crates, each a leaf" bullet.
+
+Split the three long-pole crates into sibling domain crates. Priority is
+widening the graph, not extracting more tiny type crates.
 
 Likely first splits:
 
@@ -135,7 +159,8 @@ Likely first splits:
   - `jcode-server`
   - `jcode-agent`
   - `jcode-tool-registry`
-  - service crates for background/swarm/update/selfdev as needed
+  - service crates for background/swarm/update as needed (the self-development
+    service this list used to name was purged; see `FORK_WORKFLOW.md` §1)
 - From `jcode-tui`:
   - `jcode-client-api` / view-model boundary first
   - then move reusable client-side state logic out of the terminal rendering crate only when it creates a real parallel unit
@@ -147,6 +172,13 @@ Success criteria:
 - Cargo timing shows multiple medium-sized Jcode crates running in parallel instead of one 4-deep mega-crate ladder.
 
 ### Phase 2: kill glob re-export ladders
+
+Status: **step 1 done, steps 2-3 open.** The ladder is intact
+(`crates/jcode-app-core/src/lib.rs:24`, `crates/jcode-tui/src/lib.rs:23`,
+`src/lib.rs:22`), but it is now ratcheted: `scripts/check_wildcard_reexport_budget.py`
+runs as a gate (`scripts/check_guardrails.sh:90`) against a 17-entry baseline
+(`scripts/wildcard_reexport_budget.json`), so no new whole-crate glob can land
+without an explicit rebaseline.
 
 Current compatibility layering preserves the old monolith shape:
 
@@ -169,6 +201,8 @@ Success criteria:
 
 ### Phase 3: move inline tests out of hot crates
 
+Status: **not started.**
+
 Problem:
 
 - Inline `#[cfg(test)]` modules make `cargo test` compile large production crates plus large test bodies as one rustc unit.
@@ -183,6 +217,9 @@ Success criteria:
 - Targeted tests no longer require monolithic test cfg builds for unrelated domains.
 
 ### Phase 4: reduce front-end macro tax
+
+Status: **not started.** `scripts/compile_isolation_report.py` reports the
+`async_trait` count as one of its advisories.
 
 Targets:
 
@@ -213,8 +250,9 @@ scripts/check_dependency_boundaries.py
 cargo check --profile selfdev -p jcode --bin jcode
 ```
 
-For code-moving phases, also run the relevant targeted tests for the moved domain, plus one full selfdev build through the coordinated selfdev path when practical:
+For code-moving phases, also run the relevant targeted tests for the moved
+domain, plus one full selfdev build:
 
 ```bash
-selfdev build target=tui
+scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode
 ```

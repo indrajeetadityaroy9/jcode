@@ -3,11 +3,25 @@
 This document tracks the plan to make jcode's self-dev / refactor loop much faster
 without sacrificing full-feature builds.
 
+**Read this as a dated changelog, not as current state.** Entries are kept
+verbatim as a historical record. Two caveats apply throughout:
+
+- Some entries measure subsystems this fork has since purged: the
+  `jcode-notify-email` crate (email/SMTP/IMAP notifications), the browser tool
+  (`src/tool/browser.rs`, which appears in the 2026-04-18 checkpoint table), the
+  `global-hotkey` dependency (global launch hotkeys; in-app `[keybindings]` and
+  `keymap/**` conflict detection survive), the `aws-sdk` stack (AWS Bedrock), and
+  the `telemetry` module (named as a back-edge in the 2026-05-29 SCC analysis).
+  Those measurements are no longer reproducible. See `docs/FORK_WORKFLOW.md` §1.
+- Every `src/<module>.rs` path in entries dated before 2026-05-29 predates the
+  root-crate split. Those modules now live under
+  `crates/jcode-{base,app-core,tui}/src/`.
+
 See also:
 
-- [`COMPILE_TIME_ISOLATION_REFACTOR.md`](./COMPILE_TIME_ISOLATION_REFACTOR.md)
-- [`REFACTORING.md`](./REFACTORING.md)
-- [`MODULAR_ARCHITECTURE_RFC.md`](./MODULAR_ARCHITECTURE_RFC.md)
+- [`COMPILE_TIME_ISOLATION_REFACTOR.md`](../COMPILE_TIME_ISOLATION_REFACTOR.md)
+- [`REFACTORING.md`](../REFACTORING.md)
+- [`MODULAR_ARCHITECTURE_RFC.md`](../MODULAR_ARCHITECTURE_RFC.md)
 
 ## Goals
 
@@ -232,7 +246,7 @@ Observed spread from these warm-only checkpoints:
 ### Phase 3 — Workspace boundary design
 
 The refined layered target, dependency rules, and migration guidance live in
-[`docs/MODULAR_ARCHITECTURE_RFC.md`](MODULAR_ARCHITECTURE_RFC.md). The crate list
+[`docs/MODULAR_ARCHITECTURE_RFC.md`](../MODULAR_ARCHITECTURE_RFC.md). The crate list
 below is the compile-performance-oriented destination sketch and should be read
 as compatible with that RFC, not as the only acceptable final packaging.
 
@@ -571,7 +585,7 @@ DAG, after which modules peel off bottom-up. Cheapest-first (from the analyzer):
 
 - **1-ref edges (≈24 of them):** e.g. `agent -> tui` (one `write_generated_image_side_panel_page` call),
   `tool -> tui` (one `tui::image::display_image` import), `config -> auth`, `config -> tool`,
-  `telemetry -> cli`, `bus -> provider`, `browser -> provider`. Each is a single call/import that can move
+  `telemetry -> cli`, `bus -> provider`. Each is a single call/import that can move
   to a shared lower-level crate or be inverted behind a trait/callback.
 - **Mid-weight edges:** `usage -> auth` (4), `tool -> provider` (5), `tool -> server` (5),
   `sidecar -> provider` (7), `agent -> tool` (9), `import -> tui` (9), `usage -> provider` (9).
@@ -587,7 +601,7 @@ DAG, after which modules peel off bottom-up. Cheapest-first (from the analyzer):
    (`jcode-core`, `jcode-tui-*`) or inverting them behind small traits. Re-run the analyzer; watch the
    SCC shrink.
 3. **Extract already-clean leaves.** Modules the analyzer marks "extractable now" (no in-root blockers):
-   `background`, `prompt`, `safety`, `transport`, `replay`, `browser`, `perf`, plus the many <400 loc
+   `background`, `prompt`, `safety`, `transport`, `replay`, `perf`, plus the many <400 loc
    leaves. These need no cycle-breaking and immediately shrink the root crate.
 4. **Address the heavy seams** (`auth↔provider`, `cli↔tui`, `agent↔provider`) with deliberate trait
    boundaries once the cheap edges are gone.
@@ -631,6 +645,22 @@ memory-adaptive job limiter can schedule parallel rustc jobs without OOM. Commit
 `4aec863e` (Phase B), `f649daeb` (test import), `85c96735` (Phase C jcode-tui), `2591c0e5` (test-support
 feature restoring cross-crate `#[cfg(test)]` helpers). Full `cargo check --workspace --all-targets` is
 clean.
+
+**Status of this result, re-checked 2026-09-05 (static verification only).** The
+structural half still holds exactly: the DAG is unchanged, with `jcode` depending
+on `jcode-tui` (`Cargo.toml:181`), `jcode-tui` on `jcode-app-core`
+(`crates/jcode-tui/Cargo.toml:24`), and `jcode-app-core` on `jcode-base`
+(`crates/jcode-app-core/Cargo.toml:88`), each `default-features = false` so the
+root feature set drives the stack. No workspace peer depends on the root `jcode`
+package. The root crate is still a thin shell (`src/` holds only `main.rs`,
+`lib.rs`, `cli/`, `bin/`).
+
+The *memory* half is no longer safe to quote. The 1.280 GiB figure was measured
+when `jcode-tui` was 98K lines; its `src/**/*.rs` is now 199,486 lines
+(`jcode-app-core` 121,770; `jcode-base` 100,257). Peak VmHWM was not re-measured
+here — rerun `/tmp/peakrss2.sh`-style instrumentation before relying on the
+`-60%` / `~1.3 GiB` numbers or on the stop decision below, which was argued from
+tui adding only +0.104 GiB over app-core.
 
 ### Why we STOPPED here (the Stop Conditions above)
 

@@ -25,10 +25,6 @@ pub const ALL_CLAUDE_MODELS: &[&str] = &[
     "claude-sonnet-4-20250514",
 ];
 
-/// Available OpenAI models used by model lists and provider routing.
-/// The list is curated best-first; position 0 is the quality-first default.
-pub const CHATGPT_WEB_MODEL: &str = "gpt-5.6-pro[web]";
-
 /// GPT Pro reasoning models. These are exposed only on the OpenAI platform
 /// API (`api.openai.com` with an `OPENAI_API_KEY`); the ChatGPT/Codex OAuth
 /// backend rejects them ("not supported when using Codex with a ChatGPT
@@ -56,13 +52,11 @@ pub fn is_openai_api_only_pro_model(model: &str) -> bool {
                 .any(|pro| trimmed.to_ascii_lowercase().starts_with(&format!("{pro}-"))))
 }
 
+/// Available OpenAI models used by model lists and provider routing.
+/// The list is curated best-first; position 0 is the quality-first default.
 pub const ALL_OPENAI_MODELS: &[&str] = &[
     DEFAULT_OPENAI_MODEL,
     "gpt-5.6-pro",
-    // ChatGPT web-only route. The `[web]` suffix is intentionally part of the
-    // jcode model id so it can never be mistaken for an API/Codex model with
-    // the same upstream slug.
-    CHATGPT_WEB_MODEL,
     "gpt-5.6",
     "gpt-5.6-terra",
     "gpt-5.6-luna",
@@ -99,7 +93,6 @@ mod gpt_5_6_catalog_tests {
         for model in [
             "gpt-5.6-sol",
             "gpt-5.6-pro",
-            "gpt-5.6-pro[web]",
             "gpt-5.6",
             "gpt-5.6-terra",
             "gpt-5.6-luna",
@@ -422,11 +415,6 @@ pub fn open_weight_family_context_limit(model: &str) -> Option<usize> {
     // --- Mistral small 3.x: 128K context ---
     if m.contains("mistral-small-3") {
         return Some(131_072);
-    }
-
-    // --- xAI grok-code-fast: 256K context ---
-    if m.contains("grok-code-fast") {
-        return Some(256_000);
     }
 
     // --- Perplexity Sonar: 128K context ---
@@ -831,7 +819,6 @@ mod tests {
         // Non-pro and near-miss ids do not.
         assert!(!is_openai_api_only_pro_model("gpt-5.5"));
         assert!(!is_openai_api_only_pro_model("gpt-5.6-sol"));
-        assert!(!is_openai_api_only_pro_model(CHATGPT_WEB_MODEL));
         assert!(!is_openai_api_only_pro_model("gemini-2.5-pro"));
         // Every listed pro model classifies as pro.
         for pro in OPENAI_API_ONLY_PRO_MODELS {

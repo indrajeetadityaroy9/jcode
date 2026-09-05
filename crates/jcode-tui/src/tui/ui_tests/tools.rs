@@ -377,114 +377,45 @@ fn test_render_tool_message_batch_all_failed_marks_all_children_failed() {
 }
 
 #[test]
-fn test_tool_summary_gmail_actions() {
-    let search = ToolCall {
-        id: "call_gmail_search".to_string(),
-        name: "gmail".to_string(),
-        input: serde_json::json!({
-            "action": "search",
-            "query": "from:alice subject:invoice",
-            "max_results": 5
-        }),
-        intent: None,
-        thought_signature: None,
-    };
-    let summary = tools_ui::get_tool_summary_with_budget(&search, 50, Some(50));
-    assert!(summary.starts_with("search "), "summary={summary:?}");
-    assert!(summary.contains("from:alice"), "summary={summary:?}");
-
-    let read = ToolCall {
-        id: "call_gmail_read".to_string(),
-        name: "gmail".to_string(),
-        input: serde_json::json!({
-            "action": "read",
-            "message_id": "18f2ab34cd56ef78"
-        }),
-        intent: None,
-        thought_signature: None,
-    };
-    let summary = tools_ui::get_tool_summary_with_budget(&read, 50, Some(50));
-    assert!(summary.starts_with("read "), "summary={summary:?}");
-
-    let send = ToolCall {
-        id: "call_gmail_send".to_string(),
-        name: "gmail".to_string(),
-        input: serde_json::json!({
-            "action": "send",
-            "to": "bob@example.com",
-            "subject": "hello"
-        }),
-        intent: None,
-        thought_signature: None,
-    };
-    let summary = tools_ui::get_tool_summary_with_budget(&send, 50, Some(50));
-    assert!(
-        summary.contains("send") && summary.contains("bob@example.com"),
-        "summary={summary:?}"
-    );
-
-    let bare = ToolCall {
-        id: "call_gmail_labels".to_string(),
-        name: "gmail".to_string(),
-        input: serde_json::json!({ "action": "labels" }),
-        intent: None,
-        thought_signature: None,
-    };
-    let summary = tools_ui::get_tool_summary_with_budget(&bare, 50, Some(50));
-    assert_eq!(summary, "labels");
-}
-
-#[test]
-fn test_tool_activity_detail_prefixes_intent_for_gmail_and_browser() {
+fn test_tool_activity_detail_prefixes_intent_for_websearch() {
     tools_ui::tests_tool_call_details_override::set(true);
-    let gmail = ToolCall {
-        id: "call_gmail_intent".to_string(),
-        name: "gmail".to_string(),
+    let websearch = ToolCall {
+        id: "call_websearch_intent".to_string(),
+        name: "websearch".to_string(),
         input: serde_json::json!({
-            "action": "search",
-            "query": "is:unread",
-            "intent": "Check unread mail"
+            "query": "ratatui release notes",
+            "intent": "Check release notes"
         }),
-        intent: Some("Check unread mail".to_string()),
+        intent: Some("Check release notes".to_string()),
         thought_signature: None,
     };
-    let detail = tools_ui::get_tool_activity_detail(&gmail);
-    assert!(detail.starts_with("Check unread mail"), "detail={detail:?}");
-    assert!(detail.contains("is:unread"), "detail={detail:?}");
-
-    let browser = ToolCall {
-        id: "call_browser_intent".to_string(),
-        name: "browser".to_string(),
-        input: serde_json::json!({
-            "action": "open",
-            "url": "https://example.com",
-            "intent": "Open docs page"
-        }),
-        intent: Some("Open docs page".to_string()),
-        thought_signature: None,
-    };
-    let detail = tools_ui::get_tool_activity_detail(&browser);
-    assert!(detail.starts_with("Open docs page"), "detail={detail:?}");
-    assert!(detail.contains("example.com"), "detail={detail:?}");
+    let detail = tools_ui::get_tool_activity_detail(&websearch);
+    assert!(
+        detail.starts_with("Check release notes"),
+        "detail={detail:?}"
+    );
+    assert!(
+        detail.contains("ratatui release notes"),
+        "detail={detail:?}"
+    );
     tools_ui::tests_tool_call_details_override::set(false);
 }
 
 /// By default (tool_call_details off) the activity detail is the intent alone.
 #[test]
 fn test_tool_activity_detail_hides_technical_summary_by_default() {
-    let gmail = ToolCall {
-        id: "call_gmail_intent_only".to_string(),
-        name: "gmail".to_string(),
+    let websearch = ToolCall {
+        id: "call_websearch_intent_only".to_string(),
+        name: "websearch".to_string(),
         input: serde_json::json!({
-            "action": "search",
-            "query": "is:unread",
-            "intent": "Check unread mail"
+            "query": "ratatui release notes",
+            "intent": "Check release notes"
         }),
-        intent: Some("Check unread mail".to_string()),
+        intent: Some("Check release notes".to_string()),
         thought_signature: None,
     };
-    let detail = tools_ui::get_tool_activity_detail(&gmail);
-    assert_eq!(detail, "Check unread mail");
+    let detail = tools_ui::get_tool_activity_detail(&websearch);
+    assert_eq!(detail, "Check release notes");
 }
 
 #[test]
@@ -906,8 +837,8 @@ fn test_common_tool_summaries_keep_full_text_when_row_budget_fits() {
 #[test]
 fn test_tool_summary_hides_transient_missing_input() {
     let tool = ToolCall {
-        id: "browser-start".to_string(),
-        name: "browser".to_string(),
+        id: "webfetch-start".to_string(),
+        name: "webfetch".to_string(),
         input: serde_json::Value::Null,
         intent: None,
         thought_signature: None,
@@ -915,85 +846,6 @@ fn test_tool_summary_hides_transient_missing_input() {
 
     let summary = tools_ui::get_tool_summary_with_budget(&tool, 50, Some(200));
     assert_eq!(summary, "");
-}
-
-#[test]
-fn test_tool_summary_browser_open_shows_url() {
-    let tool = ToolCall {
-        id: "browser-open".to_string(),
-        name: "browser".to_string(),
-        input: serde_json::json!({
-            "action": "open",
-            "url": "https://example.com/docs/reference/browser-tool"
-        }),
-        intent: None,
-        thought_signature: None,
-    };
-
-    let summary = tools_ui::get_tool_summary_with_budget(&tool, 50, Some(200));
-    assert_eq!(
-        summary,
-        "open https://example.com/docs/reference/browser-tool"
-    );
-}
-
-#[test]
-fn test_tool_summary_browser_type_hides_typed_text() {
-    let tool = ToolCall {
-        id: "browser-type".to_string(),
-        name: "browser".to_string(),
-        input: serde_json::json!({
-            "action": "type",
-            "selector": "#password",
-            "text": "super-secret-value"
-        }),
-        intent: None,
-        thought_signature: None,
-    };
-
-    let summary = tools_ui::get_tool_summary_with_budget(&tool, 50, Some(200));
-    assert_eq!(summary, "type #password (18 chars)");
-    assert!(
-        !summary.contains("super-secret-value"),
-        "summary={summary:?}"
-    );
-}
-
-#[test]
-fn test_tool_summary_browser_type_without_selector_still_hides_text() {
-    let tool = ToolCall {
-        id: "browser-type-no-selector".to_string(),
-        name: "browser".to_string(),
-        input: serde_json::json!({
-            "action": "type",
-            "text": "secret-token-123"
-        }),
-        intent: None,
-        thought_signature: None,
-    };
-
-    let summary = tools_ui::get_tool_summary_with_budget(&tool, 50, Some(200));
-    assert_eq!(summary, "type (16 chars)");
-    assert!(!summary.contains("secret-token-123"), "summary={summary:?}");
-}
-
-#[test]
-fn test_tool_summary_browser_eval_truncates_script() {
-    let tool = ToolCall {
-        id: "browser-eval".to_string(),
-        name: "browser".to_string(),
-        input: serde_json::json!({
-            "action": "eval",
-            "script": "return window.__APP_STATE__?.reallyLongNestedValue?.items?.map(item => item.name).join(', ')"
-        }),
-        intent: None,
-        thought_signature: None,
-    };
-
-    let summary = tools_ui::get_tool_summary_with_budget(&tool, 50, Some(34));
-    assert!(summary.starts_with("eval "), "summary={summary:?}");
-    assert!(summary.contains('…'), "summary={summary:?}");
-    assert!(unicode_width::UnicodeWidthStr::width(summary.as_str()) <= 34);
 }
 
 #[test]

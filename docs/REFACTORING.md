@@ -44,14 +44,18 @@ See also:
 - Add warning-budget guard to prevent warning drift.
 - Clean low-risk warning debt without functional changes.
 
-### Phase 2: CLI Decomposition
+### Phase 2: CLI Decomposition — done
 
-- Move `main.rs` subcommand handlers into focused `src/cli/*` modules.
-- Keep top-level `main()` as parse + dispatch.
+- Subcommand handlers live in focused `src/cli/*` modules.
+- `src/main.rs` is parse + dispatch only; the cli layer is the root package's
+  only source directory besides `bin/`.
 
 ### Phase 3: Server Decomposition
 
-- Split `server.rs` by responsibility (session lifecycle, debug API, swarm coordination, reload/update).
+- Split `crates/jcode-app-core/src/server.rs` by responsibility (session
+  lifecycle, debug API, swarm coordination, reload/update) into
+  `crates/jcode-app-core/src/server/`. Partly done: the submodule tree exists,
+  the parent file is still 2329 lines.
 - Replace stringly states with typed enums where practical.
 
 ### Phase 4: Agent Turn-Loop Unification
@@ -60,16 +64,18 @@ See also:
 
 ### Phase 5: TUI State/Reducer Split
 
-- Separate app state, command parsing, remote-event reduction, and rendering control.
+- Separate app state, command parsing, remote-event reduction, and rendering
+  control in `crates/jcode-tui/src/tui/`.
 
 ### Phase 6: Provider State Isolation
 
-- Reduce global mutable state by moving caches into explicit state holders.
+- Reduce global mutable state in `crates/jcode-base/src/provider/` by moving
+  caches into explicit state holders.
 
 ## Verification Matrix
 
 - Compile: `cargo check -q`
-- Compile timing: `scripts/bench_compile.sh check --runs 3 --touch <hot-file>` and `scripts/bench_compile.sh release-jcode --runs 3`
+- Compile timing: `scripts/bench_compile.sh check --runs 3 --touch <hot-file>` and `scripts/bench_compile.sh selfdev-jcode --runs 3`
 - Warnings: `scripts/check_warning_budget.sh`
 - Security: `scripts/security_preflight.sh`
 - Unit+integration tests: `cargo test -q`

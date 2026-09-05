@@ -53,7 +53,7 @@ pub use catalog_routes::{
 pub use jcode_provider_core::attempt_tracker;
 pub use jcode_provider_core::cli_provider_arg_for_session_key;
 pub use jcode_provider_core::{
-    ALL_CLAUDE_MODELS, ALL_OPENAI_MODELS, CHATGPT_WEB_MODEL, CHEAPNESS_REFERENCE_INPUT_TOKENS,
+    ALL_CLAUDE_MODELS, ALL_OPENAI_MODELS, CHEAPNESS_REFERENCE_INPUT_TOKENS,
     CHEAPNESS_REFERENCE_OUTPUT_TOKENS, CredentialMode, DEFAULT_CONTEXT_LIMIT, EventStream,
     JCODE_USER_AGENT, ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute,
     ModelRouteApiMethod, NativeCompactionResult, NativeToolResult, NativeToolResultSender,
@@ -70,10 +70,10 @@ pub use jcode_provider_core::{
 };
 pub use jcode_provider_core::{ProviderFailoverPrompt, parse_failover_prompt_message};
 pub use route_builders::{
-    build_anthropic_oauth_route, build_chatgpt_web_route, build_copilot_route,
-    build_openai_api_key_route, build_openai_oauth_route, build_openrouter_auto_route,
-    build_openrouter_endpoint_route, build_openrouter_fallback_provider_route,
-    is_listable_model_name, listable_model_names_from_routes, openrouter_catalog_model_id,
+    build_anthropic_oauth_route, build_copilot_route, build_openai_api_key_route,
+    build_openai_oauth_route, build_openrouter_auto_route, build_openrouter_endpoint_route,
+    build_openrouter_fallback_provider_route, is_listable_model_name,
+    listable_model_names_from_routes, openrouter_catalog_model_id,
 };
 pub(crate) use routing::{
     anthropic_api_key_route_availability, anthropic_oauth_route_availability,
@@ -324,7 +324,6 @@ use self::selection::{ActiveProvider, ProviderAvailability};
 use self::state::ProviderState;
 pub use self::state::{ProviderModelSelectionSource, ProviderRuntimeState, ProviderStateEvent};
 
-pub(crate) const GROK_BUILD_PROFILE_ID: &str = "grok-build";
 
 /// MultiProvider wraps multiple providers and allows seamless model switching
 pub struct MultiProvider {
@@ -1488,16 +1487,6 @@ impl MultiProvider {
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(cursor);
         }
 
-        let registry = ProviderRegistry::new(self);
-        if crate::auth::grok_build::has_cached_login()
-            && registry.compatible_profile(GROK_BUILD_PROFILE_ID).is_none()
-            && let Some(grok) =
-                external::instantiate_expected_external_provider(external::GROK_BUILD_RUNTIME)
-        {
-            crate::logging::info("Hot-initialized Grok Build provider after login");
-            registry.install_compatible_profile(GROK_BUILD_PROFILE_ID, grok);
-        }
-
         if let Some(anthropic) = self.anthropic_provider() {
             self.spawn_post_auth_model_refresh(anthropic, "Anthropic");
         }
@@ -1518,9 +1507,6 @@ impl MultiProvider {
         }
         if let Some(openrouter) = self.openrouter_provider() {
             self.spawn_post_auth_model_refresh(openrouter, "OpenRouter");
-        }
-        if let Some(grok) = ProviderRegistry::new(self).compatible_profile(GROK_BUILD_PROFILE_ID) {
-            self.spawn_post_auth_model_refresh(grok, "Grok Build");
         }
         crate::logging::auth_event("auth_changed_completed", "multi-provider", &[]);
     }
@@ -1940,25 +1926,6 @@ impl Provider for MultiProvider {
         let requested_model = model.trim();
         if requested_model.is_empty() {
             anyhow::bail!("Model cannot be empty");
-        }
-
-        if let Some(target_model) = requested_model.strip_prefix("grok-build:") {
-            let target_model = target_model.trim();
-            if target_model.is_empty() {
-                anyhow::bail!("Grok Build model cannot be empty");
-            }
-            let registry = ProviderRegistry::new(self);
-            let provider = registry
-                .compatible_profile(GROK_BUILD_PROFILE_ID)
-                .or_else(|| {
-                    external::instantiate_expected_external_provider(external::GROK_BUILD_RUNTIME)
-                })
-                .ok_or_else(|| anyhow!("Grok Build is not authenticated"))?;
-            provider.set_model(target_model)?;
-            registry.install_compatible_profile(GROK_BUILD_PROFILE_ID, provider);
-            registry.set_active_compatible_profile(GROK_BUILD_PROFILE_ID);
-            self.set_active_provider(ActiveProvider::OpenRouter);
-            return Ok(());
         }
 
         if let Some((profile, target_model)) = Self::openai_compatible_model_prefix(requested_model)

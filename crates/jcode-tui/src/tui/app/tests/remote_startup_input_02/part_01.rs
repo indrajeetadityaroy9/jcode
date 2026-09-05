@@ -10,21 +10,21 @@ fn test_model_picker_copilot_selection_prefixes_model() {
         .as_ref()
         .expect("model picker should be open");
 
-    // Find grok-code-fast-1 (which should only be a copilot route)
-    let grok_idx = picker
+    // Find deepseek-v4-flash (which should only be a copilot route)
+    let copilot_only_idx = picker
         .entries
         .iter()
-        .position(|m| m.name == "grok-code-fast-1")
-        .expect("grok-code-fast-1 should be in picker");
+        .position(|m| m.name == "deepseek-v4-flash")
+        .expect("deepseek-v4-flash should be in picker");
 
     // Navigate to it and select
     let filtered_pos = picker
         .filtered
         .iter()
-        .position(|&i| i == grok_idx)
-        .expect("grok-code-fast-1 should be in filtered list");
+        .position(|&i| i == copilot_only_idx)
+        .expect("deepseek-v4-flash should be in filtered list");
 
-    // Set the selected position to grok's position
+    // Set the selected position to that model's position
     app.inline_interactive_state.as_mut().unwrap().selected = filtered_pos;
 
     // Press Enter to select

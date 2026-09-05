@@ -11,12 +11,6 @@ pub(crate) enum TranscriptModeArg {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
-pub(crate) enum GoogleAccessTierArg {
-    Full,
-    Readonly,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum ProviderAuthArg {
     /// Send the API key as Authorization: Bearer <key> (OpenAI-compatible default)
     Bearer,
@@ -31,7 +25,7 @@ pub(crate) enum ProviderAuthArg {
 #[command(version = jcode_build_meta::version())]
 #[command(about = "J-Code: A coding agent using Claude Max or ChatGPT Pro subscriptions")]
 pub(crate) struct Args {
-    /// Initial provider to use (jcode, claude, openai, openai-api, openrouter, azure, opencode, opencode-go, zai, 302ai, baseten, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, xai, grok-build, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, google, or auto-detect). Interactive sessions can switch providers with /model.
+    /// Initial provider to use (jcode, claude, openai, openai-api, openrouter, azure, opencode, opencode-go, zai, 302ai, baseten, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, or auto-detect). Interactive sessions can switch providers with /model.
     #[arg(short, long, default_value = "auto", global = true)]
     pub(crate) provider: ProviderChoice,
 
@@ -162,7 +156,7 @@ pub(crate) enum Command {
 
     /// Login to a provider via OAuth, API key, or local credentials
     Login {
-        /// Provider to log in to. Equivalent to --provider for this command, e.g. `jcode login google`.
+        /// Provider to log in to. Equivalent to --provider for this command, e.g. `jcode login gemini`.
         // Distinct clap id: the global `--provider` flag also has id "provider";
         // sharing the id makes clap drop the flag inside `login` (so
         // `jcode login --provider x` errors) and propagate the global default
@@ -202,10 +196,6 @@ pub(crate) enum Command {
         /// Useful for offline setup, CI, or when entering credentials before network access is available.
         #[arg(long)]
         no_validate: bool,
-
-        /// Gmail/Google access tier for non-interactive flows. Defaults to full.
-        #[arg(long, value_enum)]
-        google_access_tier: Option<GoogleAccessTierArg>,
 
         /// OpenAI-compatible API base URL. Used with --provider openai-compatible/custom profiles.
         #[arg(long)]
@@ -316,13 +306,6 @@ pub(crate) enum Command {
 
     /// Install a launcher so jcode appears in your app launcher
     SetupLauncher,
-
-    /// Browser automation setup and status
-    Browser {
-        /// Action (setup, status)
-        #[arg(default_value = "setup")]
-        action: String,
-    },
 
     /// Replay a saved session in the TUI
     Replay {

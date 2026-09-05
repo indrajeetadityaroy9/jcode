@@ -31,13 +31,6 @@ impl Provider for OpenAIProvider {
         system: &str,
         _resume_session_id: Option<&str>,
     ) -> Result<EventStream> {
-        let selected_model = self.model();
-        if is_chatgpt_web_model(&selected_model) {
-            return Arc::clone(&self.chatgpt_web)
-                .complete(messages, tools, system, &selected_model)
-                .await;
-        }
-
         let input = build_responses_input(messages);
         let input_item_count = input.len();
         let api_tools = build_tools(tools);
@@ -699,22 +692,14 @@ impl Provider for OpenAIProvider {
     }
 
     fn supports_image_input(&self) -> bool {
-        !is_chatgpt_web_model(&self.model())
+        true
     }
 
     fn set_model(&self, model: &str) -> Result<()> {
         let model = model.trim();
-        if self.is_browser_only() && !is_chatgpt_web_model(model) {
-            anyhow::bail!(
-                "OpenAI API credentials are not available for '{}'. The browser-only runtime can use '{}'; run `jcode login --provider openai` before selecting API models.",
-                model,
-                CHATGPT_WEB_MODEL,
-            );
-        }
-        if !is_chatgpt_web_model(model)
-            && !jcode_base::provider::known_openai_model_ids()
-                .iter()
-                .any(|known| known == model)
+        if !jcode_base::provider::known_openai_model_ids()
+            .iter()
+            .any(|known| known == model)
         {
             anyhow::bail!(
                 "Unsupported OpenAI model '{}'. Use /model to choose from the models available to your account.",
@@ -722,10 +707,7 @@ impl Provider for OpenAIProvider {
             );
         }
         let availability = jcode_base::provider::model_availability_for_account(model);
-        if !is_chatgpt_web_model(model)
-            && availability.state
-                == jcode_base::provider::AccountModelAvailabilityState::Unavailable
-        {
+        if availability.state == jcode_base::provider::AccountModelAvailabilityState::Unavailable {
             let detail =
                 jcode_base::provider::format_account_model_availability_detail(&availability)
                     .unwrap_or_else(|| "not available for your account".to_string());
@@ -776,21 +758,12 @@ impl Provider for OpenAIProvider {
     }
 
     fn available_models(&self) -> Vec<&'static str> {
-        if self.is_browser_only() {
-            return vec![CHATGPT_WEB_MODEL];
-        }
         jcode_provider_core::ALL_OPENAI_MODELS.to_vec()
     }
 
     fn available_models_for_switching(&self) -> Vec<String> {
-        if self.is_browser_only() {
-            return vec![CHATGPT_WEB_MODEL.to_string()];
-        }
         let mut models =
             jcode_base::provider::cached_openai_model_ids().unwrap_or_else(|| vec![self.model()]);
-        if !models.iter().any(|model| model == CHATGPT_WEB_MODEL) {
-            models.insert(0, CHATGPT_WEB_MODEL.to_string());
-        }
         // Platform-API-only GPT Pro models are absent from the Codex OAuth
         // catalog by design; surface them whenever an OPENAI_API_KEY exists.
         if jcode_base::provider::openai_platform_api_key_configured() {
@@ -808,9 +781,6 @@ impl Provider for OpenAIProvider {
     }
 
     async fn prefetch_models(&self) -> Result<()> {
-        if self.is_browser_only() {
-            return Ok(());
-        }
         // The loaded credential's *shape* is authoritative for which catalog
         // endpoint to hit, not the requested credential mode. In Auto mode a
         // user with only an OPENAI_API_KEY loads an API-key-shaped credential
@@ -1002,9 +972,6 @@ impl Provider for OpenAIProvider {
     }
 
     fn transport(&self) -> Option<String> {
-        if is_chatgpt_web_model(&self.model()) {
-            return Some("browser".to_string());
-        }
         self.transport_mode
             .try_read()
             .ok()
@@ -1012,15 +979,6 @@ impl Provider for OpenAIProvider {
     }
 
     fn set_transport(&self, transport: &str) -> Result<()> {
-        if is_chatgpt_web_model(&self.model()) {
-            if transport.trim().eq_ignore_ascii_case("browser") {
-                return Ok(());
-            }
-            anyhow::bail!(
-                "The '{}' model always uses the browser transport; available transport: browser",
-                CHATGPT_WEB_MODEL
-            );
-        }
         let mode = match transport.trim().to_ascii_lowercase().as_str() {
             "auto" => OpenAITransportMode::Auto,
             "https" | "http" | "sse" => OpenAITransportMode::HTTPS,
@@ -1049,9 +1007,6 @@ impl Provider for OpenAIProvider {
     }
 
     fn available_transports(&self) -> Vec<&'static str> {
-        if is_chatgpt_web_model(&self.model()) {
-            return vec!["browser"];
-        }
         vec!["auto", "https", "websocket"]
     }
 
@@ -1060,8 +1015,7 @@ impl Provider for OpenAIProvider {
     }
 
     fn uses_jcode_compaction(&self) -> bool {
-        is_chatgpt_web_model(&self.model())
-            || self.native_compaction_mode != OpenAINativeCompactionMode::Auto
+        self.native_compaction_mode != OpenAINativeCompactionMode::Auto
     }
 
     async fn native_compact(
@@ -1209,8 +1163,6 @@ impl Provider for OpenAIProvider {
             websocket_cooldowns: Arc::clone(&self.websocket_cooldowns),
             websocket_failure_streaks: Arc::clone(&self.websocket_failure_streaks),
             persistent_ws: Arc::new(Mutex::new(None)),
-            chatgpt_web: Arc::new(chatgpt_web::ChatGptWebState::new()),
-            browser_only: Arc::clone(&self.browser_only),
         })
     }
 
@@ -1219,7 +1171,6 @@ impl Provider for OpenAIProvider {
         if let Ok(credentials) = super::load_credentials_for_mode(mode) {
             let mut guard = self.credentials.write().await;
             *guard = credentials;
-            self.browser_only.store(false, AtomicOrdering::Release);
             drop(guard);
             self.reload_cached_reasoning_efforts();
         }

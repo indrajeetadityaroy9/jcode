@@ -99,12 +99,9 @@ audit_ignores=(
   # Documented in docs/SECURITY_DEPENDENCIES.md. These are transitive
   # advisories with tracked remediation paths; keep them visible in the triage
   # doc while preventing unrelated CI/release work from being blocked.
-  --ignore RUSTSEC-2026-0141 # lettre via notify-email, Boring TLS backend not used by jcode
   --ignore RUSTSEC-2026-0099 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0104 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0098 # rustls-webpki via rustls stack, awaiting upstream upgrade
-  --ignore RUSTSEC-2026-0049 # rustls-webpki via rustls stack, awaiting upstream upgrade
-  --ignore RUSTSEC-2026-0187 # lopdf via pdf-extract 0.8.2 (pins lopdf 0.34); PDF text extraction only, awaiting pdf-extract upgrade to lopdf >=0.42
 )
 if command -v cargo-audit >/dev/null 2>&1; then
   cargo audit "${audit_ignores[@]}"

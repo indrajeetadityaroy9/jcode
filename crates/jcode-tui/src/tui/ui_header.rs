@@ -595,7 +595,6 @@ fn configured_auth_count(auth: &AuthStatus) -> usize {
         auth.copilot,
         auth.gemini,
         auth.antigravity,
-        auth.google,
     ]
     .into_iter()
     .filter(|state| *state != AuthState::NotConfigured)
@@ -1280,7 +1279,6 @@ mod tests {
     #[test]
     fn prettify_model_id_title_cases_unknown_models() {
         assert_eq!(prettify_model_id("claude-fable-5"), "Claude Fable 5");
-        assert_eq!(prettify_model_id("grok-code-fast-1"), "Grok Code Fast 1");
         assert_eq!(prettify_model_id("kimi_k2"), "Kimi K2");
         assert_eq!(
             prettify_model_id("gemini-3-pro-preview"),
@@ -1342,8 +1340,7 @@ mod tests {
             // Google
             ("gemini-3-pro-preview", "Gemini 3 Pro Preview"),
             ("gemini-2.5-flash", "Gemini 2.5 Flash"),
-            // xAI / Moonshot / Zhipu / DeepSeek / Minimax
-            ("grok-code-fast-1", "Grok Code Fast 1"),
+            // Moonshot / Zhipu / DeepSeek / Minimax
             ("kimi-k2.5", "Kimi K2.5"),
             ("kimi-k2p5-turbo", "Kimi K2p5 Turbo"),
             ("glm-4.6", "GLM 4.6"),
@@ -1389,7 +1386,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_auth_count_includes_non_model_auth_surfaces() {
+    fn configured_auth_count_counts_expired_credentials_as_configured() {
         let auth = AuthStatus {
             jcode: AuthState::Available,
             anthropic: ProviderAuth {
@@ -1399,11 +1396,10 @@ mod tests {
                 has_api_key: false,
             },
             azure: AuthState::Available,
-            google: AuthState::Available,
             ..AuthStatus::default()
         };
 
-        assert_eq!(configured_auth_count(&auth), 4);
+        assert_eq!(configured_auth_count(&auth), 3);
     }
 
     #[test]

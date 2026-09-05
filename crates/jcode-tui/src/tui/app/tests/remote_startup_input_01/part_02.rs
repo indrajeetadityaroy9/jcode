@@ -393,18 +393,18 @@ fn test_model_picker_copilot_models_have_copilot_route() {
         .as_ref()
         .expect("model picker should be open");
 
-    // grok-code-fast-1 is NOT in ALL_CLAUDE_MODELS or ALL_OPENAI_MODELS,
+    // deepseek-v4-flash is NOT in ALL_CLAUDE_MODELS or ALL_OPENAI_MODELS,
     // so it should get a copilot route
-    let grok_entry = picker
+    let entry = picker
         .entries
         .iter()
-        .find(|m| m.name == "grok-code-fast-1")
-        .expect("grok-code-fast-1 should be in picker");
+        .find(|m| m.name == "deepseek-v4-flash")
+        .expect("deepseek-v4-flash should be in picker");
 
     assert!(
-        grok_entry.options.iter().any(|r| r.api_method == "copilot"),
-        "grok-code-fast-1 should have a copilot route, got: {:?}",
-        grok_entry.options
+        entry.options.iter().any(|r| r.api_method == "copilot"),
+        "deepseek-v4-flash should have a copilot route, got: {:?}",
+        entry.options
     );
 }
 

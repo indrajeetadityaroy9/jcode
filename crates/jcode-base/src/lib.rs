@@ -19,7 +19,6 @@
 
 pub mod auth;
 pub mod background;
-pub mod browser;
 pub mod bus;
 pub mod cache_invalidation;
 pub mod cache_tracker;
@@ -38,7 +37,6 @@ pub mod embedding_stub;
 pub mod env;
 pub mod generated_image;
 pub mod github;
-pub mod gmail;
 pub mod goal;
 pub mod hooks;
 pub mod id;

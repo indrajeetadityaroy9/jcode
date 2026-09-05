@@ -1,6 +1,10 @@
-# Multi-Session Client Architecture (Proposed)
+# Multi-Session Client Architecture
 
-Status: Proposed
+Status: **partially shipped.** Phase 2 (the Niri-style workspace row model plus
+the workspace-map widget) is built and reachable today; everything else —
+`ClientShell` / `SessionSurface` multi-surface hosting, pop-out/dock, and
+session-multiplexed protocol — is still a proposal. See "What Shipped" below
+before trusting any later section.
 
 This document describes a proposed evolution of jcode's UI architecture from the
 current **single-session-per-client** model to a **multi-session-capable client**
@@ -12,8 +16,64 @@ like Niri.
 
 See also:
 
-- [`SERVER_ARCHITECTURE.md`](./SERVER_ARCHITECTURE.md)
-- [`SWARM_ARCHITECTURE.md`](./SWARM_ARCHITECTURE.md)
+- [`SERVER_ARCHITECTURE.md`](../SERVER_ARCHITECTURE.md)
+- [`SWARM_ARCHITECTURE.md`](../SWARM_ARCHITECTURE.md)
+
+## What Shipped
+
+A workspace model and its map widget exist and are wired into the TUI. What is
+built:
+
+- **Workspace row model.** `crates/jcode-tui-workspace/src/workspace_map.rs`
+  holds `WorkspaceMapModel { rows: BTreeMap<i32, WorkspaceRow>, current_workspace }`
+  (`workspace_map.rs:107-110`). Each `WorkspaceRow` is a horizontal strip of
+  session tiles plus a remembered `last_focused` index
+  (`workspace_map.rs:42-43`), so vertical movement restores per-row focus
+  exactly as the "Niri-Style Workspace UX" section describes. New sessions land
+  via `insert_right_of_focus` (`workspace_map.rs:69-77`), and horizontal
+  movement is `move_focus_left` / `move_focus_right`
+  (`workspace_map.rs:79-99`). Only real sessions occupy cells — there is no
+  fixed matrix of empty slots.
+- **Workspace map widget.** `workspace_map_widget.rs::render_workspace_map`
+  (`:88`) draws a vertical stack of horizontal tile strips, shape- and
+  colour-first, with per-state colours and an animated running state
+  (`tile_symbol` `:128`, `tile_color` `:141`, covering `Running`, `Error`,
+  `Waiting`, `Completed`, `Detached`, `Idle`). The TUI feeds it the current
+  visible rows from `App` (`crates/jcode-tui/src/tui/app/tui_state.rs:1532-1540`).
+- **Client-side state is instance-owned.** `WorkspaceClientState` lives on
+  `App` (`crates/jcode-tui/src/tui/app.rs:1628`), not in a process global.
+- **`/workspace` command.**
+  `crates/jcode-tui/src/tui/app/remote/workspace.rs:45-116` implements
+  `/workspace` (status), `/workspace on` / `/workspace import`,
+  `/workspace off`, and `/workspace add [right|up|down]`.
+- **Alt+hjkl navigation.** Defaults are `Alt+H/J/K/L`
+  (`crates/jcode-tui/src/tui/keybind.rs:92-130`), remappable through
+  `[keybindings]` `workspace_left` / `workspace_down` / `workspace_up` /
+  `workspace_right` — which is exactly the "configurable remapping" the
+  Keybindings section asks for. Keys are dispatched from
+  `app/remote/key_handling.rs:389` into
+  `app/remote/workspace.rs::handle_workspace_navigation_key`.
+
+What did **not** ship, and how the shipped feature differs:
+
+- **One surface, not many.** Navigation does not move a camera across several
+  hosted surfaces. It calls `remote.resume_session(&target_session_id)` on the
+  single existing connection (`app/remote/workspace.rs:37`), i.e. the one client
+  surface re-attaches to the neighbouring session. Phase 3's "one client process
+  hosts multiple session surfaces" is unbuilt.
+- **No `ClientShell` / `SessionSurface` / `SessionController` / `SurfaceId`.**
+  None of the types in "Suggested Internal Model" exist anywhere in the tree.
+  `App` is still the single monolithic client state root.
+- **No pop-out or dock.** No commands, no interop surface
+  (`focus_session`, `dock_session`, `undock_session`, …).
+- **No protocol multiplexing.** `Request` / `ServerEvent` in
+  `crates/jcode-protocol` are still single-session per connection.
+- **Remote mode only.** Workspace commands and navigation live under
+  `tui/app/remote/`, so workspace mode applies to the normal client/server path
+  and is not wired into the local (in-process) loop.
+
+Everything below this section is the original proposal, unchanged except where
+a phase is explicitly marked.
 
 ## Summary
 
@@ -242,7 +302,7 @@ This avoids synchronization problems with:
 A future design may allow richer mirroring or passive previews, but v1 should
 prefer a single active controller per session.
 
-## Niri-Style Workspace UX
+## Niri-Style Workspace UX (row model built, camera navigation not)
 
 The preferred first version is **not** a tiled multi-pane dashboard where many
 sessions are all visible at once.
@@ -268,7 +328,7 @@ workspace -1: [session D] [session E] [session F]
 
 This is intentionally **not** a fixed matrix with fake empty cells.
 
-## Workspace Map / Info Widget
+## Workspace Map / Info Widget (built)
 
 The built-in info widget should act as a **workspace map**, not a text-heavy
 status list.
@@ -342,7 +402,7 @@ Move up and add one there:
 
 The real TUI version should use color and animation rather than text markers.
 
-## Client-Side Architecture
+## Client-Side Architecture (proposed — none of this exists)
 
 The current single `App` object is too monolithic to scale cleanly to many
 sessions. The client should be split into layers.
@@ -388,7 +448,7 @@ A reusable rendering layer that can render a session surface into an arbitrary
 rect. This is the key step for making both independent and workspace modes reuse
 one UI stack.
 
-## Suggested Internal Model
+## Suggested Internal Model (proposed — none of these types exist)
 
 ```rust
 struct ClientShell {
@@ -426,7 +486,7 @@ This enables:
 
 ## Transport / Protocol Strategy
 
-### Phase 1: dedicated connection per active surface
+### Phase 1: dedicated connection per active surface — NOT BUILT
 
 Fastest practical path:
 
@@ -445,7 +505,7 @@ Cons:
 - duplicate connection/reconnect machinery inside one process
 - not the cleanest long-term abstraction
 
-### Phase 2: multiplexed client protocol
+### Phase 2: multiplexed client protocol — NOT BUILT
 
 Longer-term architecture:
 
@@ -473,22 +533,26 @@ Cons:
 
 Recommendation: do not block v1 on protocol multiplexing.
 
-## Keybindings and Navigation
+## Keybindings and Navigation (built)
 
-A good default workspace binding set is:
+The default workspace binding set, as shipped
+(`crates/jcode-tui/src/tui/keybind.rs:92-130`):
 
 - `Alt+h/j/k/l` for workspace movement
-- configurable remapping for users who already use those bindings in an external
-  WM (for example remapping to `Super+h/j/k/l`)
+- remappable via `[keybindings]` `workspace_left` / `workspace_down` /
+  `workspace_up` / `workspace_right`, for users who already use those chords in
+  an external WM (for example `Super+h/j/k/l`)
 
-The client should support a modal split like:
+Not built: the proposed modal split
 
 - **normal mode** → workspace navigation and layout actions
 - **insert mode** → focused session receives typed input
 
-This avoids conflicts between text entry and spatial movement.
+There are no client modes. `Alt`-chorded keys are unambiguous against text
+entry, so navigation is handled directly in the normal input path
+(`app/remote/key_handling.rs:389`) without a mode switch.
 
-## Pop-Out / Dock Workflows
+## Pop-Out / Dock Workflows (proposed — not implemented)
 
 ### Pop out to independent window
 
@@ -504,7 +568,7 @@ This avoids conflicts between text entry and spatial movement.
 3. Workspace surface becomes active interactive owner.
 4. Independent client exits or detaches.
 
-## Interop API Surface
+## Interop API Surface (proposed — not implemented)
 
 The architecture should expose a small control surface for external and internal
 interop.
@@ -548,39 +612,43 @@ smooth Niri-like experience.
 
 ## Migration Plan
 
-### Phase 0: renderer extraction
+### Phase 0: renderer extraction — NOT BUILT
 
 - Extract a reusable session rendering layer from the current TUI.
 - Stop assuming one `App` owns the entire terminal surface.
 
-### Phase 1: surface/controller split
+### Phase 1: surface/controller split — NOT BUILT
 
 - Split current monolithic client state into shell/controller/surface layers.
 - Keep single-surface behavior unchanged.
 
-### Phase 2: workspace model + map widget
+### Phase 2: workspace model + map widget — SHIPPED
 
-- Introduce a Niri-style workspace row model.
+- Introduce a Niri-style workspace row model. *(Done:
+  `crates/jcode-tui-workspace/src/workspace_map.rs`.)*
 - Add the workspace-map info widget with rectangle-only state rendering.
-- Track remembered focus per workspace row.
+  *(Done: `workspace_map_widget.rs::render_workspace_map`.)*
+- Track remembered focus per workspace row. *(Done: `WorkspaceRow.last_focused`.)*
 
-### Phase 3: full-screen camera navigation
+Driven by `/workspace` and `Alt+hjkl`; see "What Shipped".
+
+### Phase 3: full-screen camera navigation — NOT BUILT
 
 - Allow one client process to host multiple session surfaces.
 - Show one full-size session at a time.
 - Move the viewport between neighboring sessions/workspaces.
 
-### Phase 4: pop-out support
+### Phase 4: pop-out support — NOT BUILT
 
 - Add commands to open a hosted session in a independent client.
 - Preserve current `jcode --resume <session>` workflow.
 
-### Phase 5: dock support
+### Phase 5: dock support — NOT BUILT
 
 - Allow a independent session to be reattached into a workspace client.
 - Keep one interactive owner per session.
 
-### Phase 6: protocol cleanup
+### Phase 6: protocol cleanup — NOT BUILT
 
 - Evaluate session-multiplexed protocol support.
 - Replace dedicated per-surface connections if and when it is clearly beneficial.

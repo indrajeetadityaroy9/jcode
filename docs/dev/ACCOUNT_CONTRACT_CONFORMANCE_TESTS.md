@@ -1,5 +1,13 @@
 # Account Contract Conformance Tests and Test Vectors
 
+Status: **proposal.** None of the fixtures, harnesses, or vectors described
+here exist. There is no `tests/fixtures/account-contract/`, no
+`manifest.json`, and no vector-driven test; the existing device-login tests
+are hand-written cases against a scripted server. The "Grounding" section
+below has been re-derived from the current code (2026-09-05); the DL/ME/CK
+tables have **not** been re-derived, and several of their expectations no
+longer match the client — see "Vectors that contradict the current client".
+
 Executable conformance design for the jcode subscription account contract:
 device login, browser approval/denial, account state (`/v1/me`), checkout,
 billing portal, webhook ordering, revocation, and mixed-version compatibility.
@@ -10,29 +18,138 @@ vectors, the harnesses that execute them on each side, and who owns what.
 
 ## Grounding (current code)
 
-- Device flow client and wire contract: `src/cli/login/jcode_device.rs:1-225`
-  - `POST {auth_base}/v1/auth/device {"email"}` ->
-    `{device_code, verify_url, expires_in (default 900), interval (default 5)}`
-  - `POST {auth_base}/v1/auth/token {"device_code"}` ->
-    `202`/`428` pending, `429` slow-down, `200` approved
-    `{api_key, account_id?, email?, tier?}`, `200 {"status":"pending"}` legacy
-    pending, error codes `authorization_pending|pending`, `slow_down`,
-    `expired_token|expired|expired_device_code`, `access_denied|denied`,
-    and `404`/`410` treated as expired.
-- Poll loop timing: `src/cli/login/jcode_device.rs:230-264`
-  (`interval.max(1)`, deadline from `expires_in`, `slow_down` adds 5s).
-- Credential persistence: `src/cli/login/jcode_device.rs:268-304`
-  (`JCODE_API_KEY`, `JCODE_ACCOUNT_ID`, `JCODE_ACCOUNT_EMAIL`, `JCODE_TIER`
-  into the jcode-subscription env file).
-- Account state client: `crates/jcode-base/src/subscription_api.rs`
-  (`GET /v1/me` -> `SubscriptionMe`, 5s timeout, persists cached tier;
-  unknown/absent tier gates like Plus:
-  `crates/jcode-base/src/subscription_catalog.rs:193-204`).
-- Existing executable harness to extend: scripted local HTTP server in
-  `src/cli/login/jcode_device/tests.rs:7-46` plus state-machine tests
-  (`poll_state_machine_*`, `poll_for_api_key_*`).
-- Auth failure classification for negative-path assertions:
-  `crates/jcode-base/src/auth/login_diagnostics.rs`.
+The flow was rewritten **browser-first**: no email and no secret is ever typed
+into the terminal. CLI orchestration is `src/cli/login/jcode_device.rs` (225
+lines); all protocol parsing, HTTP behavior, and redaction live in
+`crates/jcode-base/src/subscription_api.rs` so the CLI and TUI share one
+contract (`jcode_device.rs:1-4`).
+
+- **Device authorization**: `request_device_authorization`
+  (`subscription_api.rs:236-288`).
+  `POST {api_base}/auth/device` with body `{"client_name":"jcode-cli"}` plus an
+  optional `requested_tier` (`:242-245`) — **no `email` field**. Response is
+  parsed into `DeviceAuthorization { device_code, flow_id, verification_uri,
+  verification_uri_complete, expires_in, interval }` (`:67-77`);
+  `device_code`, `flow_id`, and both URIs are **required** and a missing one
+  is `InvalidResponse` (`:272-284`). A body carrying the legacy `verify_url`
+  without `verification_uri_complete` is rejected as `LegacyBackend`
+  (`:269-271`, wire type at `:175-192`). Defaults and clamps:
+  `expires_in` defaults to **600** and clamps to `1..=3600`; `interval`
+  defaults to **3** and clamps to `1..=60` (`:285-286`). Non-success maps
+  401 -> `Unauthorized`, 403 -> `Forbidden`, 404 -> `LegacyBackend`, else
+  `Http { status, code }` (`:256-264`). Request timeout
+  `DEVICE_REQUEST_TIMEOUT` = 15s (`:15`).
+- **Token exchange**: `poll_device_token_once`
+  (`subscription_api.rs:290-353`) -> `TokenPollOutcome` (`:88-95`).
+  `POST {api_base}/auth/token {"device_code"}`, then:
+  429 -> `SlowDown { retry_after }` parsed from the `Retry-After` header
+  (`:304-313`); 428 or 202 -> `Pending` (`:315-317`); 2xx whose body carries
+  code `authorization_pending|pending` -> `Pending` (`:319-324`); other 2xx ->
+  `Approved`, requiring a non-empty `api_key` and **required**
+  `account_id`/`email`/`tier`/`status` (`:325-336`, `ApprovedAccountKey` at
+  `:79-86`, wire at `:194-201`). Otherwise by error code:
+  `authorization_pending|pending`, `slow_down`,
+  `expired_token|expired|expired_device_code`, `access_denied|denied`
+  (`:340-344`); then 401/403/404 -> `Unauthorized`/`Forbidden`/`LegacyBackend`;
+  else `Http { status, code }` (`:345-352`). The error code is read from
+  either `{"error":"code"}`, `{"error":{"code":...}}`, or a top-level
+  `{"status":...}`, truncated to 80 chars (`ErrorEnvelope`, `:150-173`,
+  `error_code`, `:229-234`).
+- **Poll loop**: `poll_for_api_key`
+  (`src/cli/login/jcode_device.rs:27-92`). Base delay
+  `Duration::from_secs(interval.max(1))`; deadline
+  `now + expires_in.max(interval.max(1))`; retry timing is
+  `PollingBackoff` (`subscription_api.rs:470-509`), where `slow_down` uses the
+  server's `Retry-After` or adds 5s, floored at base and **capped at 60s**
+  (`:491-496`), and transport errors double up to 30s (`:498-500`).
+  Ctrl-C cancels via `tokio::select!` on the delay only (`:52-58`):
+  cancellation is deliberately *not* polled while an exchange request is in
+  flight, so a one-time credential the backend already consumed is never
+  stranded (rationale at `jcode_device.rs:60-64`). `Expired` and `Denied` bail
+  with distinct messages (`:77-82`).
+- **Credential persistence**: `persist_approved_key`
+  (`src/cli/login/jcode_device.rs:95-104`) ->
+  `subscription_catalog::persist_account_credentials`
+  (`crates/jcode-base/src/subscription_catalog.rs:406-426`), writing
+  `JCODE_API_KEY`, `JCODE_ACCOUNT_ID`, `JCODE_ACCOUNT_EMAIL`, `JCODE_TIER`
+  (consts at `:3-7`) into the jcode-subscription env file, then
+  `ensure_account_credential_permissions` (`:455-473`) — which hardens *and
+  verifies* owner-only mode, erroring when `mode & 0o077 != 0`. An empty key
+  is refused outright (`:412-415`). So SN-06 is already enforced in
+  production, not just testable.
+- **Hosted-billing activation** (new stage, unmodelled by the vectors below):
+  after persisting the key the flow polls `poll_for_paid_activation`
+  (`subscription_api.rs:429-468`) for up to `ACTIVATION_TIMEOUT` = 10 minutes
+  (`:16`), yielding `ActivationOutcome::{Active, Canceled, TimedOut {
+  last_error_was_offline }, Revoked, Denied}` (`:97-104`). `Revoked`/`Denied`
+  clear local credentials and fail; every other non-active outcome keeps the
+  valid key and prints recovery actions (`jcode account status|manage|logout`,
+  `jcode_device.rs:217-221`). The flow returns
+  `LoginCompletion::{Active, KeySavedPlanPending, CanceledBeforeApproval}`
+  (`jcode_device.rs:14-19`).
+- **Account state client**: `fetch_subscription_me_with`
+  (`subscription_api.rs:355-385`) and `fetch_subscription_me`
+  (`:388-398`) -> `SubscriptionMe` (`:38-65`, with `parsed_tier()`,
+  `has_active_paid_plan()`, `checkout_was_canceled()`), `ME_FETCH_TIMEOUT` =
+  5s (`:14`). A successful fetch persists the parsed tier (`:381`).
+- **Tier gating**: `effective_tier()` =
+  `cached_tier().unwrap_or(JcodeTier::Plus)`
+  (`crates/jcode-base/src/subscription_catalog.rs:356-358`), so an
+  unknown/absent tier still gates like Plus — but its own doc comment says the
+  value is legacy and metered hosted billing does **not** use it for
+  client-side model gates (`:353-355`).
+- **Revocation client call**: `revoke_current_key`
+  (`subscription_api.rs:400-425`); local teardown is
+  `subscription_catalog::clear_account_credentials` (`:431-442`).
+- **Redaction is a type property**: `AccountApiError`
+  (`subscription_api.rs:106-115`) keeps only a status and a bounded code —
+  "Response bodies and bearer values are never retained" (`:106`) — with
+  `is_temporary()` classifying retryable transport failures (`:118-121`).
+- **Existing executable harness to extend**: `spawn_scripted_http_server`
+  (`src/cli/login/jcode_device/tests.rs:7-29`) plus `test_client` (`:31-37`).
+  The five current cases are `polling_pending_slow_down_then_approval`
+  (`:39`), `polling_denied_has_clear_redacted_error` (`:72`),
+  `polling_timeout_is_deterministic_before_first_request` (`:94`),
+  `cancellation_during_consumed_exchange_finishes_and_returns_the_key`
+  (`:109`), and
+  `approved_key_persistence_is_owner_only_and_clear_is_deterministic`
+  (`:138`). There are no `poll_state_machine_*` tests.
+- **Browser opening**: `maybe_open_browser`
+  (`src/cli/login.rs:1036`), called with `device.verification_uri_complete`
+  (`jcode_device.rs:121`).
+- **Auth failure classification** for negative-path assertions:
+  `crates/jcode-base/src/auth/login_diagnostics.rs`
+  (`classify_auth_failure_message`, `:38`).
+
+## Vectors that contradict the current client
+
+These rows below were written against the pre-rewrite flow and would fail as
+specified. Fix the vector, not the code, unless noted:
+
+- **DL-01/DL-02 defaults.** The defaults are 600/3, not 900/5
+  (`subscription_api.rs:285-286`), and both are clamped.
+- **DL-07 "gone".** 404 maps to `LegacyBackend`, not `Expired`
+  (`subscription_api.rs:347`), and 410 has no special case at all — it falls
+  into `Http { status, code }`. Decide which the contract wants; the client
+  currently distinguishes "old backend" from "expired code" on purpose.
+- **DL-09 empty api_key.** Still correct, but the check is
+  `api_key.trim().is_empty()` inside the approved branch
+  (`subscription_api.rs:327-329`) *and* again in
+  `persist_account_credentials` (`subscription_catalog.rs:412-415`).
+- **DL-12 device reject.** 401/403/404 are distinct typed errors, not one
+  "abort" (`subscription_api.rs:256-264`).
+- **CK-05.** The device flow never prints a pricing prompt.
+  `JCODE_PRICING_URL` (`subscription_catalog.rs:12`) has no callers anywhere in
+  the tree; the login tail prints `jcode account status|manage|logout` instead
+  (`jcode_device.rs:217-221`). Either drop CK-05 or respecify it against
+  `print_recovery_actions`.
+- **Missing vector family.** Nothing here covers `ActivationOutcome`. The
+  post-approval activation poll is where a user now spends most of the login,
+  and its five outcomes (including "key saved, plan pending") are the states
+  support will actually be asked about.
+- **SN-06 is already enforced**, so it is a regression test to keep rather than
+  a gap to close (`subscription_catalog.rs:455-473`,
+  `jcode_device/tests.rs:138`).
 
 ## Repository ownership
 
@@ -41,7 +158,7 @@ vectors, the harnesses that execute them on each side, and who owns what.
 | Client poll state machine, persistence, `/v1/me` parsing, tier gating | jcode (this repo) | Rust unit/integration tests against scripted HTTP server |
 | Shared wire test vectors (JSON fixtures) | jcode, mirrored into solosystems-backend by version tag | `tests/fixtures/account-contract/` (proposed) |
 | Email delivery, approval/denial web page, checkout session creation, Stripe webhooks, key revocation, `/v1/me` truth | solosystems-backend (private) | Backend integration tests replaying the same fixtures against real handlers |
-| End-to-end smoke (live staging) | solosystems-backend CI, opt-in job in jcode CI gated on staging creds | `jcode login jcode` scriptable flow against staging `JCODE_API_BASE` |
+| End-to-end smoke (live staging) | solosystems-backend CI; on the jcode side an opt-in local script gated on staging creds (this fork has no `.github/` CI, so there is no jcode CI job to add) | `jcode account login` scriptable flow against staging `JCODE_API_BASE` |
 
 Rule: a fixture change is a contract change. Fixtures are versioned
 (`schema_version` field per vector file); both repos pin the fixture set and a
@@ -106,8 +223,11 @@ Client cannot test the web page; the backend must have executable tests for:
 
 ## 4. Checkout and portal
 
-Checkout/portal are web-only today; the client hands off at
-`JCODE_PRICING_URL` (`src/cli/login/jcode_device.rs:355-367`). Conformance:
+Checkout/portal are web-only today, but the client no longer hands off to a
+pricing URL: `JCODE_PRICING_URL`
+(`crates/jcode-base/src/subscription_catalog.rs:12`) has no callers, and the
+login tail points at `jcode account manage` instead
+(`src/cli/login/jcode_device.rs:217-221`). Conformance:
 
 - CK-01 (backend) creating a checkout session for a signed-in device links the
   resulting subscription to the same `account_id` the device login returned.
@@ -117,8 +237,10 @@ Checkout/portal are web-only today; the client hands off at
   without re-login (test: ME-01 with new tier over old cached value).
 - CK-04 (backend) portal cancel flows set `status:"canceled"` while keeping
   the key valid until period end; client vector ME-05 covers rendering.
-- CK-05 (client) tier==none/empty after login prints the pricing prompt
-  (`login_jcode_device_flow` tail) — snapshot test on stderr text.
+- CK-05 (client) tier==none/empty after login prints the recovery actions
+  (`print_recovery_actions`, `src/cli/login/jcode_device.rs:217-221`) —
+  snapshot test on stderr text. **Respecified**: the original wording expected
+  a pricing prompt that the flow does not emit.
 
 ## 5. Webhook ordering (backend-owned)
 
@@ -169,8 +291,9 @@ body preserved (DL-11) rather than being misclassified as pending.
 - SN-01 device_code entropy: backend test asserts >= 128 bits, not guessable
   sequential IDs; token endpoint rate-limits per code and per IP (429 path is
   already client-handled: DL-05).
-- SN-02 email enumeration: `/v1/auth/device` returns the same shape for known
-  and unknown emails (backend).
+- SN-02 email enumeration: the client no longer sends an email at all
+  (`subscription_api.rs:242`), so this is purely a backend property of
+  whatever identifies the user on the approval page.
 - SN-03 client never prints `api_key` or full `device_code` to stdout/stderr
   or logs (grep-based test over captured output of the login flow; see the
   observability doc's never-log list).
@@ -178,8 +301,9 @@ body preserved (DL-11) rather than being misclassified as pending.
   `127.0.0.1`/`localhost` (client change + test; today any base is accepted).
 - SN-05 oversized/hostile bodies: 10 MB body, wrong content-type, NUL bytes —
   client errors cleanly, no panic (fuzz-style vectors in `token_poll/`).
-- SN-06 env-file permissions: persisted credentials file is 0600 on Unix
-  (test on `persist_subscription_credentials`).
+- SN-06 env-file permissions: persisted credentials file is owner-only on Unix
+  (test on `persist_account_credentials`; already asserted in production by
+  `ensure_account_credential_permissions`).
 - SN-07 verify_url scheme/host allowlist before auto-opening browser (BA-06).
 - SN-08 poll after approval: reusing a consumed device_code returns expired,
   never a second key (backend; client covered by DL-07 semantics).
@@ -209,8 +333,11 @@ body preserved (DL-11) rather than being misclassified as pending.
 2. Convert existing `jcode_device/tests.rs` cases to load from the manifest,
    keeping current assertions (no behavior change).
 3. Add the client-side gaps found while writing this spec: SN-03, SN-04,
-   SN-06, SN-07, CR-01/02/06, ME-03 cache-preservation.
+   SN-07, CR-01/02/06, ME-03 cache-preservation. (SN-06 is already enforced;
+   see the grounding section.) Also add the missing `ActivationOutcome`
+   family.
 4. Mirror `manifest.json` into solosystems-backend and wire the backend suites
    (BA, WH, RV, CK, SN-01/02/08, CR-07) there.
-5. Add the mixed-version CI job: run stable-channel binary's login flow
-   against head fixtures via scripted server.
+5. Add the mixed-version check as a `scripts/check_guardrails.sh` gate (this
+   fork has no `.github/` CI): run the stable-channel binary's login flow
+   against head fixtures via the scripted server.

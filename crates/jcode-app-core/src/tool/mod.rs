@@ -4,14 +4,12 @@ mod apply_patch;
 mod bash;
 mod batch;
 mod bg;
-mod browser;
 mod communicate;
 #[cfg(target_os = "macos")]
 mod computer;
 mod config_edit_notice;
 mod conversation_search;
 mod edit;
-mod gmail;
 mod goal;
 pub mod inflight;
 mod invalid;
@@ -220,7 +218,6 @@ impl Registry {
             );
             Self::insert_tool_timed(&mut m, &mut timings, "ls", ls::LsTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "bash", bash::BashTool::new);
-            Self::insert_tool_timed(&mut m, &mut timings, "browser", browser::BrowserTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "open", open::OpenTool::new);
             #[cfg(target_os = "macos")]
             Self::insert_tool_timed(
@@ -263,7 +260,6 @@ impl Registry {
                 "initiative",
                 goal::InitiativeTool::new,
             );
-            Self::insert_tool_timed(&mut m, &mut timings, "gmail", gmail::GmailTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "schedule", ambient::ScheduleTool::new);
             let nonzero: Vec<String> = timings
                 .iter()

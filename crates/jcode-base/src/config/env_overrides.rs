@@ -579,21 +579,6 @@ impl Config {
         if let Ok(v) = std::env::var("JCODE_NTFY_SERVER") {
             self.safety.ntfy_server = v;
         }
-        if let Ok(v) = std::env::var("JCODE_SMTP_PASSWORD") {
-            self.safety.email_password = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_EMAIL_TO") {
-            self.safety.email_to = Some(v);
-            self.safety.email_enabled = true;
-        }
-        if let Ok(v) = std::env::var("JCODE_IMAP_HOST") {
-            self.safety.email_imap_host = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_EMAIL_REPLY_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.safety.email_reply_enabled = parsed;
-            }
-        }
         if let Ok(v) = std::env::var("JCODE_TELEGRAM_BOT_TOKEN") {
             self.safety.telegram_bot_token = Some(v);
             self.safety.telegram_enabled = true;
