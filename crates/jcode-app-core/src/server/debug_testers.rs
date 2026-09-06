@@ -126,7 +126,6 @@ async fn spawn_tester(opts: serde_json::Value) -> Result<String> {
     // tester must own a real PTY. Allocate one, hand the slave end to the
     // child, and drain the master into the stdout log so the child never
     // blocks on a full PTY buffer.
-    #[cfg(unix)]
     {
         let pty = allocate_pty(cols, rows)
             .map_err(|e| anyhow::anyhow!("Failed to allocate tester PTY: {}", e))?;
@@ -165,12 +164,6 @@ async fn spawn_tester(opts: serde_json::Value) -> Result<String> {
                 }
             })
             .ok();
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (cols, rows);
-        cmd.stdout(Stdio::from(stdout_file));
-        cmd.stderr(Stdio::from(stderr_file));
     }
 
     let child = cmd.spawn()?;

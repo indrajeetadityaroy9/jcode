@@ -67,8 +67,7 @@ impl Tri {
 pub struct EnvFacts {
     /// Interactive stdin/stdout: can we prompt at all?
     pub tty: Tri,
-    /// A browser can plausibly be launched (a launcher exists and, on Linux, a
-    /// display server is present).
+    /// A browser can plausibly be launched (a launcher exists).
     pub browser: Tri,
     /// We can bind a loopback socket for an OAuth callback.
     pub loopback_bind: Tri,
@@ -194,23 +193,8 @@ fn probe_browser() -> Tri {
     if std::env::var("BROWSER").is_ok_and(|value| !value.trim().is_empty()) {
         return Tri::Yes;
     }
-    if cfg!(target_os = "macos") || cfg!(target_os = "windows") {
-        // `open` / `start` are always present.
-        return Tri::Yes;
-    }
-    // On Linux a launcher without a display server cannot show anything.
-    let has_display = ["DISPLAY", "WAYLAND_DISPLAY"]
-        .iter()
-        .any(|key| std::env::var(key).is_ok_and(|value| !value.trim().is_empty()));
-    if !has_display {
-        return Tri::No;
-    }
-    match binary_on_path("xdg-open") {
-        // A display but no launcher is unusual; stay optimistic rather than
-        // downgrading a user who has some other mechanism.
-        false => Tri::Unknown,
-        true => Tri::Yes,
-    }
+    // `open` is always present.
+    Tri::Yes
 }
 
 fn probe_loopback_bind() -> Tri {
@@ -254,9 +238,6 @@ fn probe_container() -> Tri {
             return Tri::Yes;
         }
     }
-    if cfg!(target_os = "linux") && std::path::Path::new("/.dockerenv").exists() {
-        return Tri::Yes;
-    }
     // WSL forwards browser launches to Windows and works fine, so it is
     // deliberately not treated as a container here.
     Tri::No
@@ -274,13 +255,6 @@ fn probe_proxy() -> Tri {
     .iter()
     .any(|key| std::env::var(key).is_ok_and(|value| !value.trim().is_empty()));
     Tri::from_bool(configured)
-}
-
-fn binary_on_path(name: &str) -> bool {
-    let Ok(path) = std::env::var("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&path).any(|dir| dir.join(name).is_file())
 }
 
 #[cfg(test)]

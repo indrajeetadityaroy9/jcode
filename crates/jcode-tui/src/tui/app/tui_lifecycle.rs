@@ -314,7 +314,7 @@ impl App {
     /// against a dead credential can never succeed; before this breaker,
     /// auto-poke/queued-retry loops logged thousands of 401s in a single
     /// session (one failed turn per resend) until the user noticed.
-    pub(super) fn trip_credential_failure_breaker(&mut self, message: &str) {
+    pub(super) fn trip_credential_failure_breaker(&mut self) {
         let failures = self.consecutive_credential_failures;
         self.clear_pending_remote_retry();
         let cleared_pokes = if self.auto_poke_incomplete_todos {
@@ -806,10 +806,8 @@ impl App {
                 description: s.description.clone(),
             })
             .collect();
-        let (_, context_info) = crate::prompt::build_system_prompt_with_context(
-            None,
-            &available_skills,
-        );
+        let (_, context_info) =
+            crate::prompt::build_system_prompt_with_context(None, &available_skills);
         let t_prompt = t0.elapsed();
         crate::logging::info(&format!(
             "App::new timings: skills={:.1}ms session={:.1}ms prompt={:.1}ms total={:.1}ms",
@@ -818,7 +816,6 @@ impl App {
             (t_prompt - t_session).as_secs_f64() * 1000.0,
             t_prompt.as_secs_f64() * 1000.0,
         ));
-
 
         let mut app = Self {
             provider,

@@ -164,111 +164,44 @@ pub fn gather_resource_snapshot(working_dir: Option<&Path>) -> ResourceSnapshot 
     }
 }
 
+/// Memory and swap totals for the overnight resource card.
+///
+/// Unpopulated on macOS: the only reader this fork ever had was `/proc/meminfo`,
+/// so every field is `None` and the card renders without them. A macOS reader
+/// would go through `sysctlbyname("hw.memsize")` + `host_statistics64`.
 fn detect_memory() -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>) {
-    #[cfg(target_os = "linux")]
-    {
-        let Ok(contents) = std::fs::read_to_string("/proc/meminfo") else {
-            return (None, None, None, None);
-        };
-        let mut total_kb = None;
-        let mut available_kb = None;
-        let mut swap_total_kb = None;
-        let mut swap_free_kb = None;
-        for line in contents.lines() {
-            if let Some(rest) = line.strip_prefix("MemTotal:") {
-                total_kb = parse_meminfo_kb(rest);
-            } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
-                available_kb = parse_meminfo_kb(rest);
-            } else if let Some(rest) = line.strip_prefix("SwapTotal:") {
-                swap_total_kb = parse_meminfo_kb(rest);
-            } else if let Some(rest) = line.strip_prefix("SwapFree:") {
-                swap_free_kb = parse_meminfo_kb(rest);
-            }
-        }
-        (
-            total_kb.map(|kb| kb / 1024),
-            available_kb.map(|kb| kb / 1024),
-            swap_total_kb.map(|kb| kb / 1024),
-            swap_free_kb.map(|kb| kb / 1024),
-        )
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        (None, None, None, None)
-    }
+    (None, None, None, None)
 }
 
-#[cfg(target_os = "linux")]
-fn parse_meminfo_kb(rest: &str) -> Option<u64> {
-    rest.split_whitespace().next()?.parse().ok()
-}
-
+/// Load average and CPU count.
+///
+/// `cpu_count` is real; `load_one` is `None` on macOS because its only reader
+/// was `/proc/loadavg`. `libc::getloadavg` would populate it.
 fn detect_load() -> (Option<f64>, Option<usize>) {
-    #[cfg(target_os = "linux")]
-    {
-        let load = std::fs::read_to_string("/proc/loadavg")
-            .ok()
-            .and_then(|contents| contents.split_whitespace().next()?.parse::<f64>().ok());
-        let cpus = std::thread::available_parallelism()
-            .ok()
-            .map(|value| value.get());
-        (load, cpus)
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let cpus = std::thread::available_parallelism()
-            .ok()
-            .map(|value| value.get());
-        (None, cpus)
-    }
+    let cpus = std::thread::available_parallelism()
+        .ok()
+        .map(|value| value.get());
+    (None, cpus)
 }
 
+/// Battery percentage and charging status.
+///
+/// Unpopulated on macOS: the only reader was `/sys/class/power_supply`. IOKit
+/// (`IOPSCopyPowerSourcesInfo`) would populate it.
 fn detect_battery() -> (Option<u8>, Option<String>) {
-    #[cfg(target_os = "linux")]
-    {
-        let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") else {
-            return (None, None);
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-            if !name.starts_with("BAT") {
-                continue;
-            }
-            let percent = std::fs::read_to_string(path.join("capacity"))
-                .ok()
-                .and_then(|value| value.trim().parse::<u8>().ok());
-            let status = std::fs::read_to_string(path.join("status"))
-                .ok()
-                .map(|value| value.trim().to_string());
-            return (percent, status);
-        }
-        (None, None)
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        (None, None)
-    }
+    (None, None)
 }
 
 fn disk_available_gb(path: &Path) -> Option<f64> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::ffi::OsStrExt;
-        let c_path = CString::new(path.as_os_str().as_bytes()).ok()?;
-        let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
-        let rc = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
-        if rc != 0 {
-            return None;
-        }
-        let bytes = stat.f_bavail as f64 * stat.f_frsize as f64;
-        Some(bytes / 1024.0 / 1024.0 / 1024.0)
+    use std::os::unix::ffi::OsStrExt;
+    let c_path = CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
+    if rc != 0 {
+        return None;
     }
-    #[cfg(not(unix))]
-    {
-        let _ = path;
-        None
-    }
+    let bytes = stat.f_bavail as f64 * stat.f_frsize as f64;
+    Some(bytes / 1024.0 / 1024.0 / 1024.0)
 }
 
 pub fn gather_git_snapshot(working_dir: Option<&Path>) -> GitSnapshot {

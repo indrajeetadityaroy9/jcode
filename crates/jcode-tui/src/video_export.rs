@@ -10,28 +10,6 @@ use std::path::{Path, PathBuf};
 use crate::replay::TimelineEvent;
 
 fn find_command(name: &str) -> Option<PathBuf> {
-    #[cfg(windows)]
-    let path_lookup = {
-        let exe_name = if name.ends_with(".exe") {
-            name.to_string()
-        } else {
-            format!("{}.exe", name)
-        };
-        std::process::Command::new("where")
-            .arg(&exe_name)
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .and_then(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .lines()
-                    .map(str::trim)
-                    .find(|line| !line.is_empty())
-                    .map(PathBuf::from)
-            })
-    };
-
-    #[cfg(not(windows))]
     let path_lookup = std::process::Command::new("which")
         .arg(name)
         .output()
@@ -45,23 +23,10 @@ fn find_command(name: &str) -> Option<PathBuf> {
         if direct.exists() {
             return Some(direct);
         }
-        #[cfg(windows)]
-        {
-            let exe = cargo_bin.join(format!("{}.exe", name));
-            if exe.exists() {
-                return Some(exe);
-            }
-        }
         None
     })
 }
 
-#[cfg(windows)]
-fn get_terminal_font() -> (String, f64) {
-    ("JetBrains Mono".to_string(), 11.0)
-}
-
-#[cfg(not(windows))]
 fn get_terminal_font() -> (String, f64) {
     if let Ok(conf) = std::fs::read_to_string(
         dirs::home_dir()

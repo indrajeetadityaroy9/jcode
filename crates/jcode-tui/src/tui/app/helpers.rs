@@ -1,6 +1,5 @@
 #![cfg_attr(test, allow(clippy::items_after_test_module))]
 
-mod clipboard_helper;
 pub(crate) mod model_names;
 
 use crate::todo::TodoItem;
@@ -72,19 +71,6 @@ pub(crate) fn invalidate_git_info_cache() {
         // returning the last-known value (no flicker to empty).
         *ts = backdated_now(Duration::from_secs(3600));
         *refreshing = false;
-    }
-}
-
-/// Pin the git-status widget to a fixed value for deterministic renders.
-///
-/// Full-frame artifact generators (onboarding screenshots) would otherwise
-/// capture the live ahead/behind/dirty counts of whatever repo the generator
-/// happens to run in. Marking the entry as `refreshing` keeps the TTL path
-/// from spawning a background probe that overwrites the seed mid-render.
-#[cfg(test)]
-pub(crate) fn seed_git_info_cache_for_tests(info: Option<GitInfo>) {
-    if let Ok(mut guard) = GIT_INFO_CACHE.lock() {
-        *guard = Some((std::time::Instant::now(), info, true));
     }
 }
 
@@ -219,7 +205,6 @@ pub(super) fn partition_queued_messages(
 /// `Ctrl+5` dead on the only platform this fork supports: it never reached
 /// `ctrl_prompt_rank`, and the key fell through to the input handler, which
 /// snapped the transcript back to the bottom.
-#[cfg(target_os = "macos")]
 pub(super) fn ctrl_bracket_fallback_to_esc(
     code: &mut KeyCode,
     modifiers: &mut KeyModifiers,
@@ -237,14 +222,6 @@ pub(super) fn ctrl_bracket_fallback_to_esc(
         }
         _ => {}
     }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub(super) fn ctrl_bracket_fallback_to_esc(
-    _code: &mut KeyCode,
-    _modifiers: &mut KeyModifiers,
-    _diagram_available: bool,
-) {
 }
 
 /// Debug command file path
@@ -363,13 +340,13 @@ pub(super) fn format_tokens(tokens: u64) -> String {
 
 /// Test-only clipboard sink.
 ///
-/// A headless CI runner has no Wayland socket, no X11 display, and a
-/// non-terminal stdout, so every real clipboard path correctly fails and
-/// `copy_to_clipboard` returns false. Tests that only care about shortcut
-/// wiring (does Alt+S reach the copy handler with the right text?) then fail
-/// for an environment reason rather than a code reason. Capturing into this
-/// sink lets those tests assert the wiring *and* the copied text without
-/// depending on a desktop session (refs #596).
+/// A headless CI runner has no desktop session and a non-terminal stdout, so
+/// every real clipboard path correctly fails and `copy_to_clipboard` returns
+/// false. Tests that only care about shortcut wiring (does Alt+S reach the
+/// copy handler with the right text?) then fail for an environment reason
+/// rather than a code reason. Capturing into this sink lets those tests assert
+/// the wiring *and* the copied text without depending on a desktop session
+/// (refs #596).
 #[cfg(test)]
 static TEST_CLIPBOARD: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
@@ -395,16 +372,12 @@ pub(crate) fn stop_capturing_clipboard_for_tests() {
     }
 }
 
-/// Copy text to clipboard. On Windows and macOS, the native clipboard API
-/// (arboard) is authoritative, with OSC 52 as a remote-session fallback.
-/// Elsewhere, try wl-copy (Wayland), then xclip/xsel (X11, which keep owning
-/// the selection unlike arboard), then arboard, then OSC 52 as the
-/// remote-session fallback (SSH / Docker / tmux).
+/// Copy text to clipboard. The native clipboard API (arboard, with pbcopy as a
+/// belt-and-braces fallback) is authoritative, with OSC 52 as a remote-session
+/// fallback.
 pub(super) fn copy_to_clipboard(text: &str) -> bool {
-    // Under test, never touch the OS clipboard. Beyond making results identical
-    // on a desktop and a headless runner, the Linux path below spawns `wl-copy`,
-    // which forks a clipboard server that does not exit; waiting on it hangs the
-    // test binary indefinitely. Tests that assert copied text call
+    // Under test, never touch the OS clipboard, so results are identical on a
+    // desktop and a headless runner. Tests that assert copied text call
     // `capture_clipboard_for_tests` first and then read the sink; tests that
     // only assert "a copy happened" get a truthy result either way.
     //
@@ -426,95 +399,34 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
 
     #[cfg(not(test))]
     {
-        // On Windows, the native clipboard API must run before OSC 52. Writing an
-        // OSC 52 sequence to stdout "succeeds" even when the console (conhost,
-        // older Windows Terminal) silently ignores it, which reported "Copied"
-        // while leaving the clipboard empty (issue #497). arboard talks to the
-        // Win32 clipboard directly and is authoritative there.
-        #[cfg(windows)]
+        // Apple Terminal (Terminal.app) silently ignores OSC 52, yet writing
+        // the sequence to stdout "succeeds", so we reported "Copied" while
+        // leaving the clipboard untouched. NSPasteboard via arboard (with
+        // pbcopy as a belt-and-braces fallback) is authoritative for local
+        // sessions; OSC 52 remains as the final remote-session fallback.
+        if arboard::Clipboard::new()
+            .and_then(|mut cb| cb.set_text(text.to_string()))
+            .is_ok()
         {
-            if arboard::Clipboard::new()
-                .and_then(|mut cb| cb.set_text(text.to_string()))
-                .is_ok()
-            {
-                return true;
-            }
-            return copy_to_clipboard_osc52(text);
+            return true;
         }
-
-        // Same class of bug on macOS: Apple Terminal (Terminal.app) silently
-        // ignores OSC 52, yet writing the sequence to stdout "succeeds", so we
-        // reported "Copied" while leaving the clipboard untouched. NSPasteboard
-        // via arboard (with pbcopy as a belt-and-braces fallback) is authoritative
-        // for local sessions; OSC 52 remains as the final remote-session fallback.
-        #[cfg(target_os = "macos")]
+        if let Ok(mut child) = std::process::Command::new("pbcopy")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
         {
-            if arboard::Clipboard::new()
-                .and_then(|mut cb| cb.set_text(text.to_string()))
-                .is_ok()
+            use std::io::Write;
+            if let Some(stdin) = child.stdin.as_mut()
+                && stdin.write_all(text.as_bytes()).is_ok()
             {
-                return true;
-            }
-            if let Ok(mut child) = std::process::Command::new("pbcopy")
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-            {
-                use std::io::Write;
-                if let Some(stdin) = child.stdin.as_mut()
-                    && stdin.write_all(text.as_bytes()).is_ok()
-                {
-                    drop(child.stdin.take());
-                    if child.wait().map(|s| s.success()).unwrap_or(false) {
-                        return true;
-                    }
+                drop(child.stdin.take());
+                if child.wait().map(|s| s.success()).unwrap_or(false) {
+                    return true;
                 }
             }
-            return copy_to_clipboard_osc52(text);
         }
-
-        // Linux has the same failure class (issue #504, Kali/X11): wl-copy fails
-        // outside Wayland, and many terminals (xterm, older VTE) silently ignore
-        // OSC 52 while the stdout write still "succeeds", so the arboard fallback
-        // never ran. Prefer native clipboards when a display is available:
-        // wl-copy (Wayland), then xclip/xsel (X11, which keep owning the
-        // selection), then arboard, and only then OSC 52 for genuinely
-        // headless/remote sessions (SSH, Docker, tmux) where the native paths
-        // fail fast for lack of a display server.
-        #[cfg(not(any(windows, target_os = "macos")))]
-        {
-            if clipboard_helper::copy_via_clipboard_helper("wl-copy", &[], text) {
-                return true;
-            }
-            // X11: prefer xclip/xsel over arboard. arboard's X11 backend sets the
-            // selection on a connection it owns and then closes it when the
-            // `Clipboard` is dropped, so the selection owner disappears and the
-            // clipboard silently reverts (issue #684) even though `set_text`
-            // returned Ok. xclip and xsel fork a background process that keeps
-            // owning the selection until a paste, which is what users expect.
-            if clipboard_helper::copy_via_clipboard_helper(
-                "xclip",
-                &["-selection", "clipboard"],
-                text,
-            ) {
-                return true;
-            }
-            if clipboard_helper::copy_via_clipboard_helper(
-                "xsel",
-                &["--clipboard", "--input"],
-                text,
-            ) {
-                return true;
-            }
-            if arboard::Clipboard::new()
-                .and_then(|mut cb| cb.set_text(text.to_string()))
-                .is_ok()
-            {
-                return true;
-            }
-            copy_to_clipboard_osc52(text)
-        }
+        copy_to_clipboard_osc52(text)
     }
 }
 
@@ -522,6 +434,7 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
 /// terminal emulator to set the system clipboard without needing a local
 /// display server, making it work over SSH, inside Docker, and under tmux
 /// (with `set -g set-clipboard on`). Returns false if stdout is not a TTY.
+#[cfg(not(test))]
 fn copy_to_clipboard_osc52(text: &str) -> bool {
     use base64::Engine as _;
     use std::io::{IsTerminal, Write};
@@ -815,11 +728,8 @@ fn resumed_window_title(session_id: &str) -> String {
 
 /// Open `session_id` in a new terminal window.
 ///
-/// Routes through `terminal_launch` on every platform. This used to be a
-/// hardcoded `Ok(false)` off Unix, which made `/judge`, `/fork`, `/review`,
-/// `/transfer` and crash-restore silently print "No terminal found" on Windows
-/// even though the launcher already had Windows Terminal / Alacritty / WezTerm
-/// detection plus a `cmd /C start` fallback (see #715).
+/// Routes through `terminal_launch`, which detects the user's terminal and
+/// falls back through the known emulators.
 pub(super) fn spawn_in_new_terminal(
     exe: &Path,
     session_id: &str,
@@ -838,68 +748,9 @@ mod helpers_tests;
 /// Try to get an image from the system clipboard.
 ///
 /// Returns `Some((media_type, base64_data))` if an image is available.
-/// Uses `wl-paste` on Wayland, `osascript` on macOS, falls back to `arboard::get_image()`.
+/// Uses `osascript`, falling back to `arboard::get_image()`.
 pub(super) fn clipboard_image() -> Option<(String, String)> {
     use base64::Engine;
-
-    // Try wl-paste first (native Wayland - better image format support)
-    if std::env::var("WAYLAND_DISPLAY").is_ok()
-        && let Ok(output) = std::process::Command::new("wl-paste")
-            .arg("--list-types")
-            .output()
-    {
-        let types = String::from_utf8_lossy(&output.stdout);
-        crate::logging::info(&format!(
-            "clipboard_image: wl-paste types: {:?}",
-            types.trim()
-        ));
-        let (mime, wl_type) = if types.lines().any(|t| t.trim() == "image/png") {
-            ("image/png", "image/png")
-        } else if types.lines().any(|t| t.trim() == "image/jpeg") {
-            ("image/jpeg", "image/jpeg")
-        } else if types.lines().any(|t| t.trim() == "image/webp") {
-            ("image/webp", "image/webp")
-        } else if types.lines().any(|t| t.trim() == "image/gif") {
-            ("image/gif", "image/gif")
-        } else {
-            ("", "")
-        };
-
-        if !mime.is_empty()
-            && let Ok(img_output) = std::process::Command::new("wl-paste")
-                .args(["--type", wl_type, "--no-newline"])
-                .output()
-            && img_output.status.success()
-            && !img_output.stdout.is_empty()
-        {
-            let b64 = base64::engine::general_purpose::STANDARD.encode(&img_output.stdout);
-            return Some((mime.to_string(), b64));
-        }
-
-        // Fallback: check text/html for <img> tags (Discord copies HTML with image URLs)
-        if types.lines().any(|t| t.trim() == "text/html")
-            && let Ok(html_output) = std::process::Command::new("wl-paste")
-                .args(["--type", "text/html"])
-                .output()
-            && html_output.status.success()
-            && !html_output.stdout.is_empty()
-        {
-            let html = String::from_utf8_lossy(&html_output.stdout);
-            crate::logging::info(&format!(
-                "clipboard_image: checking HTML for img tags ({} bytes)",
-                html.len()
-            ));
-            if let Some(url) = extract_image_url(&html) {
-                crate::logging::info(&format!(
-                    "clipboard_image: found image URL in HTML: {}",
-                    jcode_core::util::truncate_str(&url, 80)
-                ));
-                if let Some(result) = download_image_url(&url) {
-                    return Some(result);
-                }
-            }
-        }
-    }
 
     // macOS: use osascript to check clipboard for images and save as PNG via temp file
     #[cfg(target_os = "macos")]
@@ -939,7 +790,7 @@ pub(super) fn clipboard_image() -> Option<(String, String)> {
         }
     }
 
-    // Fallback: arboard (works on X11/XWayland and macOS via NSPasteboard)
+    // Fallback: arboard (macOS NSPasteboard).
     if let Ok(mut clipboard) = arboard::Clipboard::new()
         && let Ok(img) = clipboard.get_image()
         && let Some(png_data) = encode_rgba_as_png(img.width, img.height, &img.bytes)

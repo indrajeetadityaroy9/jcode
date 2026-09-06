@@ -606,6 +606,22 @@ fn schema_only_advertises_common_public_fields() {
     assert!(props.contains_key("max_files"));
     assert!(props.contains_key("max_regions"));
     assert!(props.contains_key("paths_only"));
+    // The ripgrep engine options. A field that exists on `AgentGrepInput` but
+    // never reaches the schema is unreachable by the model, and nothing else
+    // fails when that happens.
+    assert!(props.contains_key("case"));
+    assert!(props.contains_key("engine"));
+    assert!(props.contains_key("word"));
+    assert!(props.contains_key("multiline"));
+    assert!(props.contains_key("context_lines"));
+    assert!(props.contains_key("max_matches_per_file"));
+    assert_eq!(
+        props["case"]["enum"]
+            .as_array()
+            .expect("case should expose enum values"),
+        &vec![json!("sensitive"), json!("insensitive"), json!("smart")],
+        "the advertised case values must be the ones build_grep_request accepts"
+    );
     assert_eq!(
         mode_enum,
         &vec![

@@ -213,14 +213,11 @@ impl TokenHashIndex {
             .collect()
     }
 
-    #[allow(dead_code)]
+    /// Indexed entry count. Only the incremental-rebuild tests read this;
+    /// production paths go through `candidate_slots`.
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.entries.len()
-    }
-
-    #[allow(dead_code)]
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
     }
 
     /// Approximate resident bytes of this index (entries + filter bits +

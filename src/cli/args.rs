@@ -297,12 +297,8 @@ pub(crate) enum Command {
         session: Option<String>,
     },
 
-    /// Run configured dictation: send to last-focused jcode client or type raw text
-    Dictate {
-        /// Type the transcript into the focused app instead of sending to jcode
-        #[arg(long)]
-        r#type: bool,
-    },
+    /// Run configured dictation and send the transcript to the last-focused jcode client
+    Dictate,
 
     /// Install a launcher so jcode appears in your app launcher
     SetupLauncher,

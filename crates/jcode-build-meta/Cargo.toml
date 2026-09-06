@@ -13,7 +13,3 @@ publish = false
 # in the workspace can depend on this leaf crate and obtain identical values
 # without duplicating the build script (which would double-increment the dev
 # patch counter).
-
-[dependencies]
-
-[build-dependencies]

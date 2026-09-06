@@ -13,35 +13,6 @@ pub struct TuiRuntimeState {
 const INHERITED_MODES_ENV: &str = "JCODE_TUI_INHERITED_MODES";
 const INHERITED_THEME_ENV: &str = "JCODE_TUI_INHERITED_THEME";
 
-// Crossterm's Windows implementation enables Win32 console mouse input but does
-// not emit the VT mouse-tracking modes. Windows Terminal and other ConPTY hosts
-// use those VT modes to decide whether a wheel detent is a mouse event or should
-// be translated into Up/Down keys in the alternate screen. Without this second
-// signal, wheel scrolling can accidentally browse prompt history instead of the
-// chat transcript even though crossterm reports mouse capture as enabled.
-#[cfg(any(windows, test))]
-const WINDOWS_VT_MOUSE_ENABLE: &[u8] = b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1015h\x1b[?1006h";
-#[cfg(any(windows, test))]
-const WINDOWS_VT_MOUSE_DISABLE: &[u8] = b"\x1b[?1006l\x1b[?1015l\x1b[?1003l\x1b[?1002l\x1b[?1000l";
-
-#[cfg(windows)]
-fn sync_windows_vt_mouse_capture(enabled: bool) -> io::Result<()> {
-    let sequence = if enabled {
-        WINDOWS_VT_MOUSE_ENABLE
-    } else {
-        WINDOWS_VT_MOUSE_DISABLE
-    };
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
-    stdout.write_all(sequence)?;
-    stdout.flush()
-}
-
-#[cfg(not(windows))]
-fn sync_windows_vt_mouse_capture(_enabled: bool) -> io::Result<()> {
-    Ok(())
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct InheritedTerminalModes {
     mouse_capture: bool,
@@ -188,7 +159,6 @@ pub fn install_panic_hook() {
 
         if let Some(session_id) = get_current_session() {
             print_session_resume_hint(&session_id);
-
 
             if let Ok(mut session) = session::Session::load(&session_id)
                 && should_record_panic_as_crash(&session.status)
@@ -399,11 +369,6 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
         }
         if modes.mouse_capture {
             crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
-            if let Err(err) = sync_windows_vt_mouse_capture(true) {
-                crate::logging::warn(&format!(
-                    "failed to enable Windows VT mouse tracking: {err}"
-                ));
-            }
         }
         modes
     } else {
@@ -423,11 +388,6 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
         }
         if modes.mouse_capture {
             crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
-            if let Err(err) = sync_windows_vt_mouse_capture(true) {
-                crate::logging::warn(&format!(
-                    "failed to enable Windows VT mouse tracking: {err}"
-                ));
-            }
         }
         modes
     };
@@ -480,11 +440,6 @@ fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
             let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableFocusChange);
         }
         if state.mouse_capture {
-            if let Err(error) = sync_windows_vt_mouse_capture(false) {
-                crate::logging::warn(&format!(
-                    "failed to disable Windows VT mouse capture: {error}"
-                ));
-            }
             let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
         }
         if state.keyboard_enhanced {
@@ -562,7 +517,6 @@ fn init_tui_terminal_resume() -> Result<ratatui::DefaultTerminal> {
     Ok(terminal)
 }
 
-#[cfg(unix)]
 pub fn signal_name(sig: i32) -> &'static str {
     match sig {
         1 => "SIGHUP",
@@ -577,11 +531,6 @@ pub fn signal_name(sig: i32) -> &'static str {
         15 => "SIGTERM",
         _ => "unknown",
     }
-}
-
-#[cfg(not(unix))]
-pub fn signal_name(_sig: i32) -> &'static str {
-    "unknown"
 }
 
 #[cfg(unix)]
@@ -613,7 +562,6 @@ fn handle_termination_signal(sig: i32) -> ! {
     std::process::exit(128 + sig);
 }
 
-#[cfg(unix)]
 pub fn spawn_session_signal_watchers() {
     use tokio::signal::unix::{SignalKind, signal};
 
@@ -643,9 +591,6 @@ pub fn spawn_session_signal_watchers() {
     spawn_one(libc::SIGQUIT, SignalKind::quit());
 }
 
-#[cfg(not(unix))]
-pub fn spawn_session_signal_watchers() {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -671,22 +616,6 @@ mod tests {
             focus_change: true,
         };
         assert_eq!(InheritedTerminalModes::decode(&modes.encode()), Some(modes));
-    }
-
-    #[test]
-    fn windows_vt_mouse_modes_enable_and_disable_the_same_tracking_protocols() {
-        let enable = String::from_utf8_lossy(WINDOWS_VT_MOUSE_ENABLE);
-        let disable = String::from_utf8_lossy(WINDOWS_VT_MOUSE_DISABLE);
-        for mode in ["1000", "1002", "1003", "1015", "1006"] {
-            assert!(
-                enable.contains(&format!("?{mode}h")),
-                "enable sequence must turn on VT mouse mode {mode}"
-            );
-            assert!(
-                disable.contains(&format!("?{mode}l")),
-                "disable sequence must turn off VT mouse mode {mode}"
-            );
-        }
     }
 
     #[test]

@@ -69,13 +69,21 @@ static WORKING_GIT_STATE_CACHE: LazyLock<StdMutex<HashMap<PathBuf, Option<GitSta
     LazyLock::new(|| StdMutex::new(HashMap::new()));
 const STREAM_KEEPALIVE_PONG_ID: u64 = 0;
 
-fn stable_hash_str(value: &str) -> u64 {
+/// Fingerprint a string for prompt-cache comparison **within one process**.
+///
+/// `DefaultHasher` is not stable across Rust versions, which is fine here:
+/// every consumer compares hashes captured by the same running binary and
+/// discards them on restart. Do not persist these values, and do not confuse
+/// them with `jcode_provider_core::stable_hash_str`, which is SHA-256 based
+/// precisely because its output is compared across processes.
+pub fn stable_hash_str(value: &str) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     value.hash(&mut hasher);
     hasher.finish()
 }
 
-fn stable_hash_json<T: serde::Serialize + ?Sized>(value: &T) -> u64 {
+/// [`stable_hash_str`] over a value's JSON encoding.
+pub fn stable_hash_json<T: serde::Serialize + ?Sized>(value: &T) -> u64 {
     let encoded = serde_json::to_string(value).unwrap_or_default();
     stable_hash_str(&encoded)
 }

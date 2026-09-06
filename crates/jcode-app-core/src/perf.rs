@@ -435,15 +435,6 @@ fn detect_wsl() -> bool {
     if std::env::var("WSL_DISTRO_NAME").is_ok() || std::env::var("WSLENV").is_ok() {
         return true;
     }
-    #[cfg(target_os = "linux")]
-    {
-        if let Ok(v) = std::fs::read_to_string("/proc/version") {
-            let lower = v.to_ascii_lowercase();
-            if lower.contains("microsoft") || lower.contains("wsl") {
-                return true;
-            }
-        }
-    }
     false
 }
 
@@ -469,24 +460,6 @@ fn detect_terminal() -> String {
     "unknown".to_string()
 }
 
-#[cfg(target_os = "linux")]
-fn detect_load() -> (Option<f64>, Option<usize>) {
-    let load = std::fs::read_to_string("/proc/loadavg").ok().and_then(|s| {
-        s.split_whitespace()
-            .next()
-            .and_then(|v| v.parse::<f64>().ok())
-    });
-
-    let cpus = std::fs::read_to_string("/proc/cpuinfo")
-        .ok()
-        .map(|s| s.matches("processor\t:").count())
-        .filter(|&c| c > 0)
-        .or_else(|| std::thread::available_parallelism().ok().map(|n| n.get()));
-
-    (load, cpus)
-}
-
-#[cfg(target_os = "macos")]
 fn detect_load() -> (Option<f64>, Option<usize>) {
     let load = {
         let mut loadavg: [libc::c_double; 3] = [0.0; 3];
@@ -497,82 +470,6 @@ fn detect_load() -> (Option<f64>, Option<usize>) {
     (load, cpus)
 }
 
-#[cfg(windows)]
-fn detect_load() -> (Option<f64>, Option<usize>) {
-    let cpus = std::thread::available_parallelism().ok().map(|n| n.get());
-    (None, cpus)
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-fn detect_load() -> (Option<f64>, Option<usize>) {
-    let cpus = std::thread::available_parallelism().ok().map(|n| n.get());
-    (None, cpus)
-}
-
-#[cfg(target_os = "linux")]
-fn detect_memory() -> (Option<u64>, Option<u64>) {
-    let contents = match std::fs::read_to_string("/proc/meminfo") {
-        Ok(c) => c,
-        Err(_) => return (None, None),
-    };
-
-    let mut total_kb: Option<u64> = None;
-    let mut available_kb: Option<u64> = None;
-
-    for line in contents.lines() {
-        if let Some(rest) = line.strip_prefix("MemTotal:") {
-            total_kb = parse_meminfo_kb(rest);
-        } else if let Some(rest) = line.strip_prefix("MemAvailable:") {
-            available_kb = parse_meminfo_kb(rest);
-        }
-        if total_kb.is_some() && available_kb.is_some() {
-            break;
-        }
-    }
-
-    (available_kb.map(|k| k / 1024), total_kb.map(|k| k / 1024))
-}
-
-#[cfg(target_os = "linux")]
-fn parse_meminfo_kb(s: &str) -> Option<u64> {
-    s.split_whitespace().next()?.parse().ok()
-}
-
-#[cfg(windows)]
-fn detect_memory() -> (Option<u64>, Option<u64>) {
-    use std::mem;
-
-    #[repr(C)]
-    struct MemoryStatusEx {
-        dw_length: u32,
-        dw_memory_load: u32,
-        ull_total_phys: u64,
-        ull_avail_phys: u64,
-        ull_total_page_file: u64,
-        ull_avail_page_file: u64,
-        ull_total_virtual: u64,
-        ull_avail_virtual: u64,
-        ull_avail_extended_virtual: u64,
-    }
-
-    unsafe extern "system" {
-        fn GlobalMemoryStatusEx(lpBuffer: *mut MemoryStatusEx) -> i32;
-    }
-
-    let mut status: MemoryStatusEx = unsafe { mem::zeroed() };
-    status.dw_length = mem::size_of::<MemoryStatusEx>() as u32;
-
-    let ret = unsafe { GlobalMemoryStatusEx(&mut status) };
-    if ret != 0 {
-        let total_mb = status.ull_total_phys / (1024 * 1024);
-        let avail_mb = status.ull_avail_phys / (1024 * 1024);
-        (Some(avail_mb), Some(total_mb))
-    } else {
-        (None, None)
-    }
-}
-
-#[cfg(target_os = "macos")]
 fn detect_memory() -> (Option<u64>, Option<u64>) {
     let total = {
         let mut size: u64 = 0;
@@ -598,11 +495,6 @@ fn detect_memory() -> (Option<u64>, Option<u64>) {
     // vm_stat gives pages free + inactive but parsing it adds complexity.
     // For tier detection, total memory is sufficient on macOS.
     (None, total)
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
-fn detect_memory() -> (Option<u64>, Option<u64>) {
-    (None, None)
 }
 
 #[cfg(test)]

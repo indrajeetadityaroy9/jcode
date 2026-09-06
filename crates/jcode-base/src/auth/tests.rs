@@ -24,24 +24,6 @@ fn write_mock_cursor_agent(dir: &std::path::Path, script_body: &str) -> std::pat
 }
 
 #[test]
-fn command_candidates_adds_extension_on_windows() {
-    crate::env::set_var("PATHEXT", ".EXE;.BAT");
-    let candidates = command_candidates("testcmd");
-    if cfg!(windows) {
-        let normalized: Vec<String> = candidates
-            .iter()
-            .map(|c| c.to_string_lossy().to_ascii_lowercase())
-            .collect();
-        assert!(normalized.iter().any(|c| c == "testcmd"));
-        assert!(normalized.iter().any(|c| c == "testcmd.exe"));
-        assert!(normalized.iter().any(|c| c == "testcmd.bat"));
-    } else {
-        assert_eq!(candidates.len(), 1);
-        assert!(candidates.iter().any(|c| c == "testcmd"));
-    }
-}
-
-#[test]
 fn auth_state_default_is_not_configured() {
     let state = AuthState::default();
     assert_eq!(state, AuthState::NotConfigured);
@@ -297,11 +279,7 @@ fn provider_auth_assessment_predicates_reflect_state() {
 
 #[test]
 fn command_exists_for_known_binary() {
-    if cfg!(windows) {
-        assert!(command_exists("cmd") || command_exists("cmd.exe"));
-    } else {
-        assert!(command_exists("ls"));
-    }
+    assert!(command_exists("ls"));
 }
 
 #[test]
@@ -317,11 +295,7 @@ fn command_exists_nonexistent() {
 
 #[test]
 fn command_exists_absolute_path() {
-    if cfg!(windows) {
-        assert!(command_exists(r"C:\Windows\System32\cmd.exe"));
-    } else {
-        assert!(command_exists("/bin/ls") || command_exists("/usr/bin/ls"));
-    }
+    assert!(command_exists("/bin/ls") || command_exists("/usr/bin/ls"));
 }
 
 #[test]
@@ -365,28 +339,6 @@ fn auth_state_equality() {
     assert_eq!(AuthState::NotConfigured, AuthState::NotConfigured);
     assert_ne!(AuthState::Available, AuthState::Expired);
     assert_ne!(AuthState::Available, AuthState::NotConfigured);
-}
-
-#[test]
-fn is_wsl2_windows_path_matches_drive_mounts() {
-    assert!(is_wsl2_windows_path(std::path::Path::new("/mnt/c")));
-    assert!(is_wsl2_windows_path(std::path::Path::new("/mnt/d")));
-    assert!(is_wsl2_windows_path(std::path::Path::new("/mnt/z")));
-    assert!(is_wsl2_windows_path(std::path::Path::new(
-        "/mnt/c/Windows/System32"
-    )));
-}
-
-#[test]
-fn is_wsl2_windows_path_rejects_non_drives() {
-    // /mnt/wsl is a WSL-internal mount, not a Windows drive
-    assert!(!is_wsl2_windows_path(std::path::Path::new("/mnt/wsl")));
-    // /usr/bin is a plain Linux directory
-    assert!(!is_wsl2_windows_path(std::path::Path::new("/usr/bin")));
-    // /mnt alone is not a drive
-    assert!(!is_wsl2_windows_path(std::path::Path::new("/mnt")));
-    // empty
-    assert!(!is_wsl2_windows_path(std::path::Path::new("")));
 }
 
 #[test]

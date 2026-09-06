@@ -4,7 +4,7 @@ This document tracks the plan to make jcode's self-dev / refactor loop much fast
 without sacrificing full-feature builds.
 
 **Read this as a dated changelog, not as current state.** Entries are kept
-verbatim as a historical record. Two caveats apply throughout:
+verbatim as a historical record. Three caveats apply throughout:
 
 - Some entries measure subsystems this fork has since purged: the
   `jcode-notify-email` crate (email/SMTP/IMAP notifications), the browser tool
@@ -16,6 +16,9 @@ verbatim as a historical record. Two caveats apply throughout:
 - Every `src/<module>.rs` path in entries dated before 2026-05-29 predates the
   root-crate split. Those modules now live under
   `crates/jcode-{base,app-core,tui}/src/`.
+- The `scripts/bench_selfdev_checkpoints.sh` harness cited by the 2026-04-18
+  entries was deleted with the self-dev subsystem. The commands quoted below no
+  longer run; the numbers stay as the record of what was measured.
 
 See also:
 

@@ -30,7 +30,6 @@ fn fallback_runtime_dir() -> PathBuf {
     std::env::temp_dir().join(format!("jcode-{}", runtime_user_discriminator()))
 }
 
-#[cfg(unix)]
 fn runtime_user_discriminator() -> String {
     // Read the uid without pulling in libc: the API crate is deliberately
     // dependency-light, and this only needs to disambiguate users in $TMPDIR.
@@ -39,14 +38,6 @@ fn runtime_user_discriminator() -> String {
         .or_else(|| std::env::var("USER").ok())
         .map(sanitize)
         .unwrap_or_else(|| "user".to_string())
-}
-
-#[cfg(not(unix))]
-fn runtime_user_discriminator() -> String {
-    std::env::var("USERNAME")
-        .or_else(|_| std::env::var("USER"))
-        .map(sanitize)
-        .unwrap_or_else(|_| "user".to_string())
 }
 
 fn sanitize(raw: String) -> String {

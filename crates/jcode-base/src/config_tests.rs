@@ -376,7 +376,7 @@ fn test_env_override_focus_hook() {
     // Empty env value disables a config-file hook.
     crate::env::set_var("JCODE_FOCUS_HOOK", "");
     let mut cfg = Config::default();
-    cfg.terminal.focus_hook = Some("wmctrl -a".to_string());
+    cfg.terminal.focus_hook = Some("focus-session.sh".to_string());
     cfg.apply_env_overrides();
     assert_eq!(cfg.terminal.focus_hook, None);
 

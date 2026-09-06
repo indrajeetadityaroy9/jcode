@@ -109,5 +109,3 @@ test-support = ["jcode-app-core/test-support"]
 # Enables the downstream test-support helpers for *this* crate's own test
 # target. Feature unification applies this only to test/bench/example builds.
 jcode-app-core = { path = "../jcode-app-core", default-features = false, features = ["test-support"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]

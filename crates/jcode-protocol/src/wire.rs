@@ -360,36 +360,6 @@ pub enum Request {
         input: String,
     },
 
-    // === Agent-to-agent communication ===
-    /// Register as an external agent
-    #[serde(rename = "agent_register")]
-    AgentRegister {
-        id: u64,
-        agent_name: String,
-        capabilities: Vec<String>,
-    },
-
-    /// Send a task to jcode agent
-    #[serde(rename = "agent_task")]
-    AgentTask {
-        id: u64,
-        from_agent: String,
-        task: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        context: Option<serde_json::Value>,
-        /// Whether to wait for completion or return immediately
-        #[serde(default)]
-        async_: bool,
-    },
-
-    /// Query jcode agent's capabilities
-    #[serde(rename = "agent_capabilities")]
-    AgentCapabilities { id: u64 },
-
-    /// Get conversation context (for handoff between agents)
-    #[serde(rename = "agent_context")]
-    AgentContext { id: u64 },
-
     // === Agent communication ===
     /// Share context with other agents
     #[serde(rename = "comm_share")]

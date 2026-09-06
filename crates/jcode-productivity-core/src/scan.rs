@@ -157,19 +157,9 @@ pub fn scan_all() -> Result<ScanResult> {
     })
 }
 
-#[cfg(unix)]
 fn mtime_ns(meta: &std::fs::Metadata) -> i128 {
     use std::os::unix::fs::MetadataExt;
     (meta.mtime() as i128) * 1_000_000_000 + (meta.mtime_nsec() as i128)
-}
-
-#[cfg(not(unix))]
-fn mtime_ns(meta: &std::fs::Metadata) -> i128 {
-    meta.modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_nanos() as i128)
-        .unwrap_or(0)
 }
 
 // ---------------------------------------------------------------------------

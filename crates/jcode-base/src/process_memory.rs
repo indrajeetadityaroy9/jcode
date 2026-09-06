@@ -28,16 +28,26 @@ struct JemallocProfilingMibs {
     enabled: tikv_jemalloc_ctl::profiling::prof_mib,
 }
 
+/// Process-level memory numbers.
+///
+/// Only `allocator` is populated on this macOS-only fork: `snapshot_with_source`
+/// returns [`ProcessMemorySnapshot::default`], so every OS-side field below
+/// (`rss_bytes`, `peak_rss_bytes`, `virtual_bytes`, `thread_count`,
+/// `main_stack_bytes`, `os`) is always `None`. Populating them needs a macOS
+/// reader (`proc_pidinfo`/`task_info`); until then, consumers that treat these
+/// as numbers see zero.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct ProcessMemorySnapshot {
     pub rss_bytes: Option<u64>,
     pub peak_rss_bytes: Option<u64>,
     pub virtual_bytes: Option<u64>,
-    /// Number of OS threads (`Threads:` in `/proc/self/status`).
+    /// Number of OS threads. Currently always `None`: there is no macOS
+    /// producer for this field.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_count: Option<u64>,
-    /// Main thread stack size (`VmStk:` in `/proc/self/status`). Auxiliary
-    /// thread stacks live in anonymous mappings and are not included here.
+    /// Main thread stack size. Auxiliary thread stacks live in anonymous
+    /// mappings and would not be included here. Currently always `None`:
+    /// there is no macOS producer for this field.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub main_stack_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -45,11 +55,17 @@ pub struct ProcessMemorySnapshot {
     pub allocator: AllocatorInfo,
 }
 
+/// Finer-grained OS accounting for the process.
+///
+/// Nothing constructs this on this fork (the `/proc`-based reader it described
+/// never existed on macOS), so `ProcessMemorySnapshot::os` is always `None` and
+/// every field here is unpopulated. The field docs describe the intended
+/// meaning, not an observed value.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct OsProcessMemoryInfo {
     pub pss_bytes: Option<u64>,
-    /// Proportional set size of anonymous mappings (`Pss_Anon:` in
-    /// smaps_rollup): heap + thread stacks + other private anon memory.
+    /// Proportional set size of anonymous mappings: heap + thread stacks +
+    /// other private anon memory.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pss_anon_bytes: Option<u64>,
     /// Proportional set size of file-backed mappings (`Pss_File:`): mostly
@@ -135,53 +151,14 @@ fn memory_history() -> &'static Mutex<VecDeque<ProcessMemoryHistoryEntry>> {
     MEMORY_HISTORY.get_or_init(|| Mutex::new(VecDeque::with_capacity(MAX_HISTORY_SAMPLES)))
 }
 
-#[cfg(target_os = "linux")]
 pub fn snapshot() -> ProcessMemorySnapshot {
     snapshot_with_source("snapshot")
 }
 
-#[cfg(not(target_os = "linux"))]
-pub fn snapshot() -> ProcessMemorySnapshot {
-    snapshot_with_source("snapshot")
-}
-
-#[cfg(target_os = "linux")]
-pub fn snapshot_with_source(source: impl Into<String>) -> ProcessMemorySnapshot {
-    let source = source.into();
-    let Ok(status) = std::fs::read_to_string("/proc/self/status") else {
-        logging::warn(&format!(
-            "process memory snapshot source={source} missing /proc/self/status; using defaults"
-        ));
-        let snapshot = ProcessMemorySnapshot::default();
-        record_snapshot(source, snapshot.clone());
-        return snapshot;
-    };
-
-    let snapshot = ProcessMemorySnapshot {
-        rss_bytes: parse_proc_status_value_bytes(&status, "VmRSS:"),
-        peak_rss_bytes: parse_proc_status_value_bytes(&status, "VmHWM:"),
-        virtual_bytes: parse_proc_status_value_bytes(&status, "VmSize:"),
-        thread_count: parse_proc_status_count(&status, "Threads:"),
-        main_stack_bytes: parse_proc_status_value_bytes(&status, "VmStk:"),
-        os: read_linux_memory_info(&status),
-        allocator: allocator_info(),
-    };
-    logging::debug(&format!(
-        "process memory snapshot source={source} rss={:?} peak_rss={:?} virtual={:?} allocator={}",
-        snapshot.rss_bytes,
-        snapshot.peak_rss_bytes,
-        snapshot.virtual_bytes,
-        snapshot.allocator.name
-    ));
-    record_snapshot(source, snapshot.clone());
-    snapshot
-}
-
-#[cfg(not(target_os = "linux"))]
 pub fn snapshot_with_source(source: impl Into<String>) -> ProcessMemorySnapshot {
     let source = source.into();
     logging::debug(&format!(
-        "process memory snapshot source={source} using default non-linux implementation"
+        "process memory snapshot source={source} using default implementation"
     ));
     let snapshot = ProcessMemorySnapshot::default();
     record_snapshot(source, snapshot.clone());
@@ -223,70 +200,7 @@ pub fn allocator_info() -> AllocatorInfo {
     }
 }
 
-/// Read glibc malloc statistics via `mallinfo2` (glibc >= 2.33).
-///
-/// This does not attribute memory to app structures, but it splits process
-/// heap into "live" (bytes the app currently holds) and "retained" (bytes
-/// freed by the app but kept by the allocator), which is the distinction that
-/// matters when diagnosing unattributed RSS.
-///
-/// `mallinfo2` is resolved with `dlsym` instead of linked directly: release
-/// binaries are built against a glibc 2.17 (manylinux2014) baseline where the
-/// symbol does not exist, so a direct call fails to link. At runtime on a
-/// modern glibc the lookup succeeds and stats work as before; on an old glibc
-/// this returns `None` and callers already treat stats as unavailable.
-#[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
-fn glibc_malloc_stats() -> Option<AllocatorStats> {
-    // Mirrors glibc's `struct mallinfo2` (all fields `size_t`).
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    struct Mallinfo2 {
-        arena: libc::size_t,
-        ordblks: libc::size_t,
-        smblks: libc::size_t,
-        hblks: libc::size_t,
-        hblkhd: libc::size_t,
-        usmblks: libc::size_t,
-        fsmblks: libc::size_t,
-        uordblks: libc::size_t,
-        fordblks: libc::size_t,
-        keepcost: libc::size_t,
-    }
-    type Mallinfo2Fn = unsafe extern "C" fn() -> Mallinfo2;
-
-    static MALLINFO2: std::sync::OnceLock<Option<Mallinfo2Fn>> = std::sync::OnceLock::new();
-    let mallinfo2 = (*MALLINFO2.get_or_init(|| {
-        // Safety: dlsym with a NUL-terminated literal; the default namespace
-        // (RTLD_DEFAULT) searches the already-loaded glibc.
-        let sym = unsafe { libc::dlsym(libc::RTLD_DEFAULT, c"mallinfo2".as_ptr()) };
-        if sym.is_null() {
-            None
-        } else {
-            // Safety: glibc's mallinfo2 has exactly this signature.
-            Some(unsafe { std::mem::transmute::<*mut libc::c_void, Mallinfo2Fn>(sym) })
-        }
-    }))?;
-
-    // Totals are summed across all arenas by modern glibc.
-    // uordblks: in-use arena bytes; fordblks: freed-but-retained arena bytes;
-    // hblkhd: mmap-backed allocation bytes; arena: total sbrk/mmap arena size.
-    let info = unsafe { mallinfo2() };
-    let live = (info.uordblks as u64).saturating_add(info.hblkhd as u64);
-    let mapped = (info.arena as u64).saturating_add(info.hblkhd as u64);
-    Some(AllocatorStats {
-        allocated_bytes: Some(live),
-        active_bytes: Some(info.uordblks as u64),
-        metadata_bytes: None,
-        resident_bytes: None,
-        mapped_bytes: Some(mapped),
-        retained_bytes: Some(info.fordblks as u64),
-    })
-}
-
-#[cfg(all(
-    not(all(target_os = "linux", target_env = "gnu")),
-    not(feature = "jemalloc")
-))]
+#[cfg(not(feature = "jemalloc"))]
 fn glibc_malloc_stats() -> Option<AllocatorStats> {
     None
 }
@@ -315,23 +229,7 @@ pub fn purge_allocator() -> Result<AllocatorTuningInfo> {
         }))
     }
 
-    #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
-    {
-        // glibc has no arena purge API, but malloc_trim(0) walks all arenas
-        // and returns freed pages to the OS (MADV_DONTNEED), which is the
-        // equivalent retained-memory release.
-        logging::info("purging glibc allocator via malloc_trim(0)");
-        release_retained_heap("debug_allocator_purge");
-        Ok(AllocatorTuningInfo {
-            available: true,
-            ..AllocatorTuningInfo::default()
-        })
-    }
-
-    #[cfg(all(
-        not(all(target_os = "linux", target_env = "gnu")),
-        not(feature = "jemalloc")
-    ))]
+    #[cfg(not(feature = "jemalloc"))]
     {
         logging::warn("allocator purge requested but no purge mechanism is available");
         Err(anyhow!(
@@ -477,11 +375,8 @@ pub fn estimate_json_bytes<T: Serialize>(value: &T) -> usize {
 
 /// Return freed-but-retained heap pages to the OS.
 ///
-/// glibc malloc keeps pages freed by large transient allocations (history
-/// loads, provider payloads, render caches) inside its arenas, which shows up
-/// as unattributed RSS that never shrinks. On jemalloc builds this purges all
-/// arenas; on Linux system-allocator builds it calls `malloc_trim(0)`; on
-/// other platforms it is a no-op.
+/// On jemalloc builds this purges all arenas; on system-allocator builds it is
+/// a no-op.
 pub fn release_retained_heap(reason: &str) {
     #[cfg(feature = "jemalloc")]
     {
@@ -492,26 +387,7 @@ pub fn release_retained_heap(reason: &str) {
         }
     }
 
-    #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
-    {
-        unsafe extern "C" {
-            fn malloc_trim(pad: usize) -> i32;
-        }
-        let trimmed = unsafe { malloc_trim(0) };
-        logging::debug(&format!(
-            "malloc_trim ({reason}): {}",
-            if trimmed == 1 {
-                "released pages"
-            } else {
-                "no pages to release"
-            }
-        ));
-    }
-
-    #[cfg(all(
-        not(all(target_os = "linux", target_env = "gnu")),
-        not(feature = "jemalloc")
-    ))]
+    #[cfg(not(feature = "jemalloc"))]
     {
         let _ = reason;
     }
@@ -558,22 +434,11 @@ static POST_TRIM_APPARENT_RETENTION: std::sync::atomic::AtomicU64 =
 
 /// Resident anonymous memory not accounted for by live allocator bytes:
 /// freed-but-still-resident heap pages plus fragmentation overhead. This is
-/// the memory a trim/purge can plausibly return to the OS, measured from the
-/// OS side (RssAnon) minus the allocator's live bytes.
+/// the memory a trim/purge could plausibly return to the OS, measured from the
+/// OS side (resident anonymous bytes) minus the allocator's live bytes.
 ///
-/// Allocator-reported "retained/free" counters are the wrong trigger metric
-/// on glibc: `malloc_trim` releases the physical pages behind free chunks
-/// (MADV_DONTNEED) but the chunks remain in `fordblks`, so that counter never
-/// drops after a trim and a threshold on it re-fires forever.
-#[cfg(target_os = "linux")]
-fn apparent_heap_retention_bytes() -> Option<u64> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    let rss_anon = parse_proc_status_value_bytes(&status, "RssAnon:")?;
-    let live = allocator_info().stats.as_ref()?.allocated_bytes?;
-    Some(rss_anon.saturating_sub(live))
-}
-
-#[cfg(not(target_os = "linux"))]
+/// Always `None` today: no macOS reader supplies resident anonymous bytes, so
+/// every caller takes its no-OS-metric path.
 fn apparent_heap_retention_bytes() -> Option<u64> {
     None
 }
@@ -591,11 +456,16 @@ fn retention_growth_exceeds(apparent: u64, baseline: u64, threshold: u64) -> boo
     apparent.saturating_sub(baseline) >= threshold
 }
 
-/// Release retained heap when apparent retention (RssAnon minus live
+/// Release retained heap when apparent retention (resident anon minus live
 /// allocator bytes) has grown at least `threshold_bytes` above the post-trim
 /// baseline. Intended for periodic (heartbeat) callers: cheap when below
-/// threshold (one /proc/self/status read + allocator stats read), debounced
-/// against other release paths when above it. Returns true when a release ran.
+/// threshold (one allocator stats read), debounced against other release
+/// paths when above it. Returns true when a release ran.
+///
+/// Because [`apparent_heap_retention_bytes`] has no macOS producer, only the
+/// fallback path — an absolute threshold on the allocator's own retained
+/// counter — can run today; the growth-above-baseline logic below it encodes
+/// the intended design for when an OS-side reader exists.
 ///
 /// This closes the gap left by event-driven trims (turn completion, history
 /// load): a server hosting many mostly-idle sessions can accumulate hundreds
@@ -611,9 +481,9 @@ pub fn release_retained_heap_if_excessive(
     use std::sync::atomic::Ordering;
 
     let Some(apparent) = apparent_heap_retention_bytes() else {
-        // No OS-side metric available (non-Linux, or allocator stats missing):
-        // fall back to the allocator-reported retained counter as an absolute
-        // threshold. Coarse, but better than never trimming.
+        // No OS-side metric available: fall back to the allocator-reported
+        // retained counter as an absolute threshold. Coarse, but better than
+        // never trimming.
         let retained = allocator_info()
             .stats
             .and_then(|stats| stats.retained_bytes)
@@ -687,63 +557,6 @@ fn record_snapshot(source: String, snapshot: ProcessMemorySnapshot) {
         source,
         snapshot,
     });
-}
-
-#[cfg(target_os = "linux")]
-fn read_linux_memory_info(status: &str) -> Option<OsProcessMemoryInfo> {
-    let smaps = std::fs::read_to_string("/proc/self/smaps_rollup").ok();
-    let info = OsProcessMemoryInfo {
-        pss_bytes: smaps
-            .as_deref()
-            .and_then(|text| parse_proc_value_bytes(text, "Pss:")),
-        pss_anon_bytes: smaps
-            .as_deref()
-            .and_then(|text| parse_proc_value_bytes(text, "Pss_Anon:")),
-        pss_file_bytes: smaps
-            .as_deref()
-            .and_then(|text| parse_proc_value_bytes(text, "Pss_File:")),
-        pss_shmem_bytes: smaps
-            .as_deref()
-            .and_then(|text| parse_proc_value_bytes(text, "Pss_Shmem:")),
-        anon_huge_pages_bytes: smaps
-            .as_deref()
-            .and_then(|text| parse_proc_value_bytes(text, "AnonHugePages:")),
-        rss_anon_bytes: parse_proc_status_value_bytes(status, "RssAnon:"),
-        rss_file_bytes: parse_proc_status_value_bytes(status, "RssFile:"),
-        rss_shmem_bytes: parse_proc_status_value_bytes(status, "RssShmem:"),
-        private_clean_bytes: smaps
-            .as_deref()
-            .and_then(|text| parse_proc_value_bytes(text, "Private_Clean:")),
-        private_dirty_bytes: smaps
-            .as_deref()
-            .and_then(|text| parse_proc_value_bytes(text, "Private_Dirty:")),
-        shared_clean_bytes: smaps
-            .as_deref()
-            .and_then(|text| parse_proc_value_bytes(text, "Shared_Clean:")),
-        shared_dirty_bytes: smaps
-            .as_deref()
-            .and_then(|text| parse_proc_value_bytes(text, "Shared_Dirty:")),
-        swap_bytes: parse_proc_status_value_bytes(status, "VmSwap:").or_else(|| {
-            smaps
-                .as_deref()
-                .and_then(|text| parse_proc_value_bytes(text, "Swap:"))
-        }),
-    };
-
-    if info.pss_bytes.is_none()
-        && info.rss_anon_bytes.is_none()
-        && info.rss_file_bytes.is_none()
-        && info.rss_shmem_bytes.is_none()
-        && info.private_clean_bytes.is_none()
-        && info.private_dirty_bytes.is_none()
-        && info.shared_clean_bytes.is_none()
-        && info.shared_dirty_bytes.is_none()
-        && info.swap_bytes.is_none()
-    {
-        None
-    } else {
-        Some(info)
-    }
 }
 
 #[cfg(feature = "jemalloc-prof")]
@@ -891,40 +704,6 @@ fn jemalloc_profiling_mibs() -> Option<&'static JemallocProfilingMibs> {
     .as_ref()
 }
 
-#[cfg(target_os = "linux")]
-fn parse_proc_status_value_bytes(status: &str, key: &str) -> Option<u64> {
-    parse_proc_value_bytes(status, key)
-}
-
-/// Parse a unit-less `/proc` counter such as `Threads:\t10`.
-#[cfg(target_os = "linux")]
-fn parse_proc_status_count(status: &str, key: &str) -> Option<u64> {
-    status.lines().find_map(|line| {
-        let rest = line.trim_start().strip_prefix(key)?;
-        rest.split_whitespace().next()?.parse::<u64>().ok()
-    })
-}
-
-#[cfg(target_os = "linux")]
-fn parse_proc_value_bytes(status: &str, key: &str) -> Option<u64> {
-    status.lines().find_map(|line| {
-        let trimmed = line.trim_start();
-        if !trimmed.starts_with(key) {
-            return None;
-        }
-        let value = trimmed.trim_start_matches(key).trim();
-        let mut parts = value.split_whitespace();
-        let number = parts.next()?.parse::<u64>().ok()?;
-        let unit = parts.next().unwrap_or("kB");
-        Some(match unit {
-            "kB" | "KB" | "kb" => number.saturating_mul(1024),
-            "mB" | "MB" | "mb" => number.saturating_mul(1024 * 1024),
-            "gB" | "GB" | "gb" => number.saturating_mul(1024 * 1024 * 1024),
-            _ => number,
-        })
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1030,77 +809,6 @@ mod tests {
         assert!(retention_growth_exceeds(0, 0, 0));
     }
 
-    #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
-    #[test]
-    fn release_retained_heap_if_excessive_runs_above_threshold_then_requires_regrowth() {
-        // Threshold 0 means any growth (>= 0) triggers; with a zero debounce
-        // the release must run and reset the baseline to the current level.
-        let ran = release_retained_heap_if_excessive(
-            "unit_test_above_threshold",
-            0,
-            std::time::Duration::ZERO,
-        );
-        assert!(ran, "release should run when growth exceeds threshold");
-
-        // Immediately after the trim the baseline equals current apparent
-        // retention, so a huge growth threshold cannot be met: steady state
-        // must not re-trigger.
-        let ran_again = release_retained_heap_if_excessive(
-            "unit_test_steady_state",
-            u64::MAX,
-            std::time::Duration::ZERO,
-        );
-        assert!(
-            !ran_again,
-            "steady-state retention must not re-trigger the watchdog"
-        );
-    }
-
-    /// Guards the musl build (issue #645). `mallopt`/`malloc_trim` are glibc
-    /// extensions, so every allocator path that calls them must be gated on
-    /// `target_env = "gnu"`, not on `target_os = "linux"` alone, and the
-    /// corresponding fallback must widen to match.
-    ///
-    /// This asserts the *shape* of the gating rather than any runtime value:
-    /// exactly one of the glibc arm and the no-op arm may be active for a given
-    /// target. If someone re-widens the glibc gate to bare `target_os`, musl
-    /// selects both arms here and this fails; if a fallback is narrowed by
-    /// mistake, musl selects neither and this also fails.
-    #[test]
-    fn glibc_only_allocator_paths_are_gated_on_gnu_not_just_linux() {
-        let glibc_arm_active = cfg!(all(
-            target_os = "linux",
-            target_env = "gnu",
-            not(feature = "jemalloc")
-        ));
-        let fallback_arm_active = cfg!(all(
-            not(all(target_os = "linux", target_env = "gnu")),
-            not(feature = "jemalloc")
-        ));
-
-        if cfg!(feature = "jemalloc") {
-            // jemalloc supersedes both system-allocator arms.
-            assert!(!glibc_arm_active);
-            assert!(!fallback_arm_active);
-        } else {
-            assert_ne!(
-                glibc_arm_active, fallback_arm_active,
-                "exactly one system-allocator arm must be active: \
-                 glibc={glibc_arm_active} fallback={fallback_arm_active}"
-            );
-        }
-
-        // On a musl target the glibc-only arm must never be the active one,
-        // since the symbols it references do not exist there.
-        if cfg!(all(target_os = "linux", target_env = "musl")) {
-            assert!(
-                !glibc_arm_active,
-                "musl must not select the glibc allocator arm: it references \
-                 mallopt/malloc_trim, which musl does not provide (issue #645)"
-            );
-        }
-    }
-
     #[test]
     fn allocator_info_matches_enabled_allocator_features() {
         let info = allocator_info();
@@ -1113,72 +821,5 @@ mod tests {
             assert_eq!(info.stats_available, info.stats.is_some());
             assert!(info.profiling.is_none());
         }
-    }
-
-    #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
-    #[test]
-    fn glibc_malloc_stats_report_live_and_retained_bytes() {
-        // Hold a live allocation so uordblks cannot be zero, then check the
-        // mallinfo2-backed stats are populated and internally consistent.
-        let held = vec![0u8; 1024 * 1024];
-        let stats = glibc_malloc_stats().expect("mallinfo2 stats on glibc");
-        assert!(
-            stats.allocated_bytes.unwrap() > 0,
-            "live bytes should be nonzero"
-        );
-        assert!(stats.retained_bytes.is_some());
-        assert!(
-            stats.mapped_bytes.unwrap() >= stats.active_bytes.unwrap(),
-            "arena total should cover in-use arena bytes"
-        );
-        drop(held);
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn parse_proc_value_bytes_handles_kib_and_mib_units() {
-        let text = "Pss:               123 kB\nMapped:            2 MB\nRetained:          1 GB\n";
-        assert_eq!(parse_proc_value_bytes(text, "Pss:"), Some(123 * 1024));
-        assert_eq!(
-            parse_proc_value_bytes(text, "Mapped:"),
-            Some(2 * 1024 * 1024)
-        );
-        assert_eq!(
-            parse_proc_value_bytes(text, "Retained:"),
-            Some(1024 * 1024 * 1024)
-        );
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn parse_proc_status_count_reads_unitless_counters() {
-        let text = "Name:\tjcode\nThreads:\t10\nVmStk:\t     132 kB\n";
-        assert_eq!(parse_proc_status_count(text, "Threads:"), Some(10));
-        assert_eq!(parse_proc_status_count(text, "Missing:"), None);
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn snapshot_populates_thread_and_stack_and_pss_split_fields() {
-        let snapshot = snapshot_with_source("unit_test_coverage_fields");
-        assert!(
-            snapshot.thread_count.unwrap_or(0) >= 1,
-            "a live process has at least one thread"
-        );
-        assert!(
-            snapshot.main_stack_bytes.unwrap_or(0) > 0,
-            "main stack should be nonzero"
-        );
-        let os = snapshot.os.expect("linux os info");
-        // smaps_rollup reports Pss_Anon/Pss_File on kernels >= 4.14; both
-        // should be present and their sum should not exceed total PSS by more
-        // than rounding.
-        let pss = os.pss_bytes.expect("pss");
-        let anon = os.pss_anon_bytes.expect("pss_anon");
-        let file = os.pss_file_bytes.expect("pss_file");
-        assert!(
-            anon + file <= pss + 2 * 1024 * 1024,
-            "pss split should be consistent"
-        );
     }
 }

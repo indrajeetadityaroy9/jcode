@@ -1288,9 +1288,7 @@ impl BridgeState {
             std::path::Path::new(&std::env::var_os("HOME")?)
                 .join("Library/Application Support/jcode"),
         );
-        #[cfg(target_os = "windows")]
-        return Some(std::path::Path::new(&std::env::var_os("APPDATA")?).join("jcode"));
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(target_os = "macos"))]
         Some(
             std::env::var_os("XDG_CONFIG_HOME")
                 .map(std::path::PathBuf::from)
@@ -1379,7 +1377,6 @@ impl BridgeState {
         ));
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
-        #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
             options.mode(0o600);
@@ -1395,13 +1392,11 @@ impl BridgeState {
             let _ = std::fs::remove_file(&temp);
             error.to_string()
         })?;
-        #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
                 .map_err(|error| error.to_string())?;
         }
-        #[cfg(unix)]
         std::fs::File::open(parent)
             .and_then(|directory| directory.sync_all())
             .map_err(|error| format!("sync owner-only directory: {error}"))?;
@@ -1417,7 +1412,6 @@ impl BridgeState {
                 path.display()
             ));
         }
-        #[cfg(unix)]
         {
             use std::os::unix::fs::{MetadataExt, PermissionsExt};
             if metadata.uid() != unsafe { libc::geteuid() } {
@@ -1444,7 +1438,6 @@ impl BridgeState {
                 path.display()
             ));
         }
-        #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
             if metadata.uid() != unsafe { libc::geteuid() } {
@@ -1457,33 +1450,8 @@ impl BridgeState {
         Ok(())
     }
 
-    #[cfg(not(windows))]
     fn atomic_replace(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
         std::fs::rename(from, to)
-    }
-
-    #[cfg(windows)]
-    fn atomic_replace(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-        use std::os::windows::ffi::OsStrExt;
-        unsafe extern "system" {
-            fn MoveFileExW(from: *const u16, to: *const u16, flags: u32) -> i32;
-        }
-        const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
-        const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
-        let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
-        let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
-        let replaced = unsafe {
-            MoveFileExW(
-                from.as_ptr(),
-                to.as_ptr(),
-                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-            )
-        };
-        if replaced == 0 {
-            Err(std::io::Error::last_os_error())
-        } else {
-            Ok(())
-        }
     }
 
     fn session_root(session_id: &str) -> Result<std::path::PathBuf, (ErrorCode, String)> {

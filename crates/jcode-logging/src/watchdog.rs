@@ -8,14 +8,11 @@
 //! 1. **Breadcrumbs.** Hot loops call [`beat`] with a short phase label. The
 //!    most recent label plus its timestamp are kept in a lock-free slot.
 //! 2. **Liveness heartbeat.** A monitor thread logs a periodic `watchdog.alive`
-//!    event with RSS, thread count, and open-fd count, so a log that stops
-//!    growing pins the freeze to a bounded time window and shows resource
-//!    trends leading up to it.
+//!    event, so a log that stops growing pins the freeze to a bounded time
+//!    window.
 //! 3. **Stall dumps.** When no beat arrives within the stall threshold, the
-//!    monitor logs `watchdog.stall` including a per-thread state snapshot
-//!    (name, run state, kernel wait channel) on Linux. That distinguishes a
-//!    deadlock (threads in futex wait) from a spin (threads running) from a
-//!    blocked syscall (threads in a network/IO wchan).
+//!    monitor logs `watchdog.stall` naming the last phase, the operation in
+//!    flight, and how long it has been silent.
 //!
 //! The monitor thread is independent of the async runtime and the UI loop, so
 //! it still reports when either is wedged.
@@ -30,8 +27,6 @@ const DEFAULT_STALL_SECS: u64 = 90;
 const DEFAULT_HEARTBEAT_SECS: u64 = 300;
 /// How often the monitor thread wakes to evaluate stall state.
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
-/// Cap on threads included in a stall dump so one dump cannot flood the log.
-const MAX_THREADS_IN_DUMP: usize = 48;
 
 static STARTED: AtomicBool = AtomicBool::new(false);
 static LAST_BEAT_MS: AtomicU64 = AtomicU64::new(0);
@@ -154,74 +149,6 @@ fn current_phase() -> &'static str {
         .unwrap_or("unknown")
 }
 
-/// Snapshot of cheap process-level resource counters.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ResourceSnapshot {
-    pub rss_mb: u64,
-    pub threads: usize,
-    pub open_fds: usize,
-}
-
-pub fn resource_snapshot() -> ResourceSnapshot {
-    ResourceSnapshot {
-        rss_mb: read_rss_mb(),
-        threads: count_entries("/proc/self/task"),
-        open_fds: count_entries("/proc/self/fd"),
-    }
-}
-
-fn read_rss_mb() -> u64 {
-    let Ok(statm) = std::fs::read_to_string("/proc/self/statm") else {
-        return 0;
-    };
-    let Some(rss_pages) = statm.split_whitespace().nth(1) else {
-        return 0;
-    };
-    let pages: u64 = rss_pages.parse().unwrap_or(0);
-    pages.saturating_mul(4096) / (1024 * 1024)
-}
-
-fn count_entries(path: &str) -> usize {
-    std::fs::read_dir(path)
-        .map(|entries| entries.flatten().count())
-        .unwrap_or(0)
-}
-
-/// Per-thread state, used to tell a deadlock apart from a spin or blocked IO.
-pub fn thread_states() -> Vec<String> {
-    let Ok(entries) = std::fs::read_dir("/proc/self/task") else {
-        return Vec::new();
-    };
-    let mut states: Vec<String> = entries
-        .flatten()
-        .take(MAX_THREADS_IN_DUMP)
-        .map(|entry| {
-            let dir = entry.path();
-            let tid = entry.file_name().to_string_lossy().to_string();
-            let name = read_trimmed(dir.join("comm")).unwrap_or_else(|| "?".to_string());
-            let wchan = read_trimmed(dir.join("wchan")).unwrap_or_else(|| "?".to_string());
-            let state = read_trimmed(dir.join("stat"))
-                .and_then(|stat| {
-                    // `stat` is "<pid> (<comm>) <state> ...": comm may contain
-                    // spaces, so split after the final ')'.
-                    let rest = stat.rsplit_once(')')?.1.trim().to_string();
-                    rest.split_whitespace().next().map(str::to_string)
-                })
-                .unwrap_or_else(|| "?".to_string());
-            format!("{tid}:{name}:{state}:{wchan}")
-        })
-        .collect();
-    states.sort();
-    states
-}
-
-fn read_trimmed(path: std::path::PathBuf) -> Option<String> {
-    std::fs::read_to_string(path)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
 /// Start the watchdog monitor thread. Idempotent; extra calls are no-ops.
 ///
 /// Disable entirely with `JCODE_WATCHDOG=0`. Tune with
@@ -258,7 +185,6 @@ fn monitor_loop(stall: Duration, heartbeat: Duration) {
 
         let last_beat_ms = LAST_BEAT_MS.load(Ordering::Relaxed);
         let since_beat = Duration::from_millis(now_ms().saturating_sub(last_beat_ms));
-        let resources = resource_snapshot();
 
         // An idle client waiting for input is not stalled; only work that
         // claimed to be in flight can hang.
@@ -266,12 +192,11 @@ fn monitor_loop(stall: Duration, heartbeat: Duration) {
             if stall_reported_at.take().is_some() {
                 next_stall_report = stall;
             }
-            emit_heartbeat_if_due(&mut last_heartbeat, heartbeat, resources);
+            emit_heartbeat_if_due(&mut last_heartbeat, heartbeat);
             continue;
         }
 
         if since_beat >= next_stall_report {
-            let states = thread_states();
             super::event_warn(
                 "watchdog.stall",
                 [
@@ -279,10 +204,6 @@ fn monitor_loop(stall: Duration, heartbeat: Duration) {
                     ("detail", current_detail()),
                     ("stalled_secs", since_beat.as_secs().to_string()),
                     ("beats", BEAT_COUNT.load(Ordering::Relaxed).to_string()),
-                    ("rss_mb", resources.rss_mb.to_string()),
-                    ("threads", resources.threads.to_string()),
-                    ("open_fds", resources.open_fds.to_string()),
-                    ("thread_states", states.join(" | ")),
                 ],
             );
             stall_reported_at = Some(since_beat);
@@ -306,17 +227,13 @@ fn monitor_loop(stall: Duration, heartbeat: Duration) {
             next_stall_report = stall;
         }
 
-        emit_heartbeat_if_due(&mut last_heartbeat, heartbeat, resources);
+        emit_heartbeat_if_due(&mut last_heartbeat, heartbeat);
     }
 }
 
 /// The heartbeat runs whether or not work is in flight: a log that stops
 /// growing entirely is itself the signal that the process died or froze hard.
-fn emit_heartbeat_if_due(
-    last_heartbeat: &mut Instant,
-    heartbeat: Duration,
-    resources: ResourceSnapshot,
-) {
+fn emit_heartbeat_if_due(last_heartbeat: &mut Instant, heartbeat: Duration) {
     if heartbeat.is_zero() || last_heartbeat.elapsed() < heartbeat {
         return;
     }
@@ -332,9 +249,6 @@ fn emit_heartbeat_if_due(
                 process_start().elapsed().as_secs().to_string(),
             ),
             ("beats", BEAT_COUNT.load(Ordering::Relaxed).to_string()),
-            ("rss_mb", resources.rss_mb.to_string()),
-            ("threads", resources.threads.to_string()),
-            ("open_fds", resources.open_fds.to_string()),
         ],
     );
 }
@@ -363,28 +277,5 @@ mod tests {
         }
         assert!(!is_busy(), "guard drop must clear busy state");
         assert_eq!(current_phase(), "idle");
-    }
-
-    #[test]
-    fn resource_snapshot_reports_live_process_state() {
-        let snapshot = resource_snapshot();
-        if cfg!(target_os = "linux") {
-            assert!(snapshot.threads > 0, "expected at least one thread");
-            assert!(snapshot.open_fds > 0, "expected at least one open fd");
-        }
-    }
-
-    #[test]
-    fn thread_states_are_parsed_into_compact_records() {
-        let states = thread_states();
-        if cfg!(target_os = "linux") {
-            assert!(!states.is_empty());
-            let first = &states[0];
-            assert_eq!(
-                first.split(':').count(),
-                4,
-                "expected tid:name:state:wchan, got {first}"
-            );
-        }
     }
 }

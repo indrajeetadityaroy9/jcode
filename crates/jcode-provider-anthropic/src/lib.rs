@@ -406,16 +406,11 @@ pub fn format_content_blocks(blocks: &[ContentBlock], is_oauth: bool) -> Vec<Api
 /// while the handler requires `task` + `wake_in_minutes`/`wake_at`), so every
 /// call failed with "task is required for action=create" (#706). Forwarding the
 /// real schema under the remapped name keeps the two in sync by construction.
-const OAUTH_BUILTIN_LOCAL_TOOLS: &[&str] = &[
-    "subagent",
-    "bash",
-    "edit",
-    "glob",
-    "grep",
-    "read",
-    "skill_manage",
-    "write",
-];
+/// `subagent`, `glob` and `grep` were removed for the same reason in reverse:
+/// no tool with those names is registered, so the `has_backing` guard below
+/// suppressed their curated definitions on every request and the rows here
+/// suppressed nothing.
+const OAUTH_BUILTIN_LOCAL_TOOLS: &[&str] = &["bash", "edit", "read", "skill_manage", "write"];
 
 /// Normalize a tool schema for Anthropic's `input_schema`.
 ///
@@ -450,16 +445,6 @@ pub fn format_tools(tools: &[ToolDefinition], is_oauth: bool, cache_ttl_1h: bool
         // toolset (websearch, webfetch, browser, codesearch, memory, ...).
         let curated: Vec<(&[&str], ApiTool)> = vec![
             (
-                &["subagent"],
-                ApiTool {
-                    name: "Agent".to_string(),
-                    description: "Launch a new agent to handle complex, multi-step tasks."
-                        .to_string(),
-                    input_schema: json!({"type":"object","properties":{"description":{"type":"string"},"prompt":{"type":"string"},"subagent_type":{"type":"string"},"run_in_background":{"type":"boolean"}},"required":["description","prompt"],"additionalProperties":false}),
-                    cache_control: None,
-                },
-            ),
-            (
                 &["bash"],
                 ApiTool {
                     name: "Bash".to_string(),
@@ -475,24 +460,6 @@ pub fn format_tools(tools: &[ToolDefinition], is_oauth: bool, cache_ttl_1h: bool
                     name: "Edit".to_string(),
                     description: "Performs exact string replacements in files.".to_string(),
                     input_schema: json!({"type":"object","properties":{"file_path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"},"replace_all":{"type":"boolean","default":false}},"required":["file_path","old_string","new_string"],"additionalProperties":false}),
-                    cache_control: None,
-                },
-            ),
-            (
-                &["glob"],
-                ApiTool {
-                    name: "Glob".to_string(),
-                    description: "Fast file pattern matching tool.".to_string(),
-                    input_schema: json!({"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"}},"required":["pattern"],"additionalProperties":false}),
-                    cache_control: None,
-                },
-            ),
-            (
-                &["grep"],
-                ApiTool {
-                    name: "Grep".to_string(),
-                    description: "A powerful search tool built on ripgrep.".to_string(),
-                    input_schema: json!({"type":"object","properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob":{"type":"string"},"output_mode":{"type":"string","enum":["content","files_with_matches","count"]},"-B":{"type":"number"},"-A":{"type":"number"},"-C":{"type":"number"},"context":{"type":"number"},"-n":{"type":"boolean"},"-i":{"type":"boolean"},"type":{"type":"string"},"head_limit":{"type":"number"},"offset":{"type":"number"},"multiline":{"type":"boolean"}},"required":["pattern"],"additionalProperties":false}),
                     cache_control: None,
                 },
             ),

@@ -375,14 +375,6 @@ mod tests {
     }
 }
 
-/// Fetch context window sizes from the Codex backend API.
-/// Returns a map of model slug -> context_window tokens.
-pub async fn fetch_openai_context_limits(access_token: &str) -> Result<HashMap<String, usize>> {
-    Ok(fetch_openai_model_catalog(access_token)
-        .await?
-        .context_limits)
-}
-
 #[cfg(test)]
 mod status_error_tests {
     use super::*;

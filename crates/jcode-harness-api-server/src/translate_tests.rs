@@ -1134,7 +1134,6 @@ fn archive_restore_and_retention_are_reversible_and_owner_only() {
         .expect("restored session is listed");
     assert!(!recent.archived);
 
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let mode = std::fs::metadata(home.path.join("sdk-archive.json"))
@@ -1211,7 +1210,6 @@ fn credential_provisioning_normalizes_gemini_and_supports_jcode() {
         }
     ));
 
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         assert_eq!(
@@ -1229,7 +1227,6 @@ fn credential_provisioning_normalizes_gemini_and_supports_jcode() {
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn owner_only_writes_refuse_symlink_targets_and_directories() {
     use std::os::unix::fs::symlink;
@@ -1280,7 +1277,6 @@ fn owner_only_writes_refuse_symlink_targets_and_directories() {
     assert!(!outside_dir.join("jcode-subscription.env").exists());
 }
 
-#[cfg(unix)]
 #[test]
 fn rooted_file_operations_reject_traversal_and_symlink_escapes_and_bound_results() {
     use std::os::unix::fs::symlink;

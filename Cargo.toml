@@ -193,7 +193,6 @@ jcode-provider-claude-cli-runtime = { path = "crates/jcode-provider-claude-cli-r
 jcode-provider-openrouter-runtime = { path = "crates/jcode-provider-openrouter-runtime" }
 jcode-provider-anthropic-runtime = { path = "crates/jcode-provider-anthropic-runtime" }
 jcode-provider-openai-runtime = { path = "crates/jcode-provider-openai-runtime" }
-jcode-dev-types = { path = "crates/jcode-dev-types" }
 
 # Archive extraction (for auto-update)
 tempfile = "3"
@@ -228,9 +227,6 @@ pdf = ["jcode-tui/pdf"]
 # bridge listens on a Unix socket.
 [target.'cfg(unix)'.dependencies]
 jcode-harness-api-server = { path = "crates/jcode-harness-api-server" }
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
@@ -577,5 +573,3 @@ jcode-provider-core = { path = "crates/jcode-provider-core" }
 # target. Feature unification applies this only to test/bench/example builds,
 # never to a normal `cargo build`/release binary.
 jcode-tui = { path = "crates/jcode-tui", default-features = false, features = ["test-support"] }
-
-[build-dependencies]

@@ -104,7 +104,6 @@ impl App {
 /// that owns this session. Kitty retains that origin natively. The bundled
 /// broker records the controlling tty and uses it to return Terminal.app and
 /// iTerm2 users to the exact originating tab/session when one is exposed.
-#[cfg(target_os = "macos")]
 fn send_originating_terminal_notification(
     notification: &TurnNotification,
     session_id: &str,
@@ -141,15 +140,6 @@ fn send_originating_terminal_notification(
     // so one atomic write and flush cannot interleave with a frame draw.
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(sequence.as_bytes()).is_ok() && stdout.flush().is_ok()
-}
-
-#[cfg(not(target_os = "macos"))]
-fn send_originating_terminal_notification(
-    _notification: &TurnNotification,
-    _session_id: &str,
-    _sound: Option<&str>,
-) -> bool {
-    false
 }
 
 #[cfg(any(target_os = "macos", test))]

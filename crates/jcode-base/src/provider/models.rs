@@ -12,7 +12,7 @@ pub(crate) use catalog::parse_anthropic_model_catalog;
 pub use catalog::{
     AnthropicModelCatalog, ModelCatalogHttpStatus, OpenAIModelCatalog,
     fetch_anthropic_model_catalog, fetch_anthropic_model_catalog_oauth,
-    fetch_openai_api_key_model_catalog, fetch_openai_context_limits, fetch_openai_model_catalog,
+    fetch_openai_api_key_model_catalog, fetch_openai_model_catalog,
 };
 use catalog_service::{ModelCatalogService, RuntimeModelUnavailability};
 use jcode_provider_core::{
@@ -983,11 +983,6 @@ pub fn provider_unavailability_detail_for_account(provider: &str) -> Option<Stri
     }
 
     Some(detail)
-}
-
-pub fn model_unavailability_detail_for_account(model: &str) -> Option<String> {
-    let availability = model_availability_for_account(model);
-    format_account_model_availability_detail(&availability)
 }
 
 /// Check if a model is available for the current account.

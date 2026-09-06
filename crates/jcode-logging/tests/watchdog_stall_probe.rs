@@ -36,10 +36,6 @@ fn stalled_process_emits_watchdog_stall_event() {
                 contents.contains("probe.phase"),
                 "stall dump lost the phase"
             );
-            assert!(
-                contents.contains("thread_states"),
-                "stall dump lost thread states"
-            );
             found = true;
             break;
         }

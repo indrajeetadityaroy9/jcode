@@ -91,7 +91,7 @@ swarm_panel_focus = "alt+n"
 # new_terminal = "cmd+shift+;"
 
 # Open the /resume session picker.
-# Default: Cmd+B on macOS, Alt+R on Windows/Linux. Set "" to disable.
+# Default: Cmd+B on macOS, Alt+R elsewhere. Set "" to disable.
 # open_resume = "cmd+b"
 
 # /resume picker Enter behavior. Options: "current-terminal" or "new-terminal".
@@ -296,7 +296,7 @@ fallback_engines = ["bing"]
 # bing_api_key = ""
 # Bing market/region, for example "en-US" or "zh-CN".
 bing_market = "en-US"
-# SearXNG instance for the "searxng" engine. On some hosts (commonly Linux),
+# SearXNG instance for the "searxng" engine. On some hosts,
 # DuckDuckGo and Bing block scraped requests via TLS fingerprinting / IP
 # reputation and return an anti-bot page with no results. Pointing at a SearXNG
 # instance (self-hosted or trusted public) with the JSON format enabled avoids
@@ -488,10 +488,11 @@ swarm_max_concurrent_agents = 32
 #   spawn_hook = "~/bin/jcode-spawn-router"       # custom placement script
 # spawn_hook = ""
 #
-# External command used to focus/raise an existing session window, replacing
-# the built-in wmctrl/xdotool title search. Receives JCODE_FOCUS_SESSION_ID
-# and JCODE_FOCUS_TITLE env vars. Pair with spawn_hook so the program that
-# placed the window also brings it to the front.
+# External command used to focus/raise an existing session window. jcode has no
+# built-in window-raising fallback, so without this hook a focus request is a
+# no-op. Receives JCODE_FOCUS_SESSION_ID and JCODE_FOCUS_TITLE env vars. Pair
+# with spawn_hook so the program that placed the window also brings it to the
+# front.
 # Env override: JCODE_FOCUS_HOOK (set empty to disable a config hook).
 #
 # Example:
@@ -504,8 +505,8 @@ swarm_max_concurrent_agents = 32
 # preferred = "ghostty"
 
 [notifications]
-# Desktop notifications for interactive sessions (macOS Notification Center /
-# Linux notify-send). Separate from [safety], which covers ambient-mode
+# Desktop notifications for interactive sessions (macOS Notification Center).
+# Separate from [safety], which covers ambient-mode
 # ntfy/channel notifications.
 #
 # Notify when an agent turn finishes. Fires only for long turns and, by
@@ -598,8 +599,7 @@ bind_addr = "0.0.0.0"
 
 [power]
 # Prevent automatic system sleep while any jcode session is actively working.
-# Linux also blocks lid-switch suspend. Windows still respects explicit lid-close
-# and power-button actions from your active power plan. The display may sleep.
+# The display may sleep.
 # The guard is held only for as long as work is in flight. (default: true)
 # Set JCODE_DISABLE_POWER_INHIBIT=1 to force-disable regardless of this setting.
 prevent_sleep_while_streaming = true
@@ -611,7 +611,7 @@ prevent_sleep_while_streaming = true
 # ntfy_topic = "jcode-ambient-your-secret-topic"
 # ntfy_server = "https://ntfy.sh"
 
-# Desktop notifications via notify-send (default: true)
+# Desktop notifications via Notification Center (default: true)
 desktop_notifications = true
 
 # Telegram notifications via Bot API (free, https://telegram.org)

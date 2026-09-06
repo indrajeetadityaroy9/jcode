@@ -60,30 +60,12 @@ pub async fn connect_socket(path: &std::path::Path) -> Result<Stream> {
                 path.display()
             )))
         }
-        Err(err) if err.raw_os_error() == Some(libc::EMFILE) => Err(anyhow::anyhow!(
-            "{} ({})",
-            err,
-            crate::util::process_fd_diagnostic_snapshot()
-        )),
         Err(err) => Err(err.into()),
     }
 }
 
 pub(super) async fn socket_has_live_listener(path: &std::path::Path) -> bool {
-    #[cfg(windows)]
-    {
-        // `is_socket_path` performs one non-blocking named-pipe open and treats
-        // ERROR_PIPE_BUSY as live. Do not follow it with a second connect: the
-        // first probe can temporarily occupy the only published pipe instance
-        // before the accept loop replaces it, making that second connect wait
-        // forever inside the Windows ERROR_PIPE_BUSY retry loop.
-        crate::transport::is_socket_path(path)
-    }
-
-    #[cfg(not(windows))]
-    {
-        crate::transport::is_socket_path(path) && Stream::connect(path).await.is_ok()
-    }
+    crate::transport::is_socket_path(path) && Stream::connect(path).await.is_ok()
 }
 
 /// Reap a provably-stale socket left behind by a dead daemon.
@@ -101,7 +83,6 @@ pub(super) async fn socket_has_live_listener(path: &std::path::Path) -> bool {
 /// either still be answering on the socket or still be holding the lock.
 ///
 /// Returns true if a stale socket was reaped.
-#[cfg(unix)]
 pub async fn reap_stale_socket_if_dead(path: &std::path::Path) -> bool {
     // Nothing to reap if the path isn't even present.
     if !crate::transport::is_socket_path(path) {
@@ -136,14 +117,6 @@ pub async fn reap_stale_socket_if_dead(path: &std::path::Path) -> bool {
     // `_lock` (a DaemonLockGuard) removes the lock file when it drops at the end
     // of this scope, so the leftover lock is cleaned up too.
     true
-}
-
-#[cfg(not(unix))]
-pub async fn reap_stale_socket_if_dead(_path: &std::path::Path) -> bool {
-    // Windows named pipes do not leave filesystem socket nodes behind after a
-    // process exits, so there is no stale artifact to reap. Probing and then
-    // "cleaning" the pipe only consumes a live server instance temporarily.
-    false
 }
 
 /// Return true if a live server process is listening on the socket path.

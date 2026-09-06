@@ -14,9 +14,9 @@ use crate::message::{
 };
 use crate::provider::Provider;
 use crate::runtime_memory_log::RuntimeMemoryLogController;
+use crate::server::reload_context::ReloadContext;
 use crate::session::{Session, StoredMessage};
 use crate::skill::SkillRegistry;
-use crate::server::reload_context::ReloadContext;
 use crate::tool::{Registry, ToolContext};
 use anyhow::Result;
 use auth::PendingLogin;
@@ -31,7 +31,7 @@ use jcode_tui_messages::DisplayMessage;
 use ratatui::DefaultTerminal;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -2489,16 +2489,10 @@ impl App {
     }
 }
 
-fn stable_hash_str(value: &str) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn stable_hash_json<T: serde::Serialize + ?Sized>(value: &T) -> u64 {
-    let encoded = serde_json::to_string(value).unwrap_or_default();
-    stable_hash_str(&encoded)
-}
+// The prompt-cache fingerprints live in `jcode-app-core`'s agent module, which
+// computes the same hashes for the server-side turn loop; this crate had a
+// byte-identical private copy.
+use crate::agent::{stable_hash_json, stable_hash_str};
 
 fn stable_json_len<T: serde::Serialize + ?Sized>(value: &T) -> usize {
     serde_json::to_string(value)

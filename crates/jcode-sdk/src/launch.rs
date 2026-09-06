@@ -617,24 +617,7 @@ fn home_dir() -> PathBuf {
 
 /// Resolve the user's platform jcode config directory.
 pub fn user_app_config_dir() -> PathBuf {
-    #[cfg(target_os = "macos")]
-    {
-        return home_dir().join("Library/Application Support/jcode");
-    }
-    #[cfg(target_os = "windows")]
-    {
-        return std::env::var_os("APPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home_dir().join("AppData/Roaming"))
-            .join("jcode");
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home_dir().join(".config"))
-            .join("jcode")
-    }
+    home_dir().join("Library/Application Support/jcode")
 }
 
 #[cfg(unix)]

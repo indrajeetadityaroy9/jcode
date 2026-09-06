@@ -57,7 +57,6 @@ pub(super) fn install_macos_app_launcher() -> Result<(PathBuf, MacTerminalKind)>
         MACOS_APP_ICON_BYTES,
     )?;
 
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&launcher_path, std::fs::Permissions::from_mode(0o755))?;
@@ -184,7 +183,6 @@ fn install_macos_notification_broker(jcode_executable: &Path) -> Result<PathBuf>
             )
         })?;
     }
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&broker_executable, std::fs::Permissions::from_mode(0o755))?;

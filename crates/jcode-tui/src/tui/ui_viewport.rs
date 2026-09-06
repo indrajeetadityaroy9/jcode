@@ -2,10 +2,7 @@ use super::*;
 use std::fmt::Write as _;
 use unicode_width::UnicodeWidthStr;
 
-#[cfg(target_os = "macos")]
 pub(crate) const COPY_BADGE_ALT_LABEL: &str = "⌥";
-#[cfg(not(target_os = "macos"))]
-pub(crate) const COPY_BADGE_ALT_LABEL: &str = "Alt";
 
 pub(crate) fn copy_badge_alt_label() -> String {
     let config = crate::config::config();
@@ -1496,11 +1493,7 @@ mod tests {
 
     #[test]
     fn default_copy_badge_alt_label_matches_platform() {
-        #[cfg(target_os = "macos")]
         assert_eq!(super::copy_badge_alt_label_from_config(""), "⌥");
-
-        #[cfg(not(target_os = "macos"))]
-        assert_eq!(super::copy_badge_alt_label_from_config(""), "Alt");
     }
 
     #[test]

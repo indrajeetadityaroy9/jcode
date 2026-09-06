@@ -76,7 +76,6 @@ pub fn resolve_tool_name(name: &str) -> &str {
 
     match name {
         "communicate" => "swarm",
-        "task" | "task_runner" => "subagent",
         "launch" => "open",
         "shell" => "bash",
         "shell_exec" => "bash",
@@ -102,7 +101,6 @@ pub fn resolve_tool_name(name: &str) -> &str {
         "Write" => "write",
         "Edit" => "edit",
         "Grep" => "agentgrep",
-        "Agent" => "subagent",
         "ScheduleWakeup" => "schedule",
         other => other,
     }
@@ -136,7 +134,6 @@ mod tests {
         assert_eq!(resolve_tool_name("Write"), "write");
         assert_eq!(resolve_tool_name("Edit"), "edit");
         assert_eq!(resolve_tool_name("Grep"), "agentgrep");
-        assert_eq!(resolve_tool_name("Agent"), "subagent");
         assert_eq!(resolve_tool_name("ScheduleWakeup"), "schedule");
         assert_eq!(resolve_tool_name("Skill"), "skill_manage");
         assert_eq!(resolve_tool_name("functions.Read"), "read");

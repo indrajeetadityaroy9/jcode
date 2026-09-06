@@ -268,7 +268,6 @@ fn save_cloud_sessions_config(config: &CloudSessionsConfig) -> Result<PathBuf> {
         std::fs::create_dir_all(parent)?;
     }
     let content = serde_json::to_vec_pretty(config)?;
-    #[cfg(unix)]
     {
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         let mut file = std::fs::OpenOptions::new()
@@ -279,10 +278,6 @@ fn save_cloud_sessions_config(config: &CloudSessionsConfig) -> Result<PathBuf> {
             .open(&path)?;
         file.write_all(&content)?;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(not(unix))]
-    {
-        std::fs::write(&path, &content)?;
     }
     Ok(path)
 }
@@ -490,7 +485,6 @@ fn save_cloud_sessions_sync_state(state: &CloudSessionsSyncState) -> Result<Path
         std::fs::create_dir_all(parent)?;
     }
     let content = serde_json::to_vec_pretty(state)?;
-    #[cfg(unix)]
     {
         use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
         let mut file = std::fs::OpenOptions::new()
@@ -501,10 +495,6 @@ fn save_cloud_sessions_sync_state(state: &CloudSessionsSyncState) -> Result<Path
             .open(&path)?;
         file.write_all(&content)?;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(not(unix))]
-    {
-        std::fs::write(&path, &content)?;
     }
     Ok(path)
 }
@@ -629,7 +619,7 @@ fn run_cloud_sessions_sync(request: CloudSessionsSyncRequest) -> Result<()> {
     let sessions_dir = resolve_sync_sessions_dir(request.sessions_dir.as_deref())?;
     let mut state = load_cloud_sessions_sync_state()?;
 
-    // Self-throttle so the command is safe to call from cron/systemd timers without
+    // Self-throttle so the command is safe to call from cron/launchd timers without
     // re-uploading or even rescanning more often than requested.
     if !request.force
         && !request.dry_run
@@ -1382,7 +1372,6 @@ fn resolve_jade_sessions_helper(override_path: Option<&str>) -> Result<PathBuf> 
     );
 }
 
-#[cfg(unix)]
 fn is_executable_file(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     path.is_file()
@@ -1390,11 +1379,6 @@ fn is_executable_file(path: &Path) -> bool {
             .metadata()
             .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
             .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn is_executable_file(path: &Path) -> bool {
-    path.is_file()
 }
 
 pub async fn run_ambient_command(cmd: AmbientSubcommand) -> Result<()> {
@@ -1445,14 +1429,9 @@ pub async fn run_transcript_command(
     }
 }
 
-pub async fn run_dictate_command(type_output: bool) -> Result<()> {
+pub async fn run_dictate_command() -> Result<()> {
     let run = crate::dictation::run_configured().await?;
-
-    if type_output {
-        crate::dictation::type_text(&run.text)
-    } else {
-        run_transcript_command(Some(run.text), run.mode, None).await
-    }
+    run_transcript_command(Some(run.text), run.mode, None).await
 }
 
 #[derive(Serialize)]
@@ -2143,7 +2122,6 @@ Re-run with `--force` if you really want to stop the server.";
     if let Some(info) = server_info.as_ref() {
         let pid = info.pid;
         if crate::platform::is_process_running(pid) {
-            #[cfg(unix)]
             {
                 // The daemon spawns detached with setsid(), so it leads its own
                 // process group. Signal the group so any helper children exit too.
@@ -2154,18 +2132,6 @@ Re-run with `--force` if you really want to stop the server.";
                     }
                     Err(e) => {
                         detail = format!("Failed to signal jcode server (pid {pid}): {e}");
-                    }
-                }
-            }
-            #[cfg(not(unix))]
-            {
-                match crate::platform::signal_detached_process_group(pid, 0) {
-                    Ok(()) => {
-                        signaled_pid = Some(pid);
-                        detail = format!("Terminated jcode server (pid {pid}).");
-                    }
-                    Err(e) => {
-                        detail = format!("Failed to terminate jcode server (pid {pid}): {e}");
                     }
                 }
             }

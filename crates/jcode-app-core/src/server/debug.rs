@@ -174,12 +174,6 @@ async fn resolve_transcript_target_session(
         return Ok(session_id);
     }
 
-    if let Ok(Some(session_id)) = crate::dictation::focused_jcode_session()
-        && live_sessions.contains(&session_id)
-    {
-        return Ok(session_id);
-    }
-
     if let Ok(Some(session_id)) = crate::dictation::last_focused_session()
         && live_sessions.contains(&session_id)
     {

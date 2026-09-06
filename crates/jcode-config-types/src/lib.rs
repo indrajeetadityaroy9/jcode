@@ -739,12 +739,12 @@ pub struct TerminalConfig {
     pub spawn_hook: Option<String>,
     /// External command used to focus/raise an existing session window.
     ///
-    /// When set, jcode runs the hook (instead of wmctrl/xdotool) whenever it
+    /// jcode has no built-in window-raising fallback, so without this hook a
+    /// focus request is a no-op. When set, jcode runs the hook whenever it
     /// wants to bring a session's window to the foreground, with
     /// `JCODE_FOCUS_SESSION_ID` and `JCODE_FOCUS_TITLE` env vars. Pair this
     /// with `spawn_hook` so wrappers that own placement (tmux, kitty remote,
-    /// herd) also own focus (e.g. `tmux select-window`, Wayland compositor
-    /// IPC like `niri msg`).
+    /// herd) also own focus (e.g. `tmux select-window`).
     ///
     /// Env override: `JCODE_FOCUS_HOOK` (set empty to disable a config hook).
     pub focus_hook: Option<String>,
@@ -1308,7 +1308,7 @@ pub struct SafetyConfig {
     pub ntfy_topic: Option<String>,
     /// ntfy.sh server URL (default: https://ntfy.sh)
     pub ntfy_server: String,
-    /// Enable desktop notifications via notify-send (default: true)
+    /// Enable desktop notifications via Notification Center (default: true)
     pub desktop_notifications: bool,
     /// Enable Telegram notifications (default: false)
     pub telegram_enabled: bool,

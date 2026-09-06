@@ -412,10 +412,7 @@ pub fn load_toggle_keys() -> ToggleKeys {
 }
 
 /// `/effort` hint text. Mac keyboards label the Alt modifier ⌥, not "Alt".
-#[cfg(target_os = "macos")]
 pub(crate) const EFFORT_HELP: &str = "Show/change reasoning effort (⌥+left/right)";
-#[cfg(not(target_os = "macos"))]
-pub(crate) const EFFORT_HELP: &str = "Show/change reasoning effort (Alt+left/right)";
 
 /// The default swarm-panel focus chord: Alt+N.
 fn swarm_panel_focus_default() -> KeyBinding {

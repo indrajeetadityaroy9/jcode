@@ -87,19 +87,9 @@ pub(super) fn extract_input_shell_command(input: &str) -> Option<&str> {
 }
 
 fn build_input_shell_command(command: &str) -> std::process::Command {
-    #[cfg(windows)]
-    {
-        let mut cmd = std::process::Command::new("cmd.exe");
-        cmd.arg("/C").arg(command);
-        cmd
-    }
-
-    #[cfg(not(windows))]
-    {
-        let mut cmd = std::process::Command::new("bash");
-        cmd.arg("-c").arg(command);
-        cmd
-    }
+    let mut cmd = std::process::Command::new("bash");
+    cmd.arg("-c").arg(command);
+    cmd
 }
 
 fn combine_shell_output(stdout: &[u8], stderr: &[u8]) -> (String, bool) {
@@ -252,55 +242,10 @@ where
 }
 
 fn read_clipboard_text() -> Option<String> {
-    if std::env::var("WAYLAND_DISPLAY").is_ok()
-        && let Some(text) = read_wayland_clipboard_text()
-    {
-        return Some(text);
-    }
-
     let Ok(mut clipboard) = arboard::Clipboard::new() else {
         return None;
     };
     clipboard.get_text().ok()
-}
-
-fn read_wayland_clipboard_text() -> Option<String> {
-    let types_output = std::process::Command::new("wl-paste")
-        .arg("--list-types")
-        .output()
-        .ok()?;
-    if !types_output.status.success() {
-        return None;
-    }
-
-    let types = String::from_utf8_lossy(&types_output.stdout);
-    let wl_type = preferred_wayland_text_type(&types)?;
-    let output = std::process::Command::new("wl-paste")
-        .args(["--type", wl_type, "--no-newline"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    String::from_utf8(output.stdout).ok()
-}
-
-fn preferred_wayland_text_type(types: &str) -> Option<&'static str> {
-    let has_type = |needle: &str| types.lines().any(|line| line.trim() == needle);
-    if has_type("text/plain;charset=utf-8") {
-        Some("text/plain;charset=utf-8")
-    } else if has_type("text/plain") {
-        Some("text/plain")
-    } else if has_type("UTF8_STRING") {
-        Some("UTF8_STRING")
-    } else if has_type("TEXT") {
-        Some("TEXT")
-    } else if has_type("STRING") {
-        Some("STRING")
-    } else {
-        None
-    }
 }
 
 fn image_content(media_type: String, base64_data: String) -> ClipboardPasteContent {
@@ -383,8 +328,8 @@ where
 mod tests {
     use super::{
         ClipboardPasteContent, ClipboardPasteKind, dropped_image_files,
-        is_clipboard_paste_shortcut, parse_dropped_paths, preferred_wayland_text_type,
-        read_clipboard_for_paste_with, shifted_printable_fallback, text_input_for_key,
+        is_clipboard_paste_shortcut, parse_dropped_paths, read_clipboard_for_paste_with,
+        shifted_printable_fallback, text_input_for_key,
     };
     use crossterm::event::{KeyCode, KeyModifiers};
 
@@ -518,16 +463,6 @@ mod tests {
             KeyCode::Char('v'),
             KeyModifiers::empty()
         ));
-    }
-
-    #[test]
-    fn wayland_text_type_prefers_utf8_plain_text() {
-        let types = "text/plain\ntext/plain;charset=utf-8\nTEXT\nSTRING\nUTF8_STRING\n";
-
-        assert_eq!(
-            preferred_wayland_text_type(types),
-            Some("text/plain;charset=utf-8")
-        );
     }
 
     #[test]

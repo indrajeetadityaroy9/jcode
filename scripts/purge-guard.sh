@@ -92,6 +92,25 @@ verdict "$( { find scripts -name '*.ps1' 2>/dev/null | sed 's/^/  RESURRECTED: /
     grep -rnE 'mod windows_(setup|hotkeys)|windows_(setup|hotkeys)::|listen_windows_hotkey' \
       --include='*.rs' crates/ src/ 2>/dev/null | filter_tests | sed 's/^/  /'; } )"
 
+# Every non-macOS code path is purged (see docs/FORK_WORKFLOW.md §1, "Platform
+# residue"). This is the one guard section the compiler cannot back up: a
+# reintroduced cfg(windows) or cfg(target_os = "linux") block compiles away
+# silently here, so neither `cargo check` nor the suite objects to it.
+#
+# Deliberately NOT matched, because they are live macOS behavior: bare
+# `cfg(unix)`, `DISPLAY` (XQuartz sets it), `$XDG_RUNTIME_DIR`/`$XDG_CONFIG_HOME`
+# as user overrides, jcode-transport's `cfg(not(unix)) compile_error!` guard, and
+# command-risk's /proc+/sys protected-path list.
+section "non-macOS platform code must stay deleted"
+verdict "$( { grep -rnE \
+      'cfg\(windows\)|cfg\(target_os = "(windows|linux)"\)|cfg\(not\(windows\)\)|cfg\(all\(unix, not\(target_os = "macos"\)\)\)|windows-sys|windows_sys::' \
+      --include='*.rs' --include='Cargo.toml' crates/ src/ Cargo.toml 2>/dev/null \
+      | grep -v 'jcode-transport/src/lib.rs' | sed 's/^/  /'
+    grep -rnE \
+      'notify-send|xdg-open|wl-copy|wl-paste|xclip|xsel|wmctrl|xdotool|systemd-inhibit|taskkill|cmd\.exe\b|WAYLAND_DISPLAY|niri msg|/proc/self/(status|statm|task|fd|limits|stat)|/proc/cpuinfo|/proc/meminfo|/proc/version|/sys/devices|lspci' \
+      --include='*.rs' crates/ src/ 2>/dev/null \
+      | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*)' | sed 's/^/  /'; } )"
+
 section "network egress endpoints"
 verdict "$(grep -rn 'telemetry\.jcode\.sh\|api\.jcode\.sh/v1/discovery' \
     --include='*.rs' --include='*.sh' --include='*.ps1' . 2>/dev/null | sed 's/^/  /')"

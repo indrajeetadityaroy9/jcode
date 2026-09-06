@@ -31,8 +31,6 @@ const PROGRESS_MARKER_PREFIX: &str = "JCODE_PROGRESS ";
 const CHECKPOINT_MARKER_PREFIX: &str = "JCODE_CHECKPOINT ";
 const BACKGROUND_PROGRESS_GUIDANCE: &str = "For long-running background commands, prefer scripts or commands that periodically print progress updates. Best format: print lines starting with `JCODE_PROGRESS ` followed by JSON like {\"percent\":42,\"message\":\"Running\"} or {\"current\":120,\"total\":1000,\"unit\":\"batches\",\"message\":\"Epoch 2/5\",\"eta_seconds\":30}. Supported JSON fields are `percent`, `message`, `current`, `total`, `unit`, `eta_seconds`, and optional `kind`=`indeterminate` or `kind`=`checkpoint`. For milestone-style wakeups, print `JCODE_CHECKPOINT {\"message\":\"Unit tests passed\"}`. Generic fallback output that can be parsed includes `42%`, `3/10 tests`, `3 of 10 steps`, `1.5/3.0 GiB`, or phase lines like `Compiling ...`, `Downloading ...`, `Running ...`, and `Building ...`. If you are writing the script yourself, add these progress/checkpoint lines explicitly. Put large temporary files, worktrees, and virtual environments under `$JCODE_SCRATCH_DIR`, not `/tmp`, because `/tmp` may be RAM-backed.";
 const BASH_TOOL_DESCRIPTION: &str = "Run a bash command.";
-const WINDOWS_SHELL_TOOL_DESCRIPTION: &str =
-    "Run a Windows cmd.exe command (compatibility name `bash`). Use cmd.exe syntax, not Bash.";
 
 #[cfg(unix)]
 fn shell_single_quote(value: &str) -> String {
@@ -482,7 +480,6 @@ async fn handle_background_output_line(
     file.flush().await.ok();
 }
 
-#[cfg(not(windows))]
 fn tool_scratch_dir() -> Option<std::path::PathBuf> {
     let dir = std::env::var_os("JCODE_SCRATCH_DIR")
         .filter(|value| !value.is_empty())
@@ -496,7 +493,6 @@ fn tool_scratch_dir() -> Option<std::path::PathBuf> {
     Some(dir)
 }
 
-#[cfg(not(windows))]
 fn configure_tool_scratch(command: &mut TokioCommand) {
     if let Some(dir) = tool_scratch_dir() {
         command.env("TMPDIR", &dir).env("JCODE_SCRATCH_DIR", dir);
@@ -529,30 +525,10 @@ impl Drop for ProcessGroupKillGuard {
 }
 
 fn build_shell_command(cmd_str: &str) -> TokioCommand {
-    #[cfg(windows)]
-    {
-        let mut cmd = TokioCommand::new("cmd.exe");
-        // cmd.exe does not use the standard C runtime argument-decoding rules.
-        // Passing the command through `arg` makes Rust escape nested quotes for
-        // CommandLineToArgvW, which can corrupt commands such as:
-        //
-        //     gh issue create --title "text with spaces"
-        //
-        // Tokio's `raw_arg` is specifically provided for `cmd.exe /C`. Wrap the
-        // full command in the outer quotes expected by cmd so its inner quotes
-        // reach child programs intact. `/D` disables AutoRun hooks and `/S`
-        // selects the documented quote handling used with this form.
-        cmd.args(["/D", "/S", "/C"])
-            .raw_arg(format!("\"{cmd_str}\""));
-        cmd
-    }
-    #[cfg(not(windows))]
-    {
-        let mut cmd = TokioCommand::new("bash");
-        cmd.arg("-c").arg(cmd_str);
-        configure_tool_scratch(&mut cmd);
-        cmd
-    }
+    let mut cmd = TokioCommand::new("bash");
+    cmd.arg("-c").arg(cmd_str);
+    configure_tool_scratch(&mut cmd);
+    cmd
 }
 
 fn configure_background_command_stdio(command: &mut TokioCommand) {
@@ -595,7 +571,7 @@ fn format_command_output(mut output: String, exit_code: Option<i32>) -> String {
 
 #[cfg(test)]
 mod utf8_truncation_tests {
-    #[cfg(any(windows, unix))]
+    #[cfg(unix)]
     use super::build_shell_command;
     use super::format_command_output;
 
@@ -605,57 +581,6 @@ mod utf8_truncation_tests {
         let output = format_command_output(input, None);
         assert!(output.ends_with("\n... (output truncated)"));
         assert!(output.starts_with(&"a".repeat(29_999)));
-    }
-
-    #[cfg(windows)]
-    #[tokio::test]
-    async fn build_shell_command_uses_cmd_and_executes_command() {
-        let output = build_shell_command("echo hello-from-cmd")
-            .output()
-            .await
-            .expect("run cmd command");
-        assert!(output.status.success(), "cmd command should succeed");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.to_ascii_lowercase().contains("hello-from-cmd"),
-            "unexpected stdout: {}",
-            stdout
-        );
-
-        let probe_path = std::env::temp_dir().join(format!(
-            "jcode-cmd-quoting-probe-{}.cmd",
-            std::process::id()
-        ));
-        std::fs::write(
-            &probe_path,
-            concat!(
-                "@echo off\r\n",
-                "if \"%~1\"==\"text with spaces\" if \"%~2\"==\"\" (\r\n",
-                "  echo quoted-argument-ok\r\n",
-                "  exit /b 0\r\n",
-                ")\r\n",
-                "echo first=[%~1] second=[%~2]\r\n",
-                "exit /b 1\r\n",
-            ),
-        )
-        .expect("write cmd quoting probe");
-
-        let quoted_command = format!("call \"{}\" \"text with spaces\"", probe_path.display());
-        let quoted_output = build_shell_command(&quoted_command)
-            .output()
-            .await
-            .expect("run cmd quoting probe");
-        let _ = std::fs::remove_file(&probe_path);
-        let quoted_stdout = String::from_utf8_lossy(&quoted_output.stdout);
-        let quoted_stderr = String::from_utf8_lossy(&quoted_output.stderr);
-        assert!(
-            quoted_output.status.success(),
-            "quoted argument should remain one child-process argument; stdout={quoted_stdout:?} stderr={quoted_stderr:?}"
-        );
-        assert!(
-            quoted_stdout.contains("quoted-argument-ok"),
-            "unexpected quoted-command stdout: {quoted_stdout}"
-        );
     }
 
     #[cfg(unix)]
@@ -735,11 +660,7 @@ impl Tool for BashTool {
     }
 
     fn description(&self) -> &str {
-        if cfg!(windows) {
-            WINDOWS_SHELL_TOOL_DESCRIPTION
-        } else {
-            BASH_TOOL_DESCRIPTION
-        }
+        BASH_TOOL_DESCRIPTION
     }
 
     fn parameters_schema(&self) -> Value {
@@ -850,9 +771,6 @@ impl BashTool {
 
                             let mut request_counter = 0u32;
                             loop {
-                                #[cfg(target_os = "linux")]
-                                let state = stdin_detect::linux::check_process_tree(child_pid);
-                                #[cfg(not(target_os = "linux"))]
                                 let state = stdin_detect::is_waiting_for_stdin(child_pid);
 
                                 if state == StdinState::Reading {
@@ -1215,10 +1133,6 @@ impl BashTool {
 	                                        let _ = child.start_kill();
 	                                    }
 	                                }
-	                                #[cfg(not(unix))]
-	                                {
-	                                    let _ = child.start_kill();
-	                                }
 	                                break;
 	                            }
                             line = async {
@@ -1324,6 +1238,6 @@ impl BashTool {
     }
 }
 
-#[cfg(all(test, not(windows)))]
+#[cfg(test)]
 #[path = "bash_tests.rs"]
 mod tests;

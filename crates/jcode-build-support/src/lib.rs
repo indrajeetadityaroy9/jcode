@@ -28,11 +28,9 @@ use anyhow::Result;
 use chrono::Utc;
 use jcode_storage as storage;
 use serde::{Deserialize, Serialize};
-#[cfg(unix)]
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-#[cfg(unix)]
 use std::time::{Duration, Instant};
 
 pub use jcode_dev_types::{
@@ -445,14 +443,12 @@ fn validate_dev_binary_matches_source(
     Ok(())
 }
 
-#[cfg(unix)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SmokeTestReplyKind {
     Ack,
     Pong,
 }
 
-#[cfg(unix)]
 fn smoke_test_server_request(
     stream: &mut BufReader<std::os::unix::net::UnixStream>,
     request: &serde_json::Value,
@@ -496,7 +492,6 @@ fn smoke_test_server_request(
     }
 }
 
-#[cfg(unix)]
 fn smoke_test_server_connect(
     path: &Path,
 ) -> std::io::Result<BufReader<std::os::unix::net::UnixStream>> {
@@ -506,7 +501,6 @@ fn smoke_test_server_connect(
     Ok(BufReader::new(stream))
 }
 
-#[cfg(unix)]
 fn smoke_test_server_protocol(path: &Path, working_dir: &str) -> Result<()> {
     // The server handles an initial Ping on a dedicated lightweight-control
     // connection and closes it after replying, so the subscribed-client probe
@@ -538,7 +532,6 @@ fn smoke_test_server_protocol(path: &Path, working_dir: &str) -> Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
 pub fn smoke_test_server_binary(binary: &Path) -> Result<()> {
     use std::fs::File;
     use std::process::Stdio;
@@ -622,11 +615,6 @@ pub fn smoke_test_server_binary(binary: &Path) -> Result<()> {
     }
 
     result
-}
-
-#[cfg(not(unix))]
-pub fn smoke_test_server_binary(binary: &Path) -> Result<()> {
-    smoke_test_binary(binary)
 }
 
 fn update_channel_symlink(channel: &str, version: &str) -> Result<PathBuf> {

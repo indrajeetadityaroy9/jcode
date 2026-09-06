@@ -7,38 +7,17 @@ use tokio::sync::Mutex;
 use tokio::time::{Duration, Instant, sleep};
 
 pub(crate) struct ActiveDictation {
-    #[cfg(unix)]
     pid: u32,
-    #[cfg(not(unix))]
-    child: Arc<Mutex<Option<Child>>>,
 }
 
 impl ActiveDictation {
     fn new(_pid: u32, _child: Arc<Mutex<Option<Child>>>) -> Self {
-        Self {
-            #[cfg(unix)]
-            pid: _pid,
-            #[cfg(not(unix))]
-            child: _child,
-        }
+        Self { pid: _pid }
     }
 
     async fn request_stop(&self) -> Result<(), String> {
-        #[cfg(unix)]
-        {
-            crate::platform::signal_detached_process_group(self.pid, libc::SIGINT)
-                .map_err(|e| format!("failed to stop dictation: {}", e))
-        }
-        #[cfg(not(unix))]
-        {
-            let mut guard = self.child.lock().await;
-            let Some(child) = guard.as_mut() else {
-                return Ok(());
-            };
-            child
-                .start_kill()
-                .map_err(|e| format!("failed to stop dictation: {}", e))
-        }
+        crate::platform::signal_detached_process_group(self.pid, libc::SIGINT)
+            .map_err(|e| format!("failed to stop dictation: {}", e))
     }
 }
 
@@ -257,17 +236,7 @@ async fn wait_for_dictation_exit(
                 guard.as_ref().and_then(|process| process.id())
             };
             if let Some(_pid) = pid {
-                #[cfg(unix)]
-                {
-                    let _ = crate::platform::signal_detached_process_group(_pid, libc::SIGINT);
-                }
-                #[cfg(not(unix))]
-                {
-                    let mut guard = child.lock().await;
-                    if let Some(process) = guard.as_mut() {
-                        let _ = process.start_kill();
-                    }
-                }
+                let _ = crate::platform::signal_detached_process_group(_pid, libc::SIGINT);
             }
 
             let deadline = Instant::now() + Duration::from_secs(3);
@@ -492,27 +461,17 @@ fn strip_ansi(text: &str) -> String {
 }
 
 fn shell_command(command: &str) -> Command {
-    #[cfg(windows)]
-    {
-        let mut cmd = Command::new("cmd");
-        cmd.arg("/C").arg(command);
-        cmd
+    let mut cmd = Command::new("sh");
+    cmd.arg("-lc").arg(command);
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
     }
-
-    #[cfg(not(windows))]
-    {
-        let mut cmd = Command::new("sh");
-        cmd.arg("-lc").arg(command);
-        unsafe {
-            cmd.pre_exec(|| {
-                if libc::setsid() == -1 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            });
-        }
-        cmd
-    }
+    cmd
 }
 
 #[cfg(test)]

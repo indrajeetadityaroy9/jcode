@@ -108,9 +108,8 @@ fn has_cursor_api_key_from_env() {
 
 #[test]
 fn cursor_auth_file_path_respects_jcode_home() {
-    // Regression: on Linux the auth.json path previously used
-    // `dirs::config_dir()` directly, ignoring JCODE_HOME. That leaked the real
-    // `~/.config/cursor/auth.json` into the onboarding sandbox, so a
+    // Regression: the auth.json path must honor JCODE_HOME isolation. Reading
+    // the real `~/.cursor/auth.json` leaked into the onboarding sandbox, so a
     // fresh-install sandbox showed only Cursor as importable while every other
     // provider correctly looked under `$JCODE_HOME/external/...`.
     let _guard = crate::storage::lock_test_env();
@@ -130,33 +129,6 @@ fn cursor_auth_file_path_respects_jcode_home() {
     } else {
         crate::env::remove_var("JCODE_HOME");
     }
-}
-
-#[cfg(target_os = "windows")]
-#[test]
-fn cursor_auth_file_path_does_not_escape_jcode_home_on_windows() {
-    let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().unwrap();
-    let old_home = std::env::var_os("JCODE_HOME");
-    let old_appdata = std::env::var_os("APPDATA");
-    crate::env::set_var("JCODE_HOME", temp.path());
-    crate::env::set_var("APPDATA", r"C:\real-user-profile");
-
-    let path = cursor_auth_file_path().unwrap();
-
-    match old_home {
-        Some(value) => crate::env::set_var("JCODE_HOME", value),
-        None => crate::env::remove_var("JCODE_HOME"),
-    }
-    match old_appdata {
-        Some(value) => crate::env::set_var("APPDATA", value),
-        None => crate::env::remove_var("APPDATA"),
-    }
-    assert_eq!(
-        path,
-        temp.path()
-            .join("external/AppData/Roaming/Cursor/auth.json")
-    );
 }
 
 #[test]

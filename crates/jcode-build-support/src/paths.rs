@@ -63,11 +63,7 @@ pub fn binary_stem() -> &'static str {
 }
 
 pub fn binary_name() -> &'static str {
-    if cfg!(windows) {
-        "jcode.exe"
-    } else {
-        binary_stem()
-    }
+    binary_stem()
 }
 
 /// Resolve a channel/launcher binary path to the file that actually runs.
@@ -189,7 +185,7 @@ fn non_empty_env_path(name: &str) -> Option<PathBuf> {
 
 /// Directory for the single launcher path users execute from PATH.
 ///
-/// Defaults to `~/.local/bin` on Unix, `%LOCALAPPDATA%\jcode\bin` on Windows.
+/// Defaults to `~/.local/bin`.
 /// Overridable with `JCODE_INSTALL_DIR`.
 pub fn launcher_dir() -> Result<PathBuf> {
     if let Some(custom) = non_empty_env_path("JCODE_INSTALL_DIR") {
@@ -200,21 +196,7 @@ pub fn launcher_dir() -> Result<PathBuf> {
         return Ok(sandbox_home.join("bin"));
     }
 
-    #[cfg(windows)]
-    {
-        if let Ok(local) = std::env::var("LOCALAPPDATA") {
-            return Ok(PathBuf::from(local).join("jcode").join("bin"));
-        }
-        Ok(home_dir()?
-            .join("AppData")
-            .join("Local")
-            .join("jcode")
-            .join("bin"))
-    }
-    #[cfg(not(windows))]
-    {
-        Ok(home_dir()?.join(".local").join("bin"))
-    }
+    Ok(home_dir()?.join(".local").join("bin"))
 }
 
 /// Path to the launcher binary (`~/.local/bin/jcode` by default).
@@ -453,7 +435,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn is_jcode_repo_accepts_git_file_for_worktree() {
         let repo = repo_fixture(true);
@@ -490,10 +471,7 @@ mod tests {
         let channel_dir = temp.path().join("channel");
         std::fs::create_dir_all(&channel_dir).expect("channel dir");
         let link = channel_dir.join("jcode");
-        #[cfg(unix)]
         std::os::unix::fs::symlink(&wrapper, &link).expect("symlink");
-        #[cfg(not(unix))]
-        std::fs::copy(&wrapper, &link).map(|_| ()).expect("copy");
         assert_eq!(
             resolve_binary_payload(&link),
             std::fs::canonicalize(&payload).expect("canonical payload")

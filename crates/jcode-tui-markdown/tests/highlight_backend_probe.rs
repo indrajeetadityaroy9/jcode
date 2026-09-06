@@ -1,34 +1,20 @@
-//! Ignored perf/memory probe for the syntect regex backend.
+//! Ignored perf probe for the syntect regex backend.
 //!
 //! Motivation: a jemalloc heap profile of a long-lived TUI client attributed
 //! ~24 MB (47% of live heap) to lazily-compiled `regex-fancy` highlight
 //! grammars (`fancy_regex` + `regex_automata` meta engines). Switching syntect
 //! to the `regex-onig` backend cut the probe client's idle live heap from
-//! ~51 MB to ~34 MB on the same workload. This test guards the tradeoff both
-//! ways: it measures highlight throughput and RSS growth for a representative
-//! multi-language workload so a future backend change can be A/B'd with one
-//! command instead of a full client probe.
+//! ~51 MB to ~34 MB on the same workload. This probe measures the other half
+//! of that tradeoff - grammar-compile cost and steady-state highlight
+//! throughput on a representative multi-language workload - so a future
+//! backend change can be A/B'd with one command. Heap attribution itself
+//! needs an external profiler (`leaks`, Instruments, a jemalloc dump) and is
+//! not measured here.
 //!
 //! Run with:
 //!   cargo test -p jcode-tui-markdown --test highlight_backend_probe -- --ignored --nocapture
 
 use jcode_tui_markdown::highlight_line;
-
-fn vm_rss_bytes() -> u64 {
-    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
-    for line in status.lines() {
-        if let Some(rest) = line.strip_prefix("VmRSS:") {
-            let kb: u64 = rest
-                .trim()
-                .trim_end_matches("kB")
-                .trim()
-                .parse()
-                .unwrap_or(0);
-            return kb * 1024;
-        }
-    }
-    0
-}
 
 /// Representative code lines across the languages a transcript actually
 /// highlights (tool output diffs, fenced blocks in assistant replies).
@@ -91,14 +77,12 @@ fn workload() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
-/// Measures grammar-compile cost (first pass), steady-state throughput, and
-/// resident-memory growth from compiled highlight grammars.
+/// Measures grammar-compile cost (first pass) and steady-state highlight
+/// throughput with warm grammars.
 #[test]
-#[ignore = "perf/memory probe; run explicitly with --ignored --nocapture"]
+#[ignore = "perf probe; run explicitly with --ignored --nocapture"]
 fn highlight_backend_probe() {
     let lines = workload();
-
-    let rss_before = vm_rss_bytes();
 
     // First pass: pays lazy grammar compilation for every language.
     let cold_start = std::time::Instant::now();
@@ -122,8 +106,6 @@ fn highlight_backend_probe() {
     }
     let steady = steady_start.elapsed();
 
-    let rss_after = vm_rss_bytes();
-    let rss_growth_mb = rss_after.saturating_sub(rss_before) as f64 / 1_048_576.0;
     let steady_lines = STEADY_ITERS * lines.len();
     let lines_per_sec = steady_lines as f64 / steady.as_secs_f64();
 
@@ -131,14 +113,5 @@ fn highlight_backend_probe() {
     println!("  cold pass ({} langs):      {:?}", lines.len(), cold);
     println!(
         "  steady state:              {steady_lines} lines in {steady:?} ({lines_per_sec:.0} lines/s)"
-    );
-    println!("  RSS growth from grammars:  {rss_growth_mb:.1} MB");
-
-    // Regression guards, generous enough for CI noise/debug builds: the fancy
-    // backend measured ~40 MB growth on this workload, onig ~10 MB.
-    assert!(
-        rss_growth_mb < 25.0,
-        "compiled highlight grammars grew RSS by {rss_growth_mb:.1} MB; \
-         expected < 25 MB (regex backend regression?)"
     );
 }

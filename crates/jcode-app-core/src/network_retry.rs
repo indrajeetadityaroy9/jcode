@@ -1,8 +1,6 @@
 use std::time::Duration;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 use tokio::process::Command;
 use tokio::time::sleep;
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 use tokio::time::timeout;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,30 +68,11 @@ fn classify_text(text: &str) -> Option<String> {
 }
 
 pub fn wait_plan() -> NetworkWaitPlan {
-    #[cfg(target_os = "linux")]
-    {
-        NetworkWaitPlan {
-            reason: "stream interrupted by a likely network disconnect".to_string(),
-            listener_summary:
-                "listening for Linux netlink changes via `ip monitor`; also verifying with reconnect probes"
-                    .to_string(),
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        return NetworkWaitPlan {
-            reason: "stream interrupted by a likely network disconnect".to_string(),
-            listener_summary:
-                "listening for macOS route/interface changes via `route -n monitor`; also verifying with reconnect probes"
-                    .to_string(),
-        };
-    }
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    {
-        NetworkWaitPlan {
-            reason: "stream interrupted by a likely network disconnect".to_string(),
-            listener_summary: "waiting with lightweight reconnect probes".to_string(),
-        }
+    NetworkWaitPlan {
+        reason: "stream interrupted by a likely network disconnect".to_string(),
+        listener_summary:
+            "listening for macOS route/interface changes via `route -n monitor`; also verifying with reconnect probes"
+                .to_string(),
     }
 }
 
@@ -121,14 +100,6 @@ async fn probe_connectivity() -> bool {
 }
 
 async fn wait_for_platform_change_or_delay(delay: Duration) {
-    #[cfg(target_os = "linux")]
-    {
-        if command_exists("ip").await {
-            let fut = wait_for_command_output("ip", &["monitor", "link", "address", "route"]);
-            let _ = timeout(delay, fut).await;
-            return;
-        }
-    }
     #[cfg(target_os = "macos")]
     {
         if command_exists("route").await {
@@ -140,7 +111,6 @@ async fn wait_for_platform_change_or_delay(delay: Duration) {
     sleep(delay).await;
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn command_exists(command: &str) -> bool {
     Command::new("sh")
         .arg("-c")
@@ -154,12 +124,10 @@ async fn command_exists(command: &str) -> bool {
         .unwrap_or(false)
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn shell_escape(value: &str) -> String {
     value.replace('\'', "'\\''")
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn wait_for_command_output(command: &str, args: &[&str]) {
     let mut command_builder = Command::new(command);
     command_builder

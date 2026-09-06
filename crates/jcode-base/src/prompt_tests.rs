@@ -345,8 +345,7 @@ fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
     assert!(prompt.contains("global preferred tools instructions"));
     assert!(info.preferred_tools_chars > 0);
 
-    let (split, split_info) =
-        build_system_prompt_split(None, &[], None, Some(project_dir.path()));
+    let (split, split_info) = build_system_prompt_split(None, &[], None, Some(project_dir.path()));
     assert!(
         split
             .static_part

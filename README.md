@@ -467,10 +467,10 @@ Some OpenAI-compatible backends require non-standard top-level request fields. F
 
 Keys from `extra_body` are merged last and override any jcode-generated body field with the same name (`JCODE_OPENAI_EXTRA_BODY` wins over the config `extra_body` on key collisions). Invalid values are logged and ignored rather than failing the request.
 
-The custom OpenAI-compatible provider reads overrides from environment variables or from an env file in jcode's app config directory. On Linux this is usually `~/.config/jcode/`, so the default file is usually:
+The custom OpenAI-compatible provider reads overrides from environment variables or from an env file in jcode's app config directory. On macOS that is `~/Library/Application Support/jcode/`, so the default file is:
 
 ```text
-~/.config/jcode/openai-compatible.env
+~/Library/Application Support/jcode/openai-compatible.env
 ```
 
 Example for a local or LAN vLLM server:
@@ -742,8 +742,7 @@ Add `--dry-run` to preview what would be removed without deleting anything.
 
 | Platform | Status |
 |---|---|
-| **Linux** x86_64 / aarch64 | Fully supported |
-| **macOS** Apple Silicon & Intel | Supported |
-| **Termux** aarch64 / x86_64 | Supported with `pkg install glibc patchelf` |
+| **macOS** Apple Silicon & Intel | The only supported platform |
+| Linux / Windows / Termux | Not supported — this fork deleted all non-macOS code paths (see [docs/FORK_WORKFLOW.md](docs/FORK_WORKFLOW.md) §1) |
 
 </div>

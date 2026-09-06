@@ -109,10 +109,10 @@ fn test_body_cache_state_evicts_oldest_entries() {
             centered: false,
             mermaid_aspect_bucket: None,
             pin_images: true,
-        inline_images_visible: true,
+            inline_images_visible: true,
             images_signature: (0, 0),
-        expanded_images_version: 0,
-        swarm_members_signature: 0,
+            expanded_images_version: 0,
+            swarm_members_signature: 0,
         };
         let prepared = Arc::new(PreparedMessages {
             wrapped_lines: vec![Line::from(format!("{idx}"))],
@@ -127,8 +127,8 @@ fn test_body_cache_state_evicts_oldest_entries() {
             image_regions: Vec::new(),
             edit_tool_ranges: Vec::new(),
             copy_targets: Vec::new(),
-        message_boundaries: Vec::new(),
-        mermaid_pending_epoch: None,
+            message_boundaries: Vec::new(),
+            mermaid_pending_epoch: None,
         });
         cache.insert(key, prepared, idx, 0);
     }
@@ -486,11 +486,11 @@ fn test_full_prep_cache_state_keeps_multiple_width_entries() {
         streaming_text_len: 0,
         streaming_text_hash: 0,
         batch_progress_hash: 0,
-    inline_images_signature: (0, 0),
+        inline_images_signature: (0, 0),
         expanded_images_version: 0,
         swarm_members_signature: 0,
         header_signature: 0,
-    inline_images_visible: true,
+        inline_images_visible: true,
     };
     let key_b = FullPrepCacheKey {
         width: 39,
@@ -595,11 +595,11 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
             streaming_text_len: 0,
             streaming_text_hash: 0,
             batch_progress_hash: 0,
-        inline_images_signature: (0, 0),
-        expanded_images_version: 0,
-        swarm_members_signature: 0,
-        header_signature: 0,
-        inline_images_visible: true,
+            inline_images_signature: (0, 0),
+            expanded_images_version: 0,
+            swarm_members_signature: 0,
+            header_signature: 0,
+            inline_images_visible: true,
         };
         let prepared = make_prepared_chat_frame(Arc::new(PreparedMessages {
             wrapped_lines: vec![Line::from(format!("{idx}"))],
@@ -614,8 +614,8 @@ fn test_full_prep_cache_state_evicts_oldest_entries() {
             image_regions: Vec::new(),
             edit_tool_ranges: Vec::new(),
             copy_targets: Vec::new(),
-        message_boundaries: Vec::new(),
-        mermaid_pending_epoch: None,
+            message_boundaries: Vec::new(),
+            mermaid_pending_epoch: None,
         }));
         cache.insert(key, prepared);
     }
@@ -641,11 +641,11 @@ fn test_full_prep_cache_state_accepts_large_single_entry_within_total_budget() {
         streaming_text_len: 0,
         streaming_text_hash: 0,
         batch_progress_hash: 0,
-    inline_images_signature: (0, 0),
+        inline_images_signature: (0, 0),
         expanded_images_version: 0,
         swarm_members_signature: 0,
         header_signature: 0,
-    inline_images_visible: true,
+        inline_images_visible: true,
     };
     let prepared = make_prepared_chat_frame_with_content_bytes(3 * 1024 * 1024, "full-large-");
 
@@ -674,11 +674,11 @@ fn test_full_prep_cache_state_retains_oversized_hot_entry() {
         streaming_text_len: 4096,
         streaming_text_hash: 12345,
         batch_progress_hash: 0,
-    inline_images_signature: (0, 0),
+        inline_images_signature: (0, 0),
         expanded_images_version: 0,
         swarm_members_signature: 0,
         header_signature: 0,
-    inline_images_visible: true,
+        inline_images_visible: true,
     };
     let prepared = make_oversized_prepared_chat_frame("full-oversized-");
 
@@ -709,11 +709,11 @@ fn test_full_prep_cache_state_keeps_two_oversized_width_entries_hot() {
         streaming_text_len: 4096,
         streaming_text_hash: 12345,
         batch_progress_hash: 0,
-    inline_images_signature: (0, 0),
+        inline_images_signature: (0, 0),
         expanded_images_version: 0,
         swarm_members_signature: 0,
         header_signature: 0,
-    inline_images_visible: true,
+        inline_images_visible: true,
     };
     let key_b = FullPrepCacheKey {
         width: 139,
@@ -953,7 +953,10 @@ fn assert_prepared_equivalent(a: &PreparedMessages, b: &PreparedMessages, ctx: &
             x.abs_line_idx, y.abs_line_idx,
             "{ctx}: image_region abs_line_idx differ"
         );
-        assert_eq!(x.end_line, y.end_line, "{ctx}: image_region end_line differ");
+        assert_eq!(
+            x.end_line, y.end_line,
+            "{ctx}: image_region end_line differ"
+        );
     }
     assert_eq!(
         a.edit_tool_ranges.len(),
@@ -965,7 +968,10 @@ fn assert_prepared_equivalent(a: &PreparedMessages, b: &PreparedMessages, ctx: &
             x.start_line, y.start_line,
             "{ctx}: edit_tool_range start_line differ"
         );
-        assert_eq!(x.end_line, y.end_line, "{ctx}: edit_tool_range end_line differ");
+        assert_eq!(
+            x.end_line, y.end_line,
+            "{ctx}: edit_tool_range end_line differ"
+        );
     }
     assert_eq!(
         a.copy_targets.len(),
@@ -1005,7 +1011,9 @@ fn test_prefix_reuse_tail_edit_matches_full_build() {
     let base_state = TestState {
         display_messages: vec![
             DisplayMessage::user("first prompt"),
-            DisplayMessage::assistant("a fairly long answer that wraps across the width boundary here"),
+            DisplayMessage::assistant(
+                "a fairly long answer that wraps across the width boundary here",
+            ),
             DisplayMessage::user("second prompt"),
             DisplayMessage::assistant("partial"),
         ],
@@ -1016,17 +1024,20 @@ fn test_prefix_reuse_tail_edit_matches_full_build() {
     let edited_state = TestState {
         display_messages: vec![
             DisplayMessage::user("first prompt"),
-            DisplayMessage::assistant("a fairly long answer that wraps across the width boundary here"),
+            DisplayMessage::assistant(
+                "a fairly long answer that wraps across the width boundary here",
+            ),
             DisplayMessage::user("second prompt"),
-            DisplayMessage::assistant("partial answer is now complete and considerably longer than before"),
+            DisplayMessage::assistant(
+                "partial answer is now complete and considerably longer than before",
+            ),
         ],
         messages_version: 2,
         ..Default::default()
     };
 
     let base = Arc::new(super::prepare::prepare_body(&base_state, width, false));
-    let k =
-        super::prepare::matching_prefix_len(base.as_ref(), &edited_state.display_messages);
+    let k = super::prepare::matching_prefix_len(base.as_ref(), &edited_state.display_messages);
     assert_eq!(k, 3, "only the last message changed");
 
     let mut reuse = base;
@@ -1115,7 +1126,6 @@ fn test_prefix_reuse_truncation_matches_full_build() {
 /// stays fast even when the toolchain never returns, and the resulting body
 /// carries the pending stamp, without which the placeholder would never be
 /// replaced by the finished image.
-#[cfg(unix)]
 #[test]
 fn test_prepare_body_with_math_never_blocks_on_a_stalled_tex_toolchain() {
     use std::io::Write as _;

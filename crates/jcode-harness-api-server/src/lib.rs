@@ -22,9 +22,7 @@ use jcode_harness_api::{API_VERSION_MAJOR, ApiEvent, ErrorCode, ServerFrame};
 use serde_json::Value;
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-// Unix sockets on Unix, named pipes on Windows, one API. Without this the
-// bridge simply did not compile for Windows, so the SDK could not run there at
-// all.
+// Local IPC transport: Unix domain sockets behind one small API.
 use jcode_transport::{Listener, Stream};
 
 // Socket paths live in `jcode-harness-api` so clients and the bridge can never
@@ -62,13 +60,11 @@ where
 }
 
 /// Run the bridge accept loop forever.
-#[cfg(unix)]
 pub(crate) struct InstanceLock {
     _file: std::fs::File,
     path: PathBuf,
 }
 
-#[cfg(unix)]
 impl Drop for InstanceLock {
     fn drop(&mut self) {
         // Best effort: the flock is released by the fd close regardless, and a
@@ -80,7 +76,6 @@ impl Drop for InstanceLock {
 /// Take the exclusive bridge lock beside the API socket, or report that a live
 /// bridge already holds it. `flock` is released by the kernel when the holder
 /// dies, so a crashed bridge never wedges the next one out.
-#[cfg(unix)]
 pub(crate) fn single_instance_lock(api_socket: &std::path::Path) -> Result<Option<InstanceLock>> {
     use std::os::fd::AsRawFd;
 
@@ -109,7 +104,6 @@ pub async fn run_bridge(api_socket: PathBuf, legacy_socket: PathBuf) -> Result<(
     // Whoever lost the race had its clients dropped. Refusing to start when a
     // live bridge holds the lock makes on-demand spawning idempotent, which is
     // what every caller already assumes.
-    #[cfg(unix)]
     let _lock = match single_instance_lock(&api_socket)? {
         Some(lock) => lock,
         None => {
@@ -120,23 +114,12 @@ pub async fn run_bridge(api_socket: PathBuf, legacy_socket: PathBuf) -> Result<(
             return Ok(());
         }
     };
-    // A stale socket file blocks bind on Unix. On Windows there is no file to
-    // remove: the pipe namespace is not the filesystem. Safe to unlink here
-    // only because we hold the exclusive lock above, so no live bridge owns it.
-    #[cfg(unix)]
+    // A stale socket file blocks bind. Safe to unlink here only because we
+    // hold the exclusive lock above, so no live bridge owns it.
     let _ = std::fs::remove_file(&api_socket);
     if let Some(parent) = api_socket.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-    // `mut` only on Windows: the named-pipe listener republishes a pipe
-    // instance on every accept, so accepting takes `&mut self`. Unix's
-    // UnixListener::accept takes `&self`, and an unconditional `mut` there is
-    // an unused_mut warning, so the binding is declared per platform rather
-    // than warning on every build.
-    #[cfg(windows)]
-    let mut listener = Listener::bind(&api_socket)
-        .with_context(|| format!("bind API socket {}", api_socket.display()))?;
-    #[cfg(unix)]
     let listener = Listener::bind(&api_socket)
         .with_context(|| format!("bind API socket {}", api_socket.display()))?;
     // Restrict the socket to its owner, matching the daemon socket it fronts.
@@ -146,10 +129,6 @@ pub async fn run_bridge(api_socket: PathBuf, legacy_socket: PathBuf) -> Result<(
     // any local user could drive sessions, read transcripts, and spend the
     // owner's provider tokens. A bridge must never be more permissive than
     // the thing it bridges to.
-    //
-    // Unix only: a Windows named pipe carries an ACL rather than a file mode,
-    // and the transport applies it when publishing the pipe.
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&api_socket, std::fs::Permissions::from_mode(0o600))

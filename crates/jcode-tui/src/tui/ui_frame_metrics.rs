@@ -887,93 +887,25 @@ fn host_load_and_cpu_count() -> (Option<f64>, Option<usize>) {
     (load, cpus)
 }
 
-#[cfg(target_os = "linux")]
-fn read_loadavg_1m() -> Option<f64> {
-    std::fs::read_to_string("/proc/loadavg")
-        .ok()?
-        .split_whitespace()
-        .next()?
-        .parse::<f64>()
-        .ok()
-}
-
-#[cfg(not(target_os = "linux"))]
 fn read_loadavg_1m() -> Option<f64> {
     None
 }
 
-#[cfg(target_os = "linux")]
-fn host_memory_mb() -> (Option<u64>, Option<u64>) {
-    let Ok(contents) = std::fs::read_to_string("/proc/meminfo") else {
-        return (None, None);
-    };
-    let mut available_kb = None;
-    let mut total_kb = None;
-    for line in contents.lines() {
-        if let Some(rest) = line.strip_prefix("MemAvailable:") {
-            available_kb = parse_meminfo_kb(rest);
-        } else if let Some(rest) = line.strip_prefix("MemTotal:") {
-            total_kb = parse_meminfo_kb(rest);
-        }
-        if available_kb.is_some() && total_kb.is_some() {
-            break;
-        }
-    }
-    (
-        available_kb.map(|kb| kb / 1024),
-        total_kb.map(|kb| kb / 1024),
-    )
-}
-
-#[cfg(not(target_os = "linux"))]
 fn host_memory_mb() -> (Option<u64>, Option<u64>) {
     (None, None)
 }
 
-#[cfg(target_os = "linux")]
-fn parse_meminfo_kb(rest: &str) -> Option<u64> {
-    rest.split_whitespace().next()?.parse::<u64>().ok()
-}
-
-#[cfg(target_os = "linux")]
-fn process_rss_mb() -> Option<u64> {
-    let contents = std::fs::read_to_string("/proc/self/status").ok()?;
-    contents.lines().find_map(|line| {
-        line.strip_prefix("VmRSS:")
-            .and_then(parse_meminfo_kb)
-            .map(|kb| kb / 1024)
-    })
-}
-
-#[cfg(not(target_os = "linux"))]
 fn process_rss_mb() -> Option<u64> {
     None
 }
 
-#[cfg(target_os = "linux")]
-fn process_cpu_ticks() -> Option<u64> {
-    let contents = std::fs::read_to_string("/proc/self/stat").ok()?;
-    let after_comm = contents.rsplit_once(") ")?.1;
-    let fields: Vec<&str> = after_comm.split_whitespace().collect();
-    let user_ticks: u64 = fields.get(11)?.parse().ok()?;
-    let system_ticks: u64 = fields.get(12)?.parse().ok()?;
-    Some(user_ticks.saturating_add(system_ticks))
-}
-
-#[cfg(not(target_os = "linux"))]
 fn process_cpu_ticks() -> Option<u64> {
     None
 }
 
-#[cfg(unix)]
 fn clock_ticks_per_second() -> Option<f64> {
     let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
     if ticks > 0 { Some(ticks as f64) } else { None }
-}
-
-#[cfg(not(unix))]
-fn clock_ticks_per_second() -> Option<f64> {
-    None
 }
 
 fn maybe_record_flicker_event(history: &mut FlickerFrameHistory, current: &FlickerFrameSample) {

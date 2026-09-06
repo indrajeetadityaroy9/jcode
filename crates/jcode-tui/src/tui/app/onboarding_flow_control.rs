@@ -736,11 +736,7 @@ impl App {
         self.onboarding_import_failed_provider = approved
             .first()
             .and_then(|&i| candidates.get(i))
-            .and_then(|c| {
-                c.auth_labels()
-                    .first()
-                    .map(|(p, _)| p.to_string())
-            });
+            .and_then(|c| c.auth_labels().first().map(|(p, _)| p.to_string()));
         // Kick off the import on the runtime; the LoginCompleted event advances
         // onboarding and activates the provider.
         self.set_status_notice("Login: importing selected logins...");

@@ -98,11 +98,8 @@ impl App {
         } else {
             crate::process_title::set_client_remote_display_title(server_name, &session_name);
         }
-        let window_title = crate::process_title::terminal_window_title(
-            icon,
-            display_title,
-            Some(&fallback_label),
-        );
+        let window_title =
+            crate::process_title::terminal_window_title(icon, display_title, Some(&fallback_label));
         let _ = crossterm::execute!(
             std::io::stdout(),
             crossterm::terminal::SetTitle(window_title)

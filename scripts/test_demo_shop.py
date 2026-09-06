@@ -8,7 +8,6 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("demo_shop.py")
-LAUNCHER = Path(__file__).with_name("launch_agentcard_discovery_demo.sh")
 SPEC = importlib.util.spec_from_file_location("demo_shop", SCRIPT)
 assert SPEC and SPEC.loader
 shop = importlib.util.module_from_spec(SPEC)
@@ -94,26 +93,6 @@ class DemoShopTests(unittest.TestCase):
 
     def test_totals_are_deterministic(self):
         self.assertEqual(shop.totals(["charger-65w"]), (39.99, 0.0, 3.2, 43.19))
-
-    def test_launcher_prompt_names_neither_target_tool_nor_discovery(self):
-        prompt_line = next(
-            line
-            for line in LAUNCHER.read_text(encoding="utf-8").splitlines()
-            if line.startswith("PROMPT=")
-        )
-        lowered = prompt_line.lower()
-        self.assertIn("Use `./bin/jcode-demo-shop`", prompt_line)
-        self.assertIn("USB-C laptop charger", prompt_line)
-        self.assertIn("work through any prerequisites", lowered)
-        self.assertIn("ask me for confirmation immediately before", lowered)
-        self.assertIn("prepaid card", lowered)
-        self.assertNotIn("agentcard", lowered)
-        self.assertNotIn("discover_tools", lowered)
-        self.assertNotIn("discovery", lowered)
-        self.assertNotIn("missing capability", lowered)
-        self.assertNotIn("setup instructions", lowered)
-        self.assertNotIn("prepare-checkout", lowered)
-        self.assertNotIn("charger-65w", lowered)
 
 
 if __name__ == "__main__":

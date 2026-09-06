@@ -113,7 +113,6 @@ fn test_dev_binary_source_metadata_mismatch_rejects_publish_candidate() {
     assert!(error.to_string().contains("999999999999aaaa"));
 }
 
-#[cfg(unix)]
 #[test]
 fn test_smoke_test_server_protocol_uses_fresh_connection_after_ping() {
     use std::io::{BufRead, BufReader, Write};
@@ -418,8 +417,8 @@ fn shared_server_candidate_allows_shared_channel_matching_stable() {
         update_shared_server_symlink(installed_version).expect("update shared server");
         update_stable_symlink(installed_version).expect("update stable");
 
-        let candidate = shared_server_update_candidate()
-            .expect("expected matching shared-server candidate");
+        let candidate =
+            shared_server_update_candidate().expect("expected matching shared-server candidate");
         assert_eq!(candidate.1, "shared-server");
     });
 }

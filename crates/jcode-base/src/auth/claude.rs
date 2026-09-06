@@ -698,9 +698,8 @@ fn load_claude_code_env_credentials() -> Option<ClaudeCredentials> {
 }
 
 /// macOS: read Claude Code's OAuth credentials from the login Keychain item
-/// (`Claude Code-credentials`). Returns `None` on non-macOS platforms, when the
-/// item is missing, or when the Keychain is locked/inaccessible (e.g. over SSH).
-#[cfg(target_os = "macos")]
+/// (`Claude Code-credentials`). Returns `None` when the item is missing or when
+/// the Keychain is locked/inaccessible (e.g. over SSH).
 fn load_claude_code_keychain_credentials() -> Option<ClaudeCredentials> {
     let blob = read_claude_code_keychain_blob()?;
     match parse_claude_code_credentials_blob(&blob) {
@@ -712,11 +711,6 @@ fn load_claude_code_keychain_credentials() -> Option<ClaudeCredentials> {
             None
         }
     }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn load_claude_code_keychain_credentials() -> Option<ClaudeCredentials> {
-    None
 }
 
 /// Shell out to `security find-generic-password -w` to read the Claude Code
@@ -811,7 +805,6 @@ fn keychain_reads_sandboxed() -> bool {
 
 /// macOS: cheaply check whether the Claude Code Keychain item exists without
 /// reading (and therefore without unlocking/prompting for) its secret value.
-#[cfg(target_os = "macos")]
 fn claude_code_keychain_item_exists() -> bool {
     use std::process::{Command, Stdio};
 
@@ -826,11 +819,6 @@ fn claude_code_keychain_item_exists() -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn claude_code_keychain_item_exists() -> bool {
-    false
 }
 
 /// Load Claude Code's native (Keychain or env) credentials, preferring the env
@@ -861,11 +849,7 @@ pub fn native_source_display_name() -> &'static str {
     {
         return "Claude Code (CLAUDE_CODE_OAUTH_TOKEN)";
     }
-    if cfg!(target_os = "macos") {
-        "Claude Code (macOS Keychain)"
-    } else {
-        "Claude Code (native credentials)"
-    }
+    "Claude Code (macOS Keychain)"
 }
 
 /// A display-only "path" hint for the native source, used by review UIs that
@@ -878,11 +862,7 @@ pub fn native_source_path_hint() -> PathBuf {
     {
         return PathBuf::from(format!("env:{CLAUDE_CODE_OAUTH_TOKEN_ENV}"));
     }
-    if cfg!(target_os = "macos") {
-        PathBuf::from(format!("keychain:{CLAUDE_CODE_KEYCHAIN_SERVICE}"))
-    } else {
-        PathBuf::from("claude-code-native")
-    }
+    PathBuf::from(format!("keychain:{CLAUDE_CODE_KEYCHAIN_SERVICE}"))
 }
 
 /// Remember approval to import Claude Code's native credentials.

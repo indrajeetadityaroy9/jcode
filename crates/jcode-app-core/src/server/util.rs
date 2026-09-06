@@ -87,16 +87,7 @@ pub(crate) fn server_update_candidate() -> Option<(PathBuf, &'static str)> {
 /// downgrade. Any mtime uncertainty is treated as "do not downgrade".
 pub(crate) fn reload_exec_target() -> Option<(PathBuf, &'static str)> {
     let candidate = server_update_candidate()?;
-    // On Linux an in-place rebuild rewrites the running binary (a dirty
-    // build reuses the same `versions/<hash>` path), which unlinks the running
-    // inode. `current_exe()` then resolves `/proc/self/exe` to a path with a
-    // trailing " (deleted)" marker that is NOT a real file. If we keep that
-    // marker we (a) fail the "same binary" fast-path below, (b) read no mtime so
-    // the freshly-built candidate looks like a downgrade, and (c) fall back to
-    // re-execing the bogus " (deleted)" path, which does not exist -> the server
-    // exits without a replacement and strands every connected client. Strip the
-    // marker so we compare against (and can re-exec) the real on-disk path.
-    let current_exe = std::env::current_exe().ok().map(strip_deleted_suffix);
+    let current_exe = std::env::current_exe().ok();
 
     // Identity/mtime comparisons must look through release wrapper scripts to
     // the payload that actually runs (see `build::resolve_binary_payload`):
@@ -200,18 +191,6 @@ fn guarded_reload_target(
 
 fn canonicalize_or(path: PathBuf) -> PathBuf {
     std::fs::canonicalize(&path).unwrap_or(path)
-}
-
-/// Strip the Linux `/proc/self/exe` " (deleted)" marker that appears when the
-/// running binary has been unlinked or replaced in place. The marker is part of
-/// the readlink target, not the real filename, so removing it recovers the path
-/// that may now point at the freshly written replacement binary.
-fn strip_deleted_suffix(path: PathBuf) -> PathBuf {
-    const DELETED_MARKER: &str = " (deleted)";
-    if let Some(stripped) = path.to_str().and_then(|s| s.strip_suffix(DELETED_MARKER)) {
-        return PathBuf::from(stripped);
-    }
-    path
 }
 
 pub(crate) fn git_common_dir_for(path: &Path) -> Option<PathBuf> {
@@ -382,17 +361,13 @@ pub(crate) fn server_has_newer_binary() -> bool {
     // the running binary, excludes reloading into ourselves, and treats any
     // uncertainty (unreadable mtime) as "no update".
     //
-    // Strip the Linux " (deleted)" marker (see `strip_deleted_suffix`) so an
-    // in-place rebuild does not make the running binary's mtime unreadable and
-    // suppress a legitimate update signal.
-    //
     // All paths are resolved through `build::resolve_binary_payload` so release
     // installs (channel symlink -> wrapper script -> `.bin` payload) compare the
     // payload that actually runs. Comparing the wrapper script against the
     // running payload compared two different files with unrelated mtimes, which
     // could report a phantom update forever and wedge clients into an infinite
     // reload loop right after `/update`.
-    let current_exe = std::env::current_exe().ok().map(strip_deleted_suffix);
+    let current_exe = std::env::current_exe().ok();
     let current_canonical = current_exe
         .as_ref()
         .map(|path| build::resolve_binary_payload(path));
@@ -905,33 +880,5 @@ mod reload_candidate_integration_tests {
         } else {
             crate::env::remove_var("JCODE_HOME");
         }
-    }
-}
-
-#[cfg(test)]
-mod deleted_suffix_tests {
-    use super::strip_deleted_suffix;
-    use std::path::PathBuf;
-
-    #[test]
-    fn strips_linux_deleted_marker() {
-        let p = PathBuf::from("/home/u/.jcode/builds/versions/abc/jcode (deleted)");
-        assert_eq!(
-            strip_deleted_suffix(p),
-            PathBuf::from("/home/u/.jcode/builds/versions/abc/jcode")
-        );
-    }
-
-    #[test]
-    fn leaves_normal_paths_untouched() {
-        let p = PathBuf::from("/home/u/.jcode/builds/versions/abc/jcode");
-        assert_eq!(strip_deleted_suffix(p.clone()), p);
-    }
-
-    #[test]
-    fn only_strips_trailing_marker() {
-        // A path that merely contains the substring must not be altered.
-        let p = PathBuf::from("/home/u/jcode (deleted)/jcode");
-        assert_eq!(strip_deleted_suffix(p.clone()), p);
     }
 }

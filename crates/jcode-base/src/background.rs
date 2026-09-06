@@ -1177,17 +1177,10 @@ impl BackgroundTaskManager {
                 return Ok(false);
             };
 
-            #[cfg(unix)]
-            {
-                let _ = crate::platform::signal_detached_process_group(pid, libc::SIGTERM);
-                tokio::time::sleep(_graceful_timeout).await;
-                if crate::platform::is_process_running(pid) {
-                    let _ = crate::platform::signal_detached_process_group(pid, libc::SIGKILL);
-                }
-            }
-            #[cfg(windows)]
-            {
-                let _ = crate::platform::signal_detached_process_group(pid, 0);
+            let _ = crate::platform::signal_detached_process_group(pid, libc::SIGTERM);
+            tokio::time::sleep(_graceful_timeout).await;
+            if crate::platform::is_process_running(pid) {
+                let _ = crate::platform::signal_detached_process_group(pid, libc::SIGKILL);
             }
 
             let completed_at = Utc::now();

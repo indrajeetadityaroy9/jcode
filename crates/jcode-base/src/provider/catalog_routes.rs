@@ -263,7 +263,7 @@ pub(super) fn multiprovider_model_routes(provider: &MultiProvider) -> Vec<ModelR
     // flooded with hundreds of unusable entries.
     routes.retain(|route| is_listable_model_name(&route.model));
 
-    let mut routes = dedupe_model_routes(routes);
+    let routes = dedupe_model_routes(routes);
 
     // Structured, always-on summary of catalog route building. This is the
     // single most useful line for the recurring "model picker empty / only

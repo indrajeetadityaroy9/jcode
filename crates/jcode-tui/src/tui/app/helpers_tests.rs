@@ -172,7 +172,6 @@ fn swarm_effort_display_labels_are_marked_beta() {
     assert_eq!(effort_display_label("high"), "High");
 }
 
-#[cfg(unix)]
 #[test]
 fn detected_resume_terminal_recognizes_handterm_term_program() {
     let _env_lock = crate::storage::lock_test_env();
@@ -180,7 +179,6 @@ fn detected_resume_terminal_recognizes_handterm_term_program() {
     assert_eq!(detected_resume_terminal().as_deref(), Some("handterm"));
 }
 
-#[cfg(unix)]
 #[test]
 fn shell_command_quotes_single_quotes_for_handterm_exec() {
     let command = shell_command(&[
@@ -194,42 +192,8 @@ fn shell_command_quotes_single_quotes_for_handterm_exec() {
     );
 }
 
-/// #715: `spawn_in_new_terminal` was `#[cfg(not(unix))] -> Ok(false)`, so every
-/// in-app spawn (`/judge`, `/fork`, `/review`, `/transfer`, crash-restore)
-/// silently printed "No terminal found" on Windows while the launcher below it
-/// was already Windows-capable.
-///
-/// A cfg'd-out stub cannot be caught by a test that only runs on the platform
-/// where it is absent, so this asserts the property that actually matters and
-/// is checkable everywhere: the function is compiled on every platform, and
-/// the arguments it hands the launcher are platform-independent.
-#[test]
-fn resume_spawn_is_compiled_on_every_platform_with_platform_neutral_args() {
-    // Referencing the item is the assertion: if it were cfg'd out for any
-    // target, that target would fail to build this test.
-    let _: fn(&std::path::Path, &str, &std::path::Path, Option<&str>) -> anyhow::Result<bool> =
-        super::spawn_in_new_terminal;
-
-    // The invocation it forwards must not vary by platform, so Windows gets
-    // exactly what macOS/Linux get.
-    let args = resume_invocation_args("ses_715", None);
-    assert!(
-        args.iter().any(|a| a == "--resume"),
-        "resume invocation lost its --resume flag: {args:?}"
-    );
-    assert!(
-        args.iter().any(|a| a == "ses_715"),
-        "resume invocation lost the session id: {args:?}"
-    );
-    assert!(
-        args.iter().all(|a| !a.contains('\\')),
-        "resume args must not embed platform-specific separators: {args:?}"
-    );
-}
-
-/// #715, the behavioral half. The compile-time guard above proves
-/// `spawn_in_new_terminal` exists on every target; this proves the invocation
-/// it builds actually reaches a launcher and gets spawned.
+/// #715, the behavioral half: the invocation `spawn_in_new_terminal` builds
+/// must actually reach a launcher and get spawned.
 ///
 /// Drives `spawn_command_in_new_terminal_with`, the injectable seam the real
 /// path bottoms out in, and records what the spawner was handed. Using the

@@ -2214,7 +2214,6 @@ dependencies = [
  "futures",
  "hex",
  "jcode-build-meta",
- "jcode-dev-types",
  "jcode-harness-api-server",
  "jcode-provider-anthropic-runtime",
  "jcode-provider-antigravity-runtime",
@@ -2246,7 +2245,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2310,7 +2308,6 @@ dependencies = [
  "jcode-tool-types",
  "jcode-update-core",
  "libc",
- "open",
  "rand 0.9.3",
  "ratatui",
  "regex",
@@ -2329,7 +2326,6 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2423,7 +2419,6 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2484,7 +2479,6 @@ dependencies = [
  "rand 0.9.3",
  "unicode-properties",
  "unicode-segmentation",
- "windows-sys 0.59.0",
 ]
 
 [[package]]

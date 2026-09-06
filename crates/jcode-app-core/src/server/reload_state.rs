@@ -3,9 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
 
-#[cfg(target_os = "linux")]
-const RELOAD_HANDOFF_EVENT_POLL_MS: i32 = 100;
-
 pub fn reload_marker_path() -> PathBuf {
     crate::storage::runtime_dir().join("jcode.reload")
 }
@@ -132,7 +129,6 @@ pub fn reload_process_alive(pid: u32) -> bool {
         return false;
     }
 
-    #[cfg(unix)]
     {
         let rc = unsafe { libc::kill(pid as i32, 0) };
         if rc == 0 {
@@ -140,12 +136,6 @@ pub fn reload_process_alive(pid: u32) -> bool {
         }
         let err = std::io::Error::last_os_error();
         matches!(err.raw_os_error(), Some(libc::EPERM))
-    }
-
-    #[cfg(not(unix))]
-    {
-        let _ = pid;
-        true
     }
 }
 
@@ -271,17 +261,6 @@ pub async fn wait_for_reload_handoff_event(
         socket_path.display(),
         reloading_pid
     ));
-    #[cfg(target_os = "linux")]
-    {
-        let marker_path = reload_marker_path();
-        let socket_path = socket_path.to_path_buf();
-        let _ = tokio::task::spawn_blocking(move || {
-            wait_for_reload_handoff_event_blocking(&marker_path, &socket_path, reloading_pid)
-        })
-        .await;
-    }
-
-    #[cfg(not(target_os = "linux"))]
     {
         let _ = (reloading_pid, socket_path);
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -291,120 +270,6 @@ pub async fn wait_for_reload_handoff_event(
         socket_path.display(),
         reloading_pid
     ));
-}
-
-#[cfg(target_os = "linux")]
-fn wait_for_reload_handoff_event_blocking(
-    marker_path: &std::path::Path,
-    socket_path: &std::path::Path,
-    reloading_pid: Option<u32>,
-) {
-    use std::collections::HashSet;
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-
-    let mut watch_paths: HashSet<std::path::PathBuf> = HashSet::new();
-    if let Some(parent) = marker_path.parent() {
-        watch_paths.insert(parent.to_path_buf());
-    }
-    if let Some(parent) = socket_path.parent() {
-        watch_paths.insert(parent.to_path_buf());
-    }
-    if let Some(pid) = reloading_pid {
-        let proc_path = std::path::PathBuf::from(format!("/proc/{pid}"));
-        if proc_path.exists() {
-            watch_paths.insert(proc_path);
-        }
-    }
-
-    if watch_paths.is_empty() {
-        crate::logging::warn("wait_for_reload_handoff_event_blocking: no watch paths available");
-        return;
-    }
-
-    crate::logging::info(&format!(
-        "wait_for_reload_handoff_event_blocking: marker={} socket={} pid={:?} watch_paths={:?}",
-        marker_path.display(),
-        socket_path.display(),
-        reloading_pid,
-        watch_paths
-    ));
-
-    unsafe {
-        let fd = libc::inotify_init1(libc::IN_CLOEXEC);
-        if fd < 0 {
-            crate::logging::warn(&format!(
-                "wait_for_reload_handoff_event_blocking: inotify_init1 failed: {} ({})",
-                std::io::Error::last_os_error(),
-                crate::util::process_fd_diagnostic_snapshot()
-            ));
-            return;
-        }
-
-        let mask = libc::IN_CREATE
-            | libc::IN_MOVED_TO
-            | libc::IN_ATTRIB
-            | libc::IN_MODIFY
-            | libc::IN_CLOSE_WRITE
-            | libc::IN_DELETE
-            | libc::IN_MOVE_SELF
-            | libc::IN_DELETE_SELF;
-
-        let mut has_watch = false;
-        for path in watch_paths {
-            let Ok(path) = CString::new(path.as_os_str().as_bytes()) else {
-                continue;
-            };
-            if libc::inotify_add_watch(fd, path.as_ptr(), mask) >= 0 {
-                has_watch = true;
-            }
-        }
-
-        if !has_watch {
-            crate::logging::warn(
-                "wait_for_reload_handoff_event_blocking: failed to register any inotify watches",
-            );
-            let _ = libc::close(fd);
-            return;
-        }
-
-        let mut poll_fd = libc::pollfd {
-            fd,
-            events: libc::POLLIN,
-            revents: 0,
-        };
-
-        loop {
-            let ready = libc::poll(&mut poll_fd, 1, RELOAD_HANDOFF_EVENT_POLL_MS);
-            if ready > 0 && (poll_fd.revents & libc::POLLIN) != 0 {
-                let mut buf = [0u8; 512];
-                let _ = libc::read(fd, buf.as_mut_ptr() as *mut _, buf.len());
-                crate::logging::info(
-                    "wait_for_reload_handoff_event_blocking: observed filesystem/process event",
-                );
-                break;
-            }
-            if ready == 0 {
-                crate::logging::info(
-                    "wait_for_reload_handoff_event_blocking: timed poll elapsed; rechecking reload state",
-                );
-                break;
-            }
-            if ready < 0 {
-                let err = std::io::Error::last_os_error();
-                if err.kind() == std::io::ErrorKind::Interrupted {
-                    continue;
-                }
-                crate::logging::warn(&format!(
-                    "wait_for_reload_handoff_event_blocking: poll failed: {}",
-                    err
-                ));
-                break;
-            }
-        }
-
-        let _ = libc::close(fd);
-    }
 }
 
 #[derive(Clone, Debug)]

@@ -69,21 +69,13 @@ pub fn apply_oauth_attribution_headers(
         .header("anthropic-dangerous-direct-browser-access", "true")
 }
 
-/// Available models
-pub const AVAILABLE_MODELS: &[&str] = &[
-    "claude-opus-5",
-    "claude-fable-5",
-    "claude-opus-4-8",
-    "claude-opus-4-6",
-    "claude-opus-4-6[1m]",
-    "claude-sonnet-5",
-    "claude-sonnet-4-6",
-    "claude-sonnet-4-6[1m]",
-    "claude-haiku-4-5",
-    "claude-opus-4-5",
-    "claude-sonnet-4-5",
-    "claude-sonnet-4-20250514",
-];
+/// Available models.
+///
+/// Re-exported rather than re-listed: this was a byte-identical copy of
+/// `jcode_provider_core::ALL_CLAUDE_MODELS` (its first entry spelled out as
+/// `"claude-opus-5"` instead of `DEFAULT_CLAUDE_MODEL`), so the two drifted
+/// independently every time a model shipped.
+pub use jcode_provider_core::ALL_CLAUDE_MODELS as AVAILABLE_MODELS;
 
 pub fn load_anthropic_api_key() -> Result<String> {
     if std::env::var("JCODE_ANTHROPIC_AUTH")

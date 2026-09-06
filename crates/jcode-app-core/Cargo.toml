@@ -56,7 +56,6 @@ base64 = "0.22"
 sha2 = "0.10"
 rand = "0.9.3"
 url = "2"
-open = "5"               # Open URLs in browser
 jcode-agent-runtime = { path = "../jcode-agent-runtime" }
 jcode-ambient-types = { path = "../jcode-ambient-types" }
 jcode-provider-core = { path = "../jcode-provider-core" }
@@ -142,6 +141,4 @@ async-stream = "0.3"
 # test/bench/example builds, not to a normal `cargo build`.
 jcode-base = { path = "../jcode-base", default-features = false, features = ["test-support"] }
 
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
 

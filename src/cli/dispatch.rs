@@ -15,62 +15,11 @@ use crate::{
 };
 
 use super::{
-    account, acp, commands, debug, hot_exec, login, output, provider_init, terminal,
-    tui_launch,
+    account, acp, commands, debug, hot_exec, login, output, provider_init, terminal, tui_launch,
 };
 use provider_init::ProviderChoice;
 
-fn is_file_controlled_debug_client() -> bool {
-    std::env::var_os("JCODE_DEBUG_CMD_PATH").is_some()
-}
-
-#[cfg(target_os = "linux")]
-fn is_orphan_adopter_name(name: &str) -> bool {
-    matches!(name.trim(), "init" | "systemd")
-}
-
-#[cfg(target_os = "linux")]
-fn parent_is_orphan_adopter(parent_pid: libc::pid_t) -> bool {
-    if parent_pid <= 1 {
-        return true;
-    }
-    std::fs::read_to_string(format!("/proc/{parent_pid}/comm"))
-        .is_ok_and(|name| is_orphan_adopter_name(&name))
-}
-
-/// Tie file-controlled debug clients to the process that launched them.
-///
-/// These clients are automation helpers, not user-owned terminals. Without a
-/// parent-death signal they are reparented to init when a verification script
-/// or debug server exits, retaining a full TUI and session history indefinitely.
-#[cfg(target_os = "linux")]
-fn arm_debug_client_parent_death_signal() {
-    if !is_file_controlled_debug_client() {
-        return;
-    }
-
-    // Capture the parent first, then check it again after prctl. This closes the
-    // race where the launcher exits immediately before the signal is armed.
-    // Safety: getppid has no preconditions and does not dereference pointers.
-    let parent_pid = unsafe { libc::getppid() };
-    // Safety: PR_SET_PDEATHSIG accepts a signal number as its scalar argument.
-    let armed = unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) } == 0;
-    // Safety: getppid has no preconditions and does not dereference pointers.
-    let current_parent_pid = unsafe { libc::getppid() };
-    if armed
-        && (parent_is_orphan_adopter(parent_pid)
-            || current_parent_pid != parent_pid
-            || parent_is_orphan_adopter(current_parent_pid))
-    {
-        std::process::exit(0);
-    }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn arm_debug_client_parent_death_signal() {}
-
 pub(crate) async fn run_main(mut args: Args) -> Result<()> {
-    arm_debug_client_parent_death_signal();
     resolve_resume_arg(&mut args)?;
 
     // One-time config migration: users whose config.toml still carries the old
@@ -383,8 +332,8 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         }) => {
             commands::run_transcript_command(text, map_transcript_mode(mode), session).await?;
         }
-        Some(Command::Dictate { r#type }) => {
-            commands::run_dictate_command(r#type).await?;
+        Some(Command::Dictate) => {
+            commands::run_dictate_command().await?;
         }
         Some(Command::SetupLauncher) => {
             setup_hints::run_setup_launcher()?;
@@ -1240,57 +1189,11 @@ pub(crate) async fn spawn_server(
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
-    #[cfg(unix)]
     {
         let _child = server::spawn_server_notify(&mut cmd).await?;
         startup_profile::mark("server_ready");
     }
-    #[cfg(not(unix))]
-    {
-        use std::io::Read;
 
-        let mut child = cmd.spawn()?;
-        let start = std::time::Instant::now();
-        // Windows server bootstrap can legitimately take tens of seconds on
-        // slow hosts (auth preflights + provider init were observed at 15-60s
-        // on a Windows Server VPS, issue #503). The child's liveness is
-        // checked every poll, so a generous budget only delays the error for
-        // a genuinely hung server, while a crashed server still fails fast
-        // with its stderr.
-        let timeout = std::time::Duration::from_secs(120);
-        while start.elapsed() < timeout {
-            if server::has_live_listener(&socket_path).await {
-                startup_profile::mark("server_ready");
-                return Ok(());
-            }
-
-            if let Some(status) = child.try_wait()? {
-                let mut stderr = String::new();
-                if let Some(mut pipe) = child.stderr.take() {
-                    let _ = pipe.read_to_string(&mut stderr);
-                }
-                let detail = stderr.trim();
-                if detail.is_empty() {
-                    anyhow::bail!("Server exited before becoming ready (status: {})", status);
-                }
-                anyhow::bail!(
-                    "Server exited before becoming ready (status: {}). {}",
-                    status,
-                    detail
-                );
-            }
-
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-
-        anyhow::bail!(
-            "Timed out waiting for server to become ready at {} after {}ms",
-            server::socket_path().display(),
-            timeout.as_millis()
-        );
-    }
-
-    #[cfg(unix)]
     Ok(())
 }
 

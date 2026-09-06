@@ -33,11 +33,9 @@ impl WidgetProviderKind {
                 Self::OpenCode
             }
             Some(provider)
-                if matches!(
-                    provider.as_str(),
-                    "azure-openai"
-                ) || crate::provider_catalog::openai_compatible_profile_by_id(&provider)
-                    .is_some_and(|profile| profile.requires_api_key) =>
+                if matches!(provider.as_str(), "azure-openai")
+                    || crate::provider_catalog::openai_compatible_profile_by_id(&provider)
+                        .is_some_and(|profile| profile.requires_api_key) =>
             {
                 Self::CostBasedApiKey
             }

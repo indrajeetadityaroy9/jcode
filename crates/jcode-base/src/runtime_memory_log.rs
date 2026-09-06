@@ -722,7 +722,7 @@ pub fn build_process_diagnostics(
 
 /// Estimate the resident share of allocator retention (freed-but-held heap).
 ///
-/// mallinfo2's `fordblks` (retained) counts free chunks whether or not their
+/// The allocator's retained counter includes free chunks whether or not their
 /// pages are resident, so cap it by anonymous PSS minus live allocations,
 /// which is the most anon memory that could be freed-but-held.
 pub fn allocator_retained_resident_estimate(

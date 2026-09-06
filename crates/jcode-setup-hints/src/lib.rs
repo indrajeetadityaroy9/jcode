@@ -191,7 +191,6 @@ pub fn launch_jcode_in_macos_terminal(extra_args: &[String]) -> Result<()> {
                 &script_path,
                 format!("#!/bin/bash\nclear\n{shell_command}\n"),
             )?;
-            #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755))?;
