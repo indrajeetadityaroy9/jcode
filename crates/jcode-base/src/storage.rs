@@ -2,7 +2,7 @@
 
 pub use jcode_storage::*;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use std::path::Path;
 
@@ -19,6 +19,63 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
             crate::logging::info(&format!("Recovered from backup: {}", backup_path.display()));
         }
     })
+}
+
+/// Cache of the last value written by [`remember_last_focused_session`], so a
+/// TUI that re-reports the same focused session on every frame does not rewrite
+/// the file each time.
+static LAST_FOCUSED_SESSION_WRITE_CACHE: std::sync::LazyLock<std::sync::Mutex<Option<String>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
+
+fn last_focused_session_path() -> Result<std::path::PathBuf> {
+    Ok(jcode_dir()?.join("last_focused_client_session"))
+}
+
+/// Record `session_id` as the most recently focused client session, so external
+/// text injection (`jcode transcript`) can target it when no session is named.
+pub fn remember_last_focused_session(session_id: &str) -> Result<()> {
+    let session_id = session_id.trim();
+    if session_id.is_empty() {
+        return Ok(());
+    }
+
+    if let Ok(cache) = LAST_FOCUSED_SESSION_WRITE_CACHE.lock()
+        && cache.as_deref() == Some(session_id)
+    {
+        return Ok(());
+    }
+
+    let path = last_focused_session_path()?;
+    if let Some(parent) = path.parent() {
+        ensure_dir(parent)?;
+    }
+    std::fs::write(&path, session_id).context("failed to persist last focused jcode session")?;
+
+    if let Ok(mut cache) = LAST_FOCUSED_SESSION_WRITE_CACHE.lock() {
+        *cache = Some(session_id.to_string());
+    }
+
+    Ok(())
+}
+
+/// The last focused client session, if it is still running. A recorded session
+/// that has since exited is reported as `None` rather than as a stale target.
+pub fn last_focused_session() -> Result<Option<String>> {
+    let path = last_focused_session_path()?;
+    let session_id = match std::fs::read_to_string(path) {
+        Ok(text) => text.trim().to_string(),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(err).context("failed to read last focused jcode session"),
+    };
+    if session_id.is_empty() {
+        return Ok(None);
+    }
+
+    if active_session_ids().iter().any(|id| id == &session_id) {
+        Ok(Some(session_id))
+    } else {
+        Ok(None)
+    }
 }
 
 #[cfg(any(test, feature = "test-support"))]

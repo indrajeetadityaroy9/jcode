@@ -6,11 +6,11 @@
     clippy::useless_conversion
 )]
 
-//! Presentation layer for jcode (terminal UI + offline replay export).
+//! Presentation layer for jcode (terminal UI).
 //!
-//! This crate holds the `tui` and `video_export` modules that were extracted
-//! out of the monolithic root `jcode` crate so they compile as a separate
-//! rustc unit. The application core it builds on (server, agent, provider,
+//! This crate holds the `tui` module that was extracted out of the monolithic
+//! root `jcode` crate so it compiles as a separate rustc unit. The application
+//! core it builds on (server, agent, provider,
 //! auth, session, tool, config, ...) lives in `jcode-app-core` and is
 //! re-exported here via `pub use jcode_app_core::*`, so every existing
 //! `crate::<module>` path (e.g. `crate::config`, `crate::server`) keeps
@@ -24,4 +24,3 @@ pub use jcode_app_core::*;
 
 // Presentation layer (kept in this crate).
 pub mod tui;
-pub mod video_export;

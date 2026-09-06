@@ -31,33 +31,6 @@ pub(in crate::tui::app) async fn send_interleave_now(
     }
 }
 
-pub(in crate::tui::app) async fn handle_remote_update_command(
-    app: &mut App,
-    remote: &mut RemoteConnection,
-) -> Result<()> {
-    reload_stale_remote_server_before_update(app, remote).await?;
-
-    let session_id = app
-        .remote_session_id
-        .clone()
-        .unwrap_or_else(|| crate::id::new_id("ses"));
-    app.start_background_client_update(session_id);
-    Ok(())
-}
-
-pub(in crate::tui::app) async fn reload_stale_remote_server_before_update(
-    app: &mut App,
-    remote: &mut RemoteConnection,
-) -> Result<bool> {
-    if app.remote_server_has_update != Some(true) {
-        return Ok(false);
-    }
-
-    app.append_reload_message("Reloading stale server before checking for client updates...");
-    remote.reload().await?;
-    Ok(true)
-}
-
 async fn apply_remote_effort_direction(
     app: &mut App,
     remote: &mut RemoteConnection,
@@ -336,11 +309,6 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if app.dictation_key_matches(code, modifiers) {
-        app.handle_dictation_trigger();
-        return Ok(());
-    }
-
     if app.new_terminal_key_matches(code, modifiers) {
         app.handle_new_terminal_hotkey();
         return Ok(());
@@ -348,20 +316,11 @@ async fn handle_remote_key_internal(
 
     // Accept an armed post-error fallback offer: stage the route switch and
     // resend so the remote dispatcher applies it (SetRoute + payload resend).
-    // Checked before the merge offer to match the local key-handling order
-    // (both share the same accept key).
     if app.pending_fallback_offer.is_some()
         && !app.is_processing
         && app.fallback_switch_key_matches(code, modifiers)
     {
         app.apply_pending_fallback_offer();
-        return Ok(());
-    }
-
-    // Accept an armed "merge the diverged update" offer (remote sessions
-    // surface the same update card as local ones).
-    if app.merge_offer_key_matches(code, modifiers) {
-        app.accept_update_merge_offer();
         return Ok(());
     }
 
@@ -892,10 +851,6 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if app_mod::commands::handle_dictation_command(app, trimmed) {
-                    return Ok(());
-                }
-
                 if handle_remote_rewind_command(app, remote, trimmed).await? {
                     return Ok(());
                 }
@@ -969,11 +924,6 @@ async fn handle_remote_key_internal(
                         .clone()
                         .unwrap_or_else(|| crate::id::new_id("ses"));
                     app.start_background_client_rebuild(session_id);
-                    return Ok(());
-                }
-
-                if trimmed == "/update" {
-                    handle_remote_update_command(app, remote).await?;
                     return Ok(());
                 }
 

@@ -304,7 +304,7 @@ fn detect() -> SystemProfile {
     let is_ssh = std::env::var("SSH_CONNECTION").is_ok() || std::env::var("SSH_TTY").is_ok();
     let is_wsl = detect_wsl();
     let terminal = detect_terminal();
-    let (load_avg_1m, cpu_count) = detect_load();
+    let (load_avg_1m, cpu_count) = crate::host_metrics::load_and_cpu_count();
     let (available_memory_mb, total_memory_mb) = detect_memory();
 
     let auto_tier = compute_tier(
@@ -460,41 +460,18 @@ fn detect_terminal() -> String {
     "unknown".to_string()
 }
 
-fn detect_load() -> (Option<f64>, Option<usize>) {
-    let load = {
-        let mut loadavg: [libc::c_double; 3] = [0.0; 3];
-        let n = unsafe { libc::getloadavg(loadavg.as_mut_ptr(), 1) };
-        if n >= 1 { Some(loadavg[0]) } else { None }
-    };
-    let cpus = std::thread::available_parallelism().ok().map(|n| n.get());
-    (load, cpus)
-}
-
+/// `(available_mb, total_mb)` for tier detection.
+///
+/// Both halves come from [`crate::host_metrics::memory_mb`], which is also
+/// what the overnight resource card and the TUI's host-pressure classifier
+/// read, so a tier decision and a resource card taken at the same moment
+/// describe the same machine. Before this shared reader existed, `available`
+/// was reported as `None` here because parsing `vm_stat` was not worth the
+/// duplication; `host_statistics64` now supplies it directly, so the
+/// available-memory arm of [`compute_tier`] is live.
 fn detect_memory() -> (Option<u64>, Option<u64>) {
-    let total = {
-        let mut size: u64 = 0;
-        let mut len = std::mem::size_of::<u64>();
-        let name = c"hw.memsize";
-        let ret = unsafe {
-            libc::sysctlbyname(
-                name.as_ptr(),
-                &mut size as *mut u64 as *mut libc::c_void,
-                &mut len,
-                std::ptr::null_mut(),
-                0,
-            )
-        };
-        if ret == 0 {
-            Some(size / (1024 * 1024))
-        } else {
-            None
-        }
-    };
-
-    // macOS doesn't have a simple "available" metric like Linux's MemAvailable.
-    // vm_stat gives pages free + inactive but parsing it adds complexity.
-    // For tier detection, total memory is sufficient on macOS.
-    (None, total)
+    let (total_mb, available_mb) = crate::host_metrics::memory_mb();
+    (available_mb, total_mb)
 }
 
 #[cfg(test)]

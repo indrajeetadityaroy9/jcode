@@ -10,7 +10,7 @@ proposes a safe, incremental decomposition. It is the Phase 1.5 follow-on to the
 
 ## Current state
 
-- `pub trait TuiState` (`crates/jcode-tui/src/tui/mod.rs:174`) exposes **139
+- `pub trait TuiState` (`crates/jcode-tui/src/tui/mod.rs:174`) exposes **135
   methods** (`awk '/pub trait TuiState/,/^}/' crates/jcode-tui/src/tui/mod.rs |
   grep -c '    fn '`).
 - Implementors: 2 (`App` in `tui/app/tui_state.rs:525`, and `TestState` in
@@ -80,7 +80,7 @@ wide renderers take `&dyn TuiState` (the supertrait). Only the four
 single-domain leaves can narrow to one sub-trait; everything else narrows to a
 smaller aggregate at best.
 
-## Method categorization (all 139)
+## Method categorization (all 135)
 
 This is a transcription of the section-header comments that *do* exist in the
 trait today (`crates/jcode-tui/src/tui/mod.rs:174-659`), not an aspiration.
@@ -132,7 +132,7 @@ session_display_name, server_display_name, server_display_icon,
 server_display_version, server_sessions, connected_clients, status_notice,
 time_since_user_interaction, learn_hint, hotkey_feedback,
 active_experimental_feature_notice, remote_startup_phase_active,
-has_pending_mouse_scroll_animation, dictation_key_label, animation_elapsed,
+has_pending_mouse_scroll_animation, animation_elapsed,
 rate_limit_remaining, queue_mode, next_prompt_new_session_armed,
 has_stashed_input, context_info, context_snapshot, context_limit,
 info_widget_overlays_enabled, client_update_available,
@@ -140,7 +140,7 @@ server_update_available, info_widget_data, inline_swarm_gallery_active,
 inline_swarm_members, swarm_members_for_transcript, swarm_panel_selected,
 swarm_panel_focused, swarm_panel_full_page
 
-This section is the dumping ground: 36 of the 139 methods, spanning diff pane,
+This section is the dumping ground: 35 of the 135 methods, spanning diff pane,
 scroll animation, input queue, context accounting, and the swarm panel. It is
 the section that most needs splitting and the one this plan describes least
 accurately. `is_canary` (listed in earlier revisions of this doc) is gone with

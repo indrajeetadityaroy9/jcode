@@ -34,33 +34,59 @@ class Sample:
     def pss_bytes(self) -> int | None:
         os_info = self.raw.get("process", {}).get("os") or {}
         value = os_info.get("pss_bytes")
-        return int(value) if isinstance(value, int | float) else None
+        return int(value) if isinstance(value, (int, float)) else None
 
     @property
     def rss_bytes(self) -> int | None:
         value = self.raw.get("process", {}).get("rss_bytes")
-        return int(value) if isinstance(value, int | float) else None
+        return int(value) if isinstance(value, (int, float)) else None
+
+    @property
+    def footprint_bytes(self) -> int | None:
+        """Process footprint: PSS when the platform reports it, RSS otherwise.
+
+        Mirrors the server-side incident detector exactly
+        (`crates/jcode-app-core/src/server/debug_server_state.rs:414-430`,
+        `os.pss_bytes.or(rss_bytes)`) so this script and
+        `jcode debug 'server:memory-incident'` can never disagree about
+        severity. The PSS family has no macOS source and stays `None` there
+        (docs/MEMORY_INCIDENT_RUNBOOK.md), so on this fork the value is RSS.
+
+        `None` means "this sample recorded no process memory at all" and is
+        never collapsed to 0: 0 is a measurement, absence is not.
+        """
+        pss = self.pss_bytes
+        return pss if pss is not None else self.rss_bytes
+
+    @property
+    def footprint_metric(self) -> str | None:
+        """Which reading `footprint_bytes` actually came from: PSS, RSS, or None."""
+        if self.pss_bytes is not None:
+            return "PSS"
+        if self.rss_bytes is not None:
+            return "RSS"
+        return None
 
     @property
     def allocator_allocated_bytes(self) -> int | None:
         value = (((self.raw.get("process") or {}).get("allocator") or {}).get("stats") or {}).get(
             "allocated_bytes"
         )
-        return int(value) if isinstance(value, int | float) else None
+        return int(value) if isinstance(value, (int, float)) else None
 
     @property
     def allocator_resident_bytes(self) -> int | None:
         value = (((self.raw.get("process") or {}).get("allocator") or {}).get("stats") or {}).get(
             "resident_bytes"
         )
-        return int(value) if isinstance(value, int | float) else None
+        return int(value) if isinstance(value, (int, float)) else None
 
     @property
     def allocator_retained_bytes(self) -> int | None:
         value = (((self.raw.get("process") or {}).get("allocator") or {}).get("stats") or {}).get(
             "retained_bytes"
         )
-        return int(value) if isinstance(value, int | float) else None
+        return int(value) if isinstance(value, (int, float)) else None
 
     @property
     def os_info(self) -> dict[str, Any]:
@@ -82,7 +108,7 @@ def first_int(mapping: dict[str, Any], *keys: str) -> int | None:
     """Return the first present integer value among candidate key names."""
     for key in keys:
         value = mapping.get(key)
-        if isinstance(value, int | float):
+        if isinstance(value, (int, float)):
             return int(value)
     return None
 
@@ -91,7 +117,9 @@ def first_int(mapping: dict[str, Any], *keys: str) -> int | None:
 class Spike:
     start: Sample
     end: Sample
-    delta_pss_bytes: int
+    delta_footprint_bytes: int
+    #: "PSS" or "RSS" - the metric both endpoints were read from.
+    metric: str
 
 
 @dataclass
@@ -148,7 +176,7 @@ def parse_args() -> argparse.Namespace:
         "--min-spike-mb",
         type=float,
         default=8.0,
-        help="Minimum absolute PSS delta in MB to include in spike lists",
+        help="Minimum absolute footprint delta in MB to include in spike lists (footprint is PSS, or RSS where PSS is unavailable)",
     )
     return parser.parse_args()
 
@@ -252,8 +280,8 @@ def infer_instance_id(raw: dict[str, Any], target: str) -> str:
 def select_latest_instances(samples: list[Sample]) -> list[Sample]:
     """Keep one coherent process lifetime per target.
 
-    Daily JSONL files contain multiple server reloads and client processes. PSS
-    deltas across process boundaries are meaningless and previously produced
+    Daily JSONL files contain multiple server reloads and client processes.
+    Footprint deltas across process boundaries are meaningless and previously produced
     multi-gigabyte false spikes. The default report now follows the latest
     instance for each target; --all-instances preserves the old forensic view.
     """
@@ -384,23 +412,37 @@ def fmt_ts(timestamp_ms: int) -> str:
 def attributed_total_bytes(sample: Sample) -> int | None:
     if sample.sessions:
         value = sample.sessions.get("total_json_bytes")
-        return int(value) if isinstance(value, int | float) else None
+        return int(value) if isinstance(value, (int, float)) else None
     if sample.totals:
         value = sample.totals.get("total_attributed_bytes")
-        return int(value) if isinstance(value, int | float) else None
+        return int(value) if isinstance(value, (int, float)) else None
     return None
 
 
 def compute_spikes(samples: list[Sample], min_spike_bytes: int) -> list[Spike]:
-    process_samples = [sample for sample in samples if sample.pss_bytes is not None]
+    process_samples = [sample for sample in samples if sample.footprint_bytes is not None]
     spikes: list[Spike] = []
     for prev, curr in zip(process_samples, process_samples[1:]):
-        if prev.pss_bytes is None or curr.pss_bytes is None:
+        start_bytes = prev.footprint_bytes
+        end_bytes = curr.footprint_bytes
+        if start_bytes is None or end_bytes is None:
             continue
-        delta = curr.pss_bytes - prev.pss_bytes
+        # Never subtract a PSS reading from an RSS one. RSS counts shared pages
+        # in full, so a mixed pair would report a spike that is really just the
+        # difference between the two accounting models.
+        if prev.footprint_metric != curr.footprint_metric:
+            continue
+        delta = end_bytes - start_bytes
         if abs(delta) >= min_spike_bytes:
-            spikes.append(Spike(start=prev, end=curr, delta_pss_bytes=delta))
-    spikes.sort(key=lambda spike: abs(spike.delta_pss_bytes), reverse=True)
+            spikes.append(
+                Spike(
+                    start=prev,
+                    end=curr,
+                    delta_footprint_bytes=delta,
+                    metric=curr.footprint_metric or "unknown",
+                )
+            )
+    spikes.sort(key=lambda spike: abs(spike.delta_footprint_bytes), reverse=True)
     return spikes
 
 
@@ -474,22 +516,31 @@ def last_attribution_sample(samples: list[Sample]) -> Sample | None:
 
 
 def build_coverage_report(sample: Sample) -> dict[str, Any]:
-    """Decompose PSS into attributed live, unattributed live heap, allocator
-    retention, file-backed, and stack buckets.
+    """Decompose the process footprint into attributed live, unattributed live
+    heap, allocator retention, file-backed, and stack buckets.
 
-    Uses allocator stats (mallinfo2/jemalloc) plus the newer smaps_rollup and
-    process_diagnostics fields when present; older logs degrade gracefully to
-    whatever fields exist. The key outputs are two coverage ratios:
-    - coverage_ratio_pss: attributed / PSS (the historical, misleading one; the
-      denominator includes allocator retention and file maps).
+    The footprint denominator is `Sample.footprint_bytes`: PSS where the
+    platform reports it, RSS otherwise, matching the server-side detector.
+    `footprint_metric` records which one was read so every label can name it.
+
+    Uses allocator stats (mallinfo2/jemalloc/libmalloc) plus the newer
+    smaps_rollup and process_diagnostics fields when present; older logs and
+    macOS logs degrade to whatever fields exist. The key outputs are two
+    coverage ratios:
+    - coverage_ratio_footprint: attributed / footprint (the historical,
+      misleading one; the denominator includes allocator retention and file
+      maps, and under RSS it also includes shared pages in full).
     - coverage_ratio_live_heap: attributed / allocator live bytes (estimator
       quality against the memory the app actually holds).
 
-    Explained PSS follows the in-binary summary definition:
-    total_attributed + allocator_retained_resident_estimate + pss_file +
-    thread_stack_estimate.
+    Explained footprint follows the in-binary summary definition:
+    total_attributed + allocator_retained_resident_estimate + file-backed +
+    thread_stack_estimate. The file-backed bucket takes pss_file_bytes when
+    present and rss_file_bytes otherwise, the same PSS-or-RSS fallback; using
+    0 for the absent PSS field would silently understate the explained share.
     """
-    pss = sample.pss_bytes
+    footprint = sample.footprint_bytes
+    footprint_metric = sample.footprint_metric
     attributed = attributed_total_bytes(sample)
     allocator_live = sample.allocator_allocated_bytes
     allocator_retained = sample.allocator_retained_bytes
@@ -501,6 +552,16 @@ def build_coverage_report(sample: Sample) -> dict[str, Any]:
     pss_shmem = first_int(os_info, "pss_shmem_bytes")
     anon_huge_pages = first_int(os_info, "anon_huge_pages_bytes")
     rss_file = first_int(os_info, "rss_file_bytes")
+    rss_anon = first_int(os_info, "rss_anon_bytes")
+    if pss_file is not None:
+        file_backed = pss_file
+        file_backed_metric: str | None = "PSS"
+    elif rss_file is not None:
+        file_backed = rss_file
+        file_backed_metric = "RSS"
+    else:
+        file_backed = None
+        file_backed_metric = None
     stack_bytes = first_int(process_info, "main_stack_bytes") or first_int(
         os_info, "main_stack_bytes", "stack_bytes", "vm_stk_bytes"
     )
@@ -522,12 +583,18 @@ def build_coverage_report(sample: Sample) -> dict[str, Any]:
 
     report: dict[str, Any] = {
         "timestamp_ms": sample.timestamp_ms,
-        "pss_bytes": pss,
+        "footprint_bytes": footprint,
+        "footprint_metric": footprint_metric,
+        # PSS-only fields. On macOS these stay None and are reported as
+        # unavailable rather than as zero.
         "pss_anon_bytes": pss_anon,
         "pss_file_bytes": pss_file,
         "pss_shmem_bytes": pss_shmem,
         "anon_huge_pages_bytes": anon_huge_pages,
+        "rss_anon_bytes": rss_anon,
         "rss_file_bytes": rss_file,
+        "file_backed_bytes": file_backed,
+        "file_backed_metric": file_backed_metric,
         "main_stack_bytes": stack_bytes,
         "thread_stack_estimate_bytes": thread_stack_estimate,
         "thread_count": thread_count,
@@ -539,31 +606,33 @@ def build_coverage_report(sample: Sample) -> dict[str, Any]:
 
     if attributed is not None and allocator_live is not None:
         report["unattributed_live_heap_bytes"] = max(0, allocator_live - attributed)
-    if pss is not None and attributed is not None:
-        report["coverage_ratio_pss"] = round(attributed / pss, 4) if pss else 0.0
+    if footprint is not None and attributed is not None:
+        report["coverage_ratio_footprint"] = (
+            round(attributed / footprint, 4) if footprint else 0.0
+        )
     if allocator_live is not None and attributed is not None:
         report["coverage_ratio_live_heap"] = (
             round(attributed / allocator_live, 4) if allocator_live else 0.0
         )
 
-    # Explained PSS matches the in-binary summary: attributed live + allocator
-    # retention (resident estimate) + file-backed PSS + thread stacks. The
-    # remainder is what the buckets still miss (unattributed live heap, shared
-    # anon, allocator metadata).
-    if pss is not None:
+    # Explained footprint matches the in-binary summary: attributed live +
+    # allocator retention (resident estimate) + file-backed + thread stacks.
+    # The remainder is what the buckets still miss (unattributed live heap,
+    # shared anon, allocator metadata).
+    if footprint is not None:
         explained = 0
         for key in (
             "attributed_live_bytes",
             "allocator_retained_resident_estimate_bytes",
-            "pss_file_bytes",
+            "file_backed_bytes",
             "thread_stack_estimate_bytes",
         ):
             value = report.get(key)
             if isinstance(value, int):
                 explained += value
-        report["explained_pss_bytes"] = explained
-        report["unexplained_pss_bytes"] = max(0, pss - explained)
-        report["explained_ratio"] = round(explained / pss, 4) if pss else 0.0
+        report["explained_footprint_bytes"] = explained
+        report["unexplained_footprint_bytes"] = max(0, footprint - explained)
+        report["explained_ratio"] = round(explained / footprint, 4) if footprint else 0.0
     return report
 
 
@@ -576,25 +645,38 @@ def count_event_categories(samples: list[Sample]) -> Counter[str]:
 
 
 def process_summary(samples: list[Sample]) -> dict[str, Any]:
-    process_samples = [sample for sample in samples if sample.pss_bytes is not None]
+    process_samples = [sample for sample in samples if sample.footprint_bytes is not None]
     if not process_samples:
         return {}
     first = process_samples[0]
     last = process_samples[-1]
-    peak = max(process_samples, key=lambda sample: sample.pss_bytes or -1)
-    pss_values = [sample.pss_bytes for sample in process_samples if sample.pss_bytes is not None]
-    median_pss = int(statistics.median(pss_values)) if pss_values else None
+    peak = max(process_samples, key=lambda sample: sample.footprint_bytes or -1)
+    values = [
+        sample.footprint_bytes
+        for sample in process_samples
+        if sample.footprint_bytes is not None
+    ]
+    median_footprint = int(statistics.median(values)) if values else None
+    metrics = {sample.footprint_metric for sample in process_samples}
+    # One process lifetime is one platform, so this is a single metric in
+    # practice; "mixed" would mean the log interleaved PSS- and RSS-only
+    # samples, and the printed labels must not claim one of them.
+    metric = metrics.pop() if len(metrics) == 1 else "mixed"
+    baseline_bytes = first.footprint_bytes or 0
+    final_bytes = last.footprint_bytes or 0
+    peak_bytes = peak.footprint_bytes or 0
     return {
         "sample_count": len(process_samples),
         "first_timestamp_ms": first.timestamp_ms,
         "last_timestamp_ms": last.timestamp_ms,
         "duration_ms": max(0, last.timestamp_ms - first.timestamp_ms),
-        "baseline_pss_bytes": first.pss_bytes,
-        "final_pss_bytes": last.pss_bytes,
-        "net_pss_growth_bytes": (last.pss_bytes or 0) - (first.pss_bytes or 0),
-        "peak_pss_bytes": peak.pss_bytes,
-        "peak_growth_vs_baseline_bytes": (peak.pss_bytes or 0) - (first.pss_bytes or 0),
-        "median_pss_bytes": median_pss,
+        "footprint_metric": metric,
+        "baseline_footprint_bytes": first.footprint_bytes,
+        "final_footprint_bytes": last.footprint_bytes,
+        "net_footprint_growth_bytes": final_bytes - baseline_bytes,
+        "peak_footprint_bytes": peak.footprint_bytes,
+        "peak_growth_vs_baseline_bytes": peak_bytes - baseline_bytes,
+        "median_footprint_bytes": median_footprint,
         "peak_timestamp_ms": peak.timestamp_ms,
         "peak_trigger_category": peak.trigger_category,
         "peak_trigger_reason": peak.trigger_reason,
@@ -608,7 +690,7 @@ def session_population_summary(samples: list[Sample]) -> dict[str, Any]:
     attribution = [
         sample
         for sample in samples
-        if sample.sessions and isinstance(sample.sessions.get("live_count"), int | float)
+        if sample.sessions and isinstance(sample.sessions.get("live_count"), (int, float))
     ]
     if not attribution:
         return {}
@@ -650,6 +732,48 @@ def session_population_summary(samples: list[Sample]) -> dict[str, Any]:
     }
 
 
+def footprint_metric_note(metric: str | None) -> str:
+    """One line explaining which reading the footprint numbers came from.
+
+    THRESHOLD NOTE: the footprint thresholds below (1 GiB warning, 2 GiB
+    critical, 256 MiB / 1 GiB growth) were calibrated on Linux PSS. RSS counts
+    every shared page in full instead of proportionally, so an RSS footprint
+    reads at or above the PSS value for the same process, and the same
+    threshold therefore trips marginally earlier under RSS. The gap is the
+    process's share of shared mappings - tens of MB for this binary, not
+    hundreds - so no threshold is adjusted here. The metric is named in the
+    output so a reader can apply that discount themselves.
+    """
+    if metric == "PSS":
+        return "footprint metric: PSS (os.pss_bytes, proportional set size)"
+    if metric == "RSS":
+        return (
+            "footprint metric: RSS (rss_bytes; os.pss_bytes has no macOS source, so this "
+            "matches server:memory-incident). RSS counts shared pages in full, so it reads "
+            "at or above PSS and the unchanged PSS-calibrated thresholds trip marginally earlier."
+        )
+    if metric == "mixed":
+        return (
+            "footprint metric: mixed PSS and RSS samples in one lifetime; treat absolute "
+            "values and deltas as approximate"
+        )
+    return (
+        "footprint metric: none recorded (no sample carried os.pss_bytes or rss_bytes); "
+        "footprint thresholds were not evaluated"
+    )
+
+
+def footprint_metric_source(metric: str | None) -> str:
+    """Short form of `footprint_metric_note` for section headers."""
+    if metric == "PSS":
+        return "PSS (os.pss_bytes)"
+    if metric == "RSS":
+        return "RSS (rss_bytes; os.pss_bytes has no macOS source)"
+    if metric == "mixed":
+        return "mixed PSS and RSS samples"
+    return "none recorded"
+
+
 def build_incident_assessment(
     samples: list[Sample],
     process: dict[str, Any],
@@ -658,8 +782,14 @@ def build_incident_assessment(
 ) -> dict[str, Any]:
     if not samples:
         return {}
-    final_pss = int(process.get("final_pss_bytes") or 0)
-    growth = int(process.get("net_pss_growth_bytes") or 0)
+    final_footprint = process.get("final_footprint_bytes")
+    growth_bytes = process.get("net_footprint_growth_bytes")
+    metric = str(process.get("footprint_metric") or "unmeasured")
+    # Keep the unmeasured case as None for every printed label - "final PSS
+    # 0.0 MB" for a footprint nobody read is the bug this replaces - and use an
+    # explicit 0 only where a threshold comparison needs a number.
+    final_footprint_cmp = final_footprint if isinstance(final_footprint, int) else 0
+    growth = growth_bytes if isinstance(growth_bytes, int) else 0
     final_live = int(population.get("final_live_sessions") or 0)
     live_growth = int(population.get("net_live_session_growth") or 0)
     connected = population.get("final_connected_clients")
@@ -678,8 +808,8 @@ def build_incident_assessment(
     )
     retention_dominates = (
         retained_resident >= 256 * 1024 * 1024
-        and final_pss > 0
-        and retained_resident * 4 >= final_pss
+        and final_footprint_cmp > 0
+        and retained_resident * 4 >= final_footprint_cmp
     )
     attributed_state_dominates = (
         allocator_live > 0 and attributed >= 512 * 1024 * 1024 and attributed * 2 >= allocator_live
@@ -713,7 +843,7 @@ def build_incident_assessment(
             },
             {
                 "priority": 3,
-                "action": "Re-measure and require live_sessions, allocator live, and PSS to fall together.",
+                "action": f"Re-measure and require live_sessions, allocator live, and {metric} to fall together.",
                 "commands": ["python scripts/analyze_runtime_memory_log.py --days 1"],
             },
             {
@@ -725,15 +855,15 @@ def build_incident_assessment(
     elif retention_dominates:
         cause = "allocator_retention"
         confidence = "high"
-        summary = "Freed-but-held allocator pages are a material share of current PSS."
+        summary = f"Freed-but-held allocator pages are a material share of current {metric}."
         evidence = [
             f"retained resident estimate {fmt_mb(retained_resident)}",
-            f"allocator live {fmt_mb(allocator_live)} vs PSS {fmt_mb(final_pss)}",
+            f"allocator live {fmt_mb(allocator_live)} vs {metric} {fmt_mb(final_footprint)}",
         ]
         actions = [
             {
                 "priority": 1,
-                "action": "Capture a before/after allocator purge and compare PSS.",
+                "action": f"Capture a before/after allocator purge and compare {metric}.",
                 "commands": ["jcode debug 'allocator:purge'", "jcode debug 'server:memory-incident'"],
             },
             {
@@ -749,7 +879,7 @@ def build_incident_assessment(
         evidence = [
             f"attributed live {fmt_mb(attributed)}",
             f"live-heap attribution coverage {coverage_live:.1%}"
-            if isinstance(coverage_live, int | float)
+            if isinstance(coverage_live, (int, float))
             else "live-heap attribution coverage unavailable",
         ]
         actions = [
@@ -767,7 +897,7 @@ def build_incident_assessment(
             f"allocator live {fmt_mb(allocator_live)}",
             f"attributed live {fmt_mb(attributed)}",
             f"live-heap attribution coverage {coverage_live:.1%}"
-            if isinstance(coverage_live, int | float)
+            if isinstance(coverage_live, (int, float))
             else "live-heap attribution coverage unavailable",
         ]
         actions = [
@@ -785,23 +915,39 @@ def build_incident_assessment(
                 ],
             },
         ]
-    elif final_pss >= 1024 * 1024 * 1024:
+    elif final_footprint_cmp >= 1024 * 1024 * 1024:
         cause = "non_heap_or_mapping_growth"
         confidence = "medium"
-        summary = "PSS is high without matching allocator live bytes; inspect mappings and threads."
-        evidence = [f"PSS {fmt_mb(final_pss)}", f"allocator live {fmt_mb(allocator_live)}"]
+        summary = (
+            f"{metric} is high without matching allocator live bytes; inspect mappings and threads."
+        )
+        evidence = [
+            f"{metric} {fmt_mb(final_footprint)}",
+            f"allocator live {fmt_mb(allocator_live)}",
+        ]
         actions = [
             {
                 "priority": 1,
-                "action": "Inspect smaps, pmap, thread count, and shared mappings.",
-                "commands": ["cat /proc/<pid>/smaps_rollup", "pmap -x <pid> | sort -k3 -nr | head"],
+                "action": "Inspect mappings, thread count, and shared regions.",
+                # /proc does not exist on macOS, where the footprint is RSS.
+                "commands": (
+                    ["vmmap <pid>", "footprint -p <pid>", "sample <pid> 2"]
+                    if metric == "RSS"
+                    else [
+                        "cat /proc/<pid>/smaps_rollup",
+                        "pmap -x <pid> | sort -k3 -nr | head",
+                    ]
+                ),
             }
         ]
     else:
         cause = "within_normal_operating_range"
         confidence = "high"
         summary = "No server memory incident threshold is exceeded in this process lifetime."
-        evidence = [f"final PSS {fmt_mb(final_pss)}", f"net PSS growth {fmt_signed_mb(growth)}"]
+        evidence = [
+            f"final {metric} {fmt_mb(final_footprint)}",
+            f"net {metric} growth {fmt_signed_mb(growth_bytes)}",
+        ]
         actions = [
             {
                 "priority": 1,
@@ -810,14 +956,24 @@ def build_incident_assessment(
             }
         ]
 
-    critical = final_pss >= 2 * 1024 * 1024 * 1024 or growth >= 1024 * 1024 * 1024 or final_live >= 512
-    warning = final_pss >= 1024 * 1024 * 1024 or growth >= 256 * 1024 * 1024 or final_live >= 128
+    critical = (
+        final_footprint_cmp >= 2 * 1024 * 1024 * 1024
+        or growth >= 1024 * 1024 * 1024
+        or final_live >= 512
+    )
+    warning = (
+        final_footprint_cmp >= 1024 * 1024 * 1024
+        or growth >= 256 * 1024 * 1024
+        or final_live >= 128
+    )
     severity = "critical" if critical else "warning" if warning else "healthy"
     return {
         "severity": severity,
         "primary_cause": cause,
         "confidence": confidence,
         "summary": summary,
+        "footprint_metric": metric,
+        "footprint_metric_note": footprint_metric_note(process.get("footprint_metric")),
         "evidence": evidence,
         "recommended_actions": actions,
         "runbook": "docs/MEMORY_INCIDENT_RUNBOOK.md",
@@ -864,14 +1020,23 @@ def build_server_hints(samples: list[Sample], session_peaks: list[dict[str, Any]
     last_process = samples[-1] if samples else None
     process_diag = (last_process.raw.get("process_diagnostics") or {}) if last_process else {}
     resident_minus_active = process_diag.get("allocator_resident_minus_active_bytes")
-    pss_minus_allocated = process_diag.get("pss_minus_allocator_allocated_bytes")
+    # The logged diagnostic is PSS-derived and therefore absent on macOS; fall
+    # back to the same comparison against whichever footprint was recorded.
+    footprint_minus_allocated = process_diag.get("pss_minus_allocator_allocated_bytes")
+    delta_metric = "PSS"
+    if not isinstance(footprint_minus_allocated, int) and last_process is not None:
+        footprint = last_process.footprint_bytes
+        allocated = last_process.allocator_allocated_bytes
+        if footprint is not None and allocated is not None:
+            footprint_minus_allocated = footprint - allocated
+            delta_metric = last_process.footprint_metric or "footprint"
     if isinstance(resident_minus_active, int) and resident_minus_active >= 64 * 1024 * 1024:
         hints.append(
             f"Allocator resident slack is high ({fmt_mb(resident_minus_active)} above active). Some memory pressure may be allocator retention rather than live app state."
         )
-    if isinstance(pss_minus_allocated, int) and pss_minus_allocated >= 64 * 1024 * 1024:
+    if isinstance(footprint_minus_allocated, int) and footprint_minus_allocated >= 64 * 1024 * 1024:
         hints.append(
-            f"PSS is materially above allocator allocated ({fmt_mb(pss_minus_allocated)} delta), suggesting shared mappings, allocator overhead, or retained pages are worth checking alongside app-owned structures."
+            f"{delta_metric} is materially above allocator allocated ({fmt_mb(footprint_minus_allocated)} delta), suggesting shared mappings, allocator overhead, or retained pages are worth checking alongside app-owned structures."
         )
 
     embedding_events = [s for s in samples if s.trigger_category in {"embedding_loaded", "embedding_unloaded"}]
@@ -950,11 +1115,17 @@ def build_client_hints(samples: list[Sample], client_peaks: list[dict[str, Any]]
         )
 
     coverage = build_coverage_report(last_attr)
-    pss = coverage.get("pss_bytes")
+    footprint = coverage.get("footprint_bytes")
+    footprint_metric = coverage.get("footprint_metric") or "footprint"
     retained = coverage.get("allocator_retained_resident_estimate_bytes")
-    if isinstance(pss, int) and isinstance(retained, int) and pss > 0 and retained / pss >= 0.30:
+    if (
+        isinstance(footprint, int)
+        and isinstance(retained, int)
+        and footprint > 0
+        and retained / footprint >= 0.30
+    ):
         hints.append(
-            f"Allocator retention dominates PSS ({retained / pss:.0%}, {fmt_mb(retained)}). This is freed-but-held heap, not live app state; malloc_trim/purge cadence matters more than estimator coverage here."
+            f"Allocator retention dominates {footprint_metric} ({retained / footprint:.0%}, {fmt_mb(retained)}). This is freed-but-held heap, not live app state; malloc_trim/purge cadence matters more than estimator coverage here."
         )
     unattributed_live = coverage.get("unattributed_live_heap_bytes")
     live = coverage.get("allocator_live_bytes")
@@ -1020,7 +1191,8 @@ def summarize_target(samples: list[Sample], top_n: int, min_spike_bytes: int) ->
             {
                 "from": spike.start.timestamp_ms,
                 "to": spike.end.timestamp_ms,
-                "delta_pss_bytes": spike.delta_pss_bytes,
+                "delta_footprint_bytes": spike.delta_footprint_bytes,
+                "footprint_metric": spike.metric,
                 "from_source": spike.start.source,
                 "to_source": spike.end.source,
                 "to_trigger_category": spike.end.trigger_category,
@@ -1102,10 +1274,16 @@ def print_human(summary: dict[str, Any], paths: list[Path]) -> None:
     if proc:
         print("\nProcess memory")
         print("--------------")
-        print(f"baseline PSS: {fmt_mb(proc.get('baseline_pss_bytes'))}")
-        print(f"final PSS:    {fmt_mb(proc.get('final_pss_bytes'))} ({fmt_signed_mb(proc.get('net_pss_growth_bytes'))})")
-        print(f"peak PSS:     {fmt_mb(proc.get('peak_pss_bytes'))} ({fmt_signed_mb(proc.get('peak_growth_vs_baseline_bytes'))} vs baseline)")
-        print(f"median PSS:   {fmt_mb(proc.get('median_pss_bytes'))}")
+        metric = str(proc.get("footprint_metric") or "unmeasured")
+        print(f"metric:       {footprint_metric_source(proc.get('footprint_metric'))}")
+        print(f"baseline {metric}: {fmt_mb(proc.get('baseline_footprint_bytes'))}")
+        print(
+            f"final {metric}:    {fmt_mb(proc.get('final_footprint_bytes'))} ({fmt_signed_mb(proc.get('net_footprint_growth_bytes'))})"
+        )
+        print(
+            f"peak {metric}:     {fmt_mb(proc.get('peak_footprint_bytes'))} ({fmt_signed_mb(proc.get('peak_growth_vs_baseline_bytes'))} vs baseline)"
+        )
+        print(f"median {metric}:   {fmt_mb(proc.get('median_footprint_bytes'))}")
         peak_ts = proc.get("peak_timestamp_ms")
         if peak_ts is not None:
             print(
@@ -1140,6 +1318,8 @@ def print_human(summary: dict[str, Any], paths: list[Path]) -> None:
             f"severity: {incident.get('severity')} | cause: {incident.get('primary_cause')} | confidence: {incident.get('confidence')}"
         )
         print(incident.get("summary") or "")
+        if incident.get("footprint_metric_note"):
+            print(incident["footprint_metric_note"])
         for item in incident.get("evidence") or []:
             print(f"- evidence: {item}")
         print("next actions:")
@@ -1154,10 +1334,21 @@ def print_human(summary: dict[str, Any], paths: list[Path]) -> None:
     if coverage:
         print("\nAttribution coverage (last attribution sample)")
         print("----------------------------------------------")
-        print(f"PSS:                {fmt_mb(coverage.get('pss_bytes'))}")
-        if coverage.get("pss_anon_bytes") is not None or coverage.get("pss_file_bytes") is not None:
+        cmetric = str(coverage.get("footprint_metric") or "unmeasured")
+        print(f"{cmetric + ':':<20}{fmt_mb(coverage.get('footprint_bytes'))}")
+        pss_split_keys = ("pss_anon_bytes", "pss_file_bytes", "pss_shmem_bytes")
+        if any(coverage.get(key) is not None for key in pss_split_keys):
             print(
                 f"PSS split:          anon {fmt_mb(coverage.get('pss_anon_bytes'))} | file {fmt_mb(coverage.get('pss_file_bytes'))} | shmem {fmt_mb(coverage.get('pss_shmem_bytes'))}"
+            )
+        elif (
+            coverage.get("rss_anon_bytes") is not None
+            or coverage.get("rss_file_bytes") is not None
+        ):
+            # The proportional split is a Linux smaps_rollup concept; report the
+            # resident split that does exist rather than zeros for PSS fields.
+            print(
+                f"RSS split:          anon {fmt_mb(coverage.get('rss_anon_bytes'))} | file {fmt_mb(coverage.get('rss_file_bytes'))} | PSS split n/a on macOS"
             )
         print(f"attributed live:    {fmt_mb(coverage.get('attributed_live_bytes'))}")
         print(f"allocator live:     {fmt_mb(coverage.get('allocator_live_bytes'))}")
@@ -1171,19 +1362,25 @@ def print_human(summary: dict[str, Any], paths: list[Path]) -> None:
             print(
                 f"stacks/threads:     main stack {fmt_mb(coverage.get('main_stack_bytes'))} | stack estimate {fmt_mb(coverage.get('thread_stack_estimate_bytes'))} | threads {threads if threads is not None else 'n/a'}"
             )
-        ratio_pss = coverage.get("coverage_ratio_pss")
+        ratio_footprint = coverage.get("coverage_ratio_footprint")
         ratio_live = coverage.get("coverage_ratio_live_heap")
-        if ratio_pss is not None or ratio_live is not None:
-            pss_text = f"{ratio_pss:.1%}" if isinstance(ratio_pss, int | float) else "n/a"
-            live_text = f"{ratio_live:.1%}" if isinstance(ratio_live, int | float) else "n/a"
-            print(f"coverage:           vs PSS {pss_text} | vs live heap {live_text}")
-        if coverage.get("explained_pss_bytes") is not None:
+        if ratio_footprint is not None or ratio_live is not None:
+            footprint_text = (
+                f"{ratio_footprint:.1%}" if isinstance(ratio_footprint, (int, float)) else "n/a"
+            )
+            live_text = f"{ratio_live:.1%}" if isinstance(ratio_live, (int, float)) else "n/a"
+            print(f"coverage:           vs {cmetric} {footprint_text} | vs live heap {live_text}")
+        if coverage.get("explained_footprint_bytes") is not None:
             explained_ratio = coverage.get("explained_ratio")
             ratio_text = (
-                f"{explained_ratio:.1%}" if isinstance(explained_ratio, int | float) else "n/a"
+                f"{explained_ratio:.1%}" if isinstance(explained_ratio, (int, float)) else "n/a"
+            )
+            file_metric = coverage.get("file_backed_metric")
+            file_note = (
+                f" | file-backed bucket from {file_metric}" if file_metric else ""
             )
             print(
-                f"explained PSS:      {fmt_mb(coverage.get('explained_pss_bytes'))} ({ratio_text}) | unexplained {fmt_mb(coverage.get('unexplained_pss_bytes'))}"
+                f"{'explained ' + cmetric + ':':<20}{fmt_mb(coverage.get('explained_footprint_bytes'))} ({ratio_text}) | unexplained {fmt_mb(coverage.get('unexplained_footprint_bytes'))}{file_note}"
             )
 
     print("\nEvent counts")
@@ -1191,14 +1388,15 @@ def print_human(summary: dict[str, Any], paths: list[Path]) -> None:
     for category, count in list((summary.get("event_counts") or {}).items())[:12]:
         print(f"{category}: {count}")
 
-    print("\nTop PSS spikes")
+    spike_metric = str((summary.get("process") or {}).get("footprint_metric") or "footprint")
+    print(f"\nTop {spike_metric} spikes")
     print("-------------")
     spikes = summary.get("top_spikes") or []
     if not spikes:
         print("No spikes above threshold.")
     for spike in spikes:
         print(
-            f"{fmt_ts(spike['from'])} -> {fmt_ts(spike['to'])} | {fmt_signed_mb(spike['delta_pss_bytes'])} | {spike['to_trigger_category'] or 'unknown'} / {spike['to_trigger_reason'] or 'unknown'}"
+            f"{fmt_ts(spike['from'])} -> {fmt_ts(spike['to'])} | {fmt_signed_mb(spike['delta_footprint_bytes'])} {spike.get('footprint_metric') or 'footprint'} | {spike['to_trigger_category'] or 'unknown'} / {spike['to_trigger_reason'] or 'unknown'}"
         )
 
     print("\nTop attribution deltas")

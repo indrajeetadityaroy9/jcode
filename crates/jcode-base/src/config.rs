@@ -10,8 +10,8 @@ pub use jcode_config_types::{
     LatexRenderingMode, MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig,
     NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig, NotificationsConfig,
     OverscrollStatusMode, PowerConfig, ProviderConfig, ReasoningDisplayMode, SafetyConfig,
-    SessionPickerResumeAction, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, UpdateChannel,
-    WebSearchConfig, WebSearchEngine,
+    SessionPickerResumeAction, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, WebSearchConfig,
+    WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -36,8 +36,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_AMBIENT_MAX_INTERVAL",
     "JCODE_AMBIENT_MIN_INTERVAL",
     "JCODE_AMBIENT_MODEL",
-    "JCODE_AMBIENT_PROACTIVE",
-    "JCODE_AMBIENT_PROVIDER",
     "JCODE_AMBIENT_VISIBLE",
     "JCODE_ANIMATION_FPS",
     "JCODE_AUTO_POKE",
@@ -45,29 +43,19 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_AUTOJUDGE_MODEL",
     "JCODE_AUTOREVIEW_ENABLED",
     "JCODE_AUTOREVIEW_MODEL",
-    "JCODE_AUTO_POKE",
     "JCODE_AUTO_SERVER_RELOAD",
-    "JCODE_CHECK_UPDATES",
     "JCODE_BING_API_KEY",
     "JCODE_BING_API_KEY_ENV",
     "JCODE_BING_MARKET",
-    "JCODE_CENTERED_TOGGLE_KEY",
     "JCODE_CHAT_NATIVE_SCROLLBAR",
     "JCODE_COMPACT_NOTIFICATIONS",
     "JCODE_COPY_BADGE_ALT_LABEL",
-    "JCODE_COPY_SELECTION_TOGGLE_KEY",
     "JCODE_COPILOT_PREMIUM",
     "JCODE_CROSS_PROVIDER_FAILOVER",
     "JCODE_DEBUG_SOCKET",
     "JCODE_DEFAULT_REASONING_DISPLAY",
-    "JCODE_DICTATION_COMMAND",
-    "JCODE_DICTATION_KEY",
-    "JCODE_DICTATION_MODE",
-    "JCODE_DICTATION_TIMEOUT_SECS",
     "JCODE_DIFF_LINE_WRAP",
     "JCODE_DIFF_MODE",
-    "JCODE_DIFF_MODE_CYCLE_KEY",
-    "JCODE_DIAGRAM_PANE_TOGGLE_KEY",
     "JCODE_DISABLE_BASE_TOOLS",
     "JCODE_DISABLED_ANIMATIONS",
     "JCODE_DISABLED_TOOLS",
@@ -76,8 +64,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_DISCORD_CHANNEL_ID",
     "JCODE_DISCORD_REPLY_ENABLED",
     "JCODE_DISPLAY_CENTERED",
-    "JCODE_EFFORT_DECREASE_KEY",
-    "JCODE_EFFORT_INCREASE_KEY",
     "JCODE_FOCUS_HOOK",
     "JCODE_HOME",
     "JCODE_HOOK_PRE_TOOL",
@@ -88,16 +74,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_HOOK_TURN_END",
     "JCODE_HOOK_TURN_START",
     "JCODE_IDLE_ANIMATION",
-    "JCODE_INFO_WIDGET_TOGGLE_KEY",
-    "JCODE_JADE_RELAY_API_BASE",
-    "JCODE_JADE_RELAY_ENABLED",
-    "JCODE_JADE_RELAY_LAUNCH_ENABLED",
-    "JCODE_JADE_RELAY_LAUNCH_WORKING_DIR",
-    "JCODE_JADE_RELAY_REPLY_ENABLED",
-    "JCODE_JADE_RELAY_SESSION_ID",
-    "JCODE_JADE_RELAY_TOKEN",
-    "JCODE_JADE_RELAY_TOKEN_ID",
-    "JCODE_JADE_RELAY_USER_ID",
     "JCODE_KV_CACHE_MISS_NOTICES",
     "JCODE_LATEX_RENDERING",
     "JCODE_MARKDOWN_SPACING",
@@ -112,10 +88,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_PERSIST_MEMORY_INJECTIONS",
     "JCODE_MESSAGE_TIMESTAMPS",
     "JCODE_MODEL",
-    "JCODE_MODEL_SWITCH_KEY",
-    "JCODE_MODEL_SWITCH_PREV_KEY",
     "JCODE_MOUSE_CAPTURE",
-    "JCODE_NEW_TERMINAL_KEY",
     "JCODE_NO_EMOJI",
     "JCODE_NTFY_SERVER",
     "JCODE_NTFY_TOPIC",
@@ -136,20 +109,10 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_REASONING_DISPLAY",
     "JCODE_REDRAW_FPS",
     "JCODE_SAME_PROVIDER_ACCOUNT_FAILOVER",
-    "JCODE_SCROLL_BOOKMARK_KEY",
-    "JCODE_SCROLL_DOWN_FALLBACK_KEY",
-    "JCODE_SCROLL_DOWN_KEY",
-    "JCODE_SCROLL_PAGE_DOWN_KEY",
-    "JCODE_SCROLL_PAGE_UP_KEY",
-    "JCODE_SCROLL_PROMPT_DOWN_KEY",
-    "JCODE_SCROLL_PROMPT_UP_KEY",
-    "JCODE_SCROLL_UP_FALLBACK_KEY",
-    "JCODE_SCROLL_UP_KEY",
     "JCODE_SEARXNG_URL",
     "JCODE_SHOW_AGENTGREP_OUTPUT",
     "JCODE_SHOW_DIFFS",
     "JCODE_SHOW_THINKING",
-    "JCODE_SIDE_PANEL_TOGGLE_KEY",
     "JCODE_SIDE_PANEL_NATIVE_SCROLLBAR",
     "JCODE_SPAWN_HOOK",
     "JCODE_STREAM_IDLE_TIMEOUT_SECS",
@@ -167,14 +130,8 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_TOOL_PROFILE",
     "JCODE_TOOLS",
     "JCODE_TRUSTED_EXTERNAL_AUTH_SOURCES",
-    "JCODE_TYPING_SCROLL_LOCK_TOGGLE_KEY",
-    "JCODE_UPDATE_CHANNEL",
     "JCODE_WEBSEARCH_ENGINE",
     "JCODE_WEBSEARCH_FALLBACK_ENGINES",
-    "JCODE_WORKSPACE_DOWN_KEY",
-    "JCODE_WORKSPACE_LEFT_KEY",
-    "JCODE_WORKSPACE_RIGHT_KEY",
-    "JCODE_WORKSPACE_UP_KEY",
     "XDG_CONFIG_HOME",
 ];
 
@@ -459,9 +416,6 @@ pub struct Config {
     /// Keybinding configuration
     pub keybindings: KeybindingsConfig,
 
-    /// External dictation / speech-to-text integration
-    pub dictation: DictationConfig,
-
     /// Display/UI configuration
     pub display: DisplayConfig,
 
@@ -674,31 +628,6 @@ impl ToolConfig {
 fn normalize_tool_name(name: &str) -> String {
     let trimmed = name.trim().trim_matches('"');
     jcode_tool_types::resolve_tool_name(trimmed).to_string()
-}
-
-/// External dictation / speech-to-text integration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct DictationConfig {
-    /// Shell command to run. Must print the transcript to stdout.
-    pub command: String,
-    /// How to apply the resulting transcript.
-    pub mode: crate::protocol::TranscriptMode,
-    /// Optional in-app hotkey to trigger dictation.
-    pub key: String,
-    /// Maximum time to wait for the command to finish (0 = no timeout).
-    pub timeout_secs: u64,
-}
-
-impl Default for DictationConfig {
-    fn default() -> Self {
-        Self {
-            command: String::new(),
-            mode: crate::protocol::TranscriptMode::Send,
-            key: "off".to_string(),
-            timeout_secs: 90,
-        }
-    }
 }
 
 pub mod change_report;

@@ -297,7 +297,7 @@ pub(super) fn activate_auto_poke_local(app: &mut App) {
                     cache_control: None,
                 }],
             );
-            let _ = app.session.save();
+            app.session_save_pending = true;
 
             app.is_processing = true;
             app.status = ProcessingStatus::Sending;
@@ -360,7 +360,7 @@ pub(super) fn create_transfer_session_from_parent(
     parent: &crate::session::Session,
     compaction: Option<crate::session::StoredCompactionState>,
 ) -> anyhow::Result<(String, String)> {
-    let todos = crate::todo::load_todos(parent_session_id).unwrap_or_default();
+    let todos = crate::todo::load_todos(parent_session_id)?;
     let mut child = crate::session::Session::create(Some(parent_session_id.to_string()), None);
     child.messages.clear();
     child.compaction = compaction;
@@ -674,7 +674,10 @@ fn launch_manual_subagent(app: &mut App, spec: ManualSubagentSpec) {
         tool_duration_ms: None,
     });
     let message_id = app.session.add_message(Role::Assistant, content_blocks);
-    let _ = app.session.save();
+    // Mid-turn, so this takes the same deferred path a normal user message
+    // takes (`input.rs` submit_input): `flush_pending_session_save` retries
+    // and warns, instead of an error box interrupting the subagent launch.
+    app.session_save_pending = true;
     app.subagent_status = Some("starting subagent".to_string());
     app.set_status_notice("Running subagent");
 
@@ -766,7 +769,13 @@ fn handle_subagent_model_command(app: &mut App, trimmed: &str) -> bool {
 
     if matches!(rest, "inherit" | "reset" | "clear") {
         app.session.subagent_model = None;
-        let _ = app.session.save();
+        if let Err(e) = app.session.save() {
+            app.push_display_message(DisplayMessage::error(format!(
+                "Failed to save session: {}",
+                e
+            )));
+            return true;
+        }
         app.push_display_message(DisplayMessage::system(format!(
             "Subagent model reset to inherit the current model ({}).",
             app.provider.model()
@@ -776,7 +785,13 @@ fn handle_subagent_model_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     app.session.subagent_model = Some(rest.to_string());
-    let _ = app.session.save();
+    if let Err(e) = app.session.save() {
+        app.push_display_message(DisplayMessage::error(format!(
+            "Failed to save session: {}",
+            e
+        )));
+        return true;
+    }
     app.push_display_message(DisplayMessage::system(format!(
         "Subagent model pinned to {} for this session.",
         rest
@@ -1358,7 +1373,12 @@ pub(super) fn fork_session_with_prompt_local(app: &mut App, prompt: Option<&str>
 fn load_catchup_candidates(app: &App) -> Vec<crate::tui::session_picker::SessionInfo> {
     let current_session_id = active_session_id(app);
     crate::tui::session_picker::load_sessions()
-        .unwrap_or_default()
+        .unwrap_or_else(|error| {
+            // A failed scan is otherwise indistinguishable from "nothing needs
+            // catch up", which is the answer this command prints.
+            crate::logging::warn(&format!("Failed to load sessions for catch up: {}", error));
+            Vec::new()
+        })
         .into_iter()
         .filter(|session| session.id != current_session_id && session.needs_catchup)
         .collect()
@@ -1602,7 +1622,16 @@ fn handle_transcript_command(app: &mut App, trimmed: &str) -> bool {
     };
 
     if !app.is_remote && app.session.id == session_id {
-        let _ = app.session.save();
+        // A failed save means the file this command is about to open is stale,
+        // so report it rather than handing over a transcript that is missing
+        // the newest turns.
+        if let Err(e) = app.session.save() {
+            app.push_display_message(DisplayMessage::error(format!(
+                "Failed to save session: {}",
+                e
+            )));
+            return true;
+        }
     }
 
     if trimmed == "/transcript path" {
@@ -1984,7 +2013,13 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
             });
         }
 
-        let _ = app.session.save();
+        if let Err(e) = app.session.save() {
+            app.push_display_message(DisplayMessage::error(format!(
+                "Failed to save session: {}",
+                e
+            )));
+            return true;
+        }
         app.push_display_message(DisplayMessage::system(format!(
             "✓ Undid rewind. Restored {} message{}.",
             restored,
@@ -2067,7 +2102,16 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
 
                 app.provider_session_id = None;
                 app.session.provider_session_id = None;
-                let _ = app.session.save();
+                // The rewind is already applied in memory; if it did not reach
+                // disk, say so instead of printing the "✓ Rewound" line, which
+                // would promise a state that resume silently un-rewinds.
+                if let Err(e) = app.session.save() {
+                    app.push_display_message(DisplayMessage::error(format!(
+                        "Failed to save session: {}",
+                        e
+                    )));
+                    return true;
+                }
 
                 app.push_display_message(DisplayMessage::system(format!(
                     "✓ Rewound to message {}. Removed {} message{}. Undo anytime with /rewind undo.",
@@ -2534,7 +2578,16 @@ pub(super) fn active_session_id(app: &App) -> String {
 }
 
 pub(super) fn poke_todos(app: &App) -> Vec<crate::todo::TodoItem> {
-    crate::todo::load_todos(&active_session_id(app)).unwrap_or_default()
+    // An `Err` here means the todo directory could not be resolved at all; a
+    // missing or corrupt file already reads as "no todos" inside `load_todos`.
+    // Reporting zero todos because the path broke is worth a log line.
+    match crate::todo::load_todos(&active_session_id(app)) {
+        Ok(todos) => todos,
+        Err(error) => {
+            crate::logging::warn(&format!("Failed to load todos for poke: {}", error));
+            Vec::new()
+        }
+    }
 }
 
 pub(super) fn is_incomplete_poke_todo(todo: &crate::todo::TodoItem) -> bool {
@@ -2636,23 +2689,6 @@ pub(super) fn active_working_dir(app: &App) -> Option<std::path::PathBuf> {
         .working_dir
         .as_deref()
         .map(std::path::PathBuf::from)
-}
-
-pub(super) fn handle_dictation_command(app: &mut App, trimmed: &str) -> bool {
-    if trimmed == "/dictate" || trimmed == "/dictation" {
-        app.handle_dictation_trigger();
-        return true;
-    }
-
-    if trimmed.starts_with("/dictate ") || trimmed.starts_with("/dictation ") {
-        app.push_display_message(DisplayMessage::error(
-            "Usage: /dictate\nConfigure [dictation] in ~/.jcode/config.toml to customize command, mode, hotkey, and timeout."
-                .to_string(),
-        ));
-        return true;
-    }
-
-    false
 }
 
 fn alignment_label(centered: bool) -> &'static str {
@@ -3205,12 +3241,18 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if trimmed == "/compact mode" || trimmed == "/compact mode status" {
-        let mode = app
-            .registry
-            .compaction()
-            .try_read()
-            .map(|manager| manager.mode())
-            .unwrap_or_default();
+        // `try_read` fails on writer contention, and `unwrap_or_default()` then
+        // printed `CompactionMode::default()` as though it were the session's
+        // mode - a status command that lies. Blocking is not an option on the
+        // UI thread, so report the contention instead.
+        let compaction = app.registry.compaction();
+        let Ok(manager) = compaction.try_read() else {
+            app.push_display_message(DisplayMessage::error(
+                "Compaction manager is busy; run /compact mode again.".to_string(),
+            ));
+            return true;
+        };
+        let mode = manager.mode();
         app.push_display_message(DisplayMessage::system(format!(
             "Compaction mode: {}\nAvailable: reactive, proactive, semantic\nUse /compact mode <mode> to change it for this session.",
             mode.as_str()

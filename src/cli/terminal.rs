@@ -461,7 +461,6 @@ fn run_result_will_exec(run_result: &crate::tui::RunResult, extra_exec: bool) ->
     extra_exec
         || run_result.reload_session.is_some()
         || run_result.rebuild_session.is_some()
-        || run_result.update_session.is_some()
         || run_result.restart_session.is_some()
 }
 
@@ -646,14 +645,13 @@ mod tests {
             match field {
                 "reload" => result.reload_session = Some("session_test".into()),
                 "rebuild" => result.rebuild_session = Some("session_test".into()),
-                "update" => result.update_session = Some("session_test".into()),
                 "restart" => result.restart_session = Some("session_test".into()),
                 _ => unreachable!(),
             }
             result
         };
 
-        for field in ["reload", "rebuild", "update", "restart"] {
+        for field in ["reload", "rebuild", "restart"] {
             assert!(
                 run_result_will_exec(&with(field), false),
                 "{field} must preserve terminal modes across exec"

@@ -360,3 +360,60 @@ mod colors {
         );
     }
 }
+
+#[cfg(unix)]
+/// A command must never print its success message after `session.save()` failed.
+///
+/// Five commands here did exactly that (`/subagent-model` twice, `/transcript`,
+/// `/rewind`, `/rewind undo`): they printed "pinned to X" or "✓ Rewound" while
+/// the state never reached disk, so the next resume silently discarded it. The
+/// file already handled this same call correctly in four other places, which is
+/// what made the split a bug rather than a policy.
+mod save_failure_reporting {
+    use crate::tui::app::commands_dispatch::dispatch_local_command;
+    use crate::tui::app::tests::create_test_app;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn a_failed_save_is_reported_instead_of_claimed_success() {
+        let mut app = create_test_app();
+        let sessions_dir = crate::storage::jcode_dir()
+            .expect("jcode dir")
+            .join("sessions");
+        std::fs::create_dir_all(&sessions_dir).expect("sessions dir");
+        let original = std::fs::metadata(&sessions_dir)
+            .expect("metadata")
+            .permissions();
+
+        // Make the session directory unwritable so `session.save()` fails for
+        // real rather than through an injected fake.
+        let mut locked = original.clone();
+        locked.set_mode(0o500);
+        std::fs::set_permissions(&sessions_dir, locked).expect("lock dir");
+
+        let save_actually_failed = app.session.save().is_err();
+        let claimed = dispatch_local_command(&mut app, "/subagent-model some-model");
+        let last = app
+            .display_messages
+            .last()
+            .map(|m| m.content.clone())
+            .unwrap_or_default();
+
+        std::fs::set_permissions(&sessions_dir, original).expect("restore dir");
+
+        assert!(claimed, "/subagent-model should be claimed");
+        if !save_actually_failed {
+            eprintln!("SKIP: save still succeeded (running as root?)");
+            return;
+        }
+        eprintln!("LAST MESSAGE: {last}");
+        assert!(
+            last.contains("Failed to save session"),
+            "a failed persist must be reported, got: {last}"
+        );
+        assert!(
+            !last.contains("pinned to"),
+            "must not claim the pin succeeded, got: {last}"
+        );
+    }
+}

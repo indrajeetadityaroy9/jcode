@@ -858,17 +858,6 @@ impl App {
                 self.debug_trace.record("input", "submitted".to_string());
                 "OK: submitted".to_string()
             }
-        } else if cmd == "record-start" {
-            use crate::tui::test_harness;
-            test_harness::start_recording();
-            "OK: event recording started".to_string()
-        } else if cmd == "record-stop" {
-            use crate::tui::test_harness;
-            test_harness::stop_recording();
-            "OK: event recording stopped".to_string()
-        } else if cmd == "record-events" {
-            use crate::tui::test_harness;
-            test_harness::get_recorded_events_json()
         } else if cmd == "clock-enable" {
             use crate::tui::test_harness;
             test_harness::enable_test_clock();

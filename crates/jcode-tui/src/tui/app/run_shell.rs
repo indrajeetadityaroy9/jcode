@@ -645,10 +645,6 @@ impl App {
             super::handterm_native_scroll::HandtermNativeScrollClient::connect_from_env();
         // Subscribe to bus for background task completion notifications
         let mut bus_receiver = Bus::global().subscribe();
-        if let Some(status) = Bus::global().latest_update_status() {
-            self.handle_update_status(status);
-        }
-
         loop {
             self.sync_sleep_guard();
             let desired_redraw = crate::tui::redraw_interval(&self);
@@ -755,7 +751,6 @@ impl App {
         Ok(RunResult {
             reload_session: self.reload_requested.take(),
             rebuild_session: self.rebuild_requested.take(),
-            update_session: self.update_requested.take(),
             restart_session: self.restart_requested.take(),
             exit_code: self.requested_exit_code,
             session_id: Some(self.session.id.clone()),
@@ -851,11 +846,6 @@ impl App {
             needs_redraw = true;
 
             let mut bus_receiver_remote = Bus::global().subscribe();
-            if let Some(status) = Bus::global().latest_update_status() {
-                self.handle_update_status(status);
-                needs_redraw = true;
-            }
-
             // Main event loop
             loop {
                 self.sync_sleep_guard();
@@ -986,7 +976,6 @@ impl App {
         Ok(RunResult {
             reload_session: self.reload_requested.take(),
             rebuild_session: self.rebuild_requested.take(),
-            update_session: self.update_requested.take(),
             restart_session: self.restart_requested.take(),
             exit_code: self.requested_exit_code,
             session_id: if self.is_remote {
@@ -1015,89 +1004,6 @@ impl App {
         centered_override: Option<bool>,
     ) -> Result<()> {
         replay::run_swarm_replay(terminal, panes, speed, centered_override).await
-    }
-
-    /// Run replay headlessly, rendering each frame to an in-memory buffer.
-    /// Returns a list of (timestamp_secs, Buffer) pairs for video export.
-    pub async fn run_headless_replay(
-        mut self,
-        timeline: &[crate::replay::TimelineEvent],
-        speed: f64,
-        width: u16,
-        height: u16,
-        fps: u32,
-    ) -> Result<Vec<(f64, ratatui::buffer::Buffer)>> {
-        use crate::replay::ReplayEvent;
-        use ratatui::backend::TestBackend;
-
-        let replay_events = crate::replay::timeline_to_replay_events(timeline);
-        if replay_events.is_empty() {
-            anyhow::bail!("No replay events to export");
-        }
-
-        let backend = TestBackend::new(width, height);
-        let mut terminal = ratatui::Terminal::new(backend)?;
-        let mut remote = crate::tui::backend::ReplayRemoteState::default();
-
-        let frame_duration_ms: f64 = 1000.0 / fps as f64;
-        let mut frames: Vec<(f64, ratatui::buffer::Buffer)> = Vec::new();
-        let mut sim_time_ms: f64 = 0.0;
-        let mut next_frame_at: f64 = 0.0;
-
-        let total_duration_ms: f64 = replay_events.iter().map(|(d, _)| *d as f64 / speed).sum();
-
-        let mut event_schedule: Vec<(f64, &ReplayEvent)> = Vec::new();
-        {
-            let mut abs_time: f64 = 0.0;
-            for (delay_ms, evt) in &replay_events {
-                abs_time += *delay_ms as f64 / speed;
-                event_schedule.push((abs_time, evt));
-            }
-        }
-
-        let mut event_cursor: usize = 0;
-        let mut replay_turn_id: u64 = 0;
-
-        terminal.draw(|f| crate::tui::render_frame(f, &self))?;
-        frames.push((0.0, terminal.backend().buffer().clone()));
-
-        let progress_interval = (total_duration_ms / 20.0).max(1000.0);
-        let mut next_progress = progress_interval;
-
-        while sim_time_ms <= total_duration_ms + frame_duration_ms {
-            while event_cursor < event_schedule.len()
-                && event_schedule[event_cursor].0 <= sim_time_ms
-            {
-                let (_t, event) = event_schedule[event_cursor];
-                replay::apply_replay_event(
-                    &mut self,
-                    &mut remote,
-                    event,
-                    &mut replay_turn_id,
-                    Some(sim_time_ms),
-                );
-                event_cursor += 1;
-            }
-
-            if sim_time_ms >= next_frame_at {
-                replay::update_replay_elapsed_override(&mut self, sim_time_ms);
-                terminal.draw(|f| crate::tui::render_frame(f, &self))?;
-                frames.push((sim_time_ms / 1000.0, terminal.backend().buffer().clone()));
-                next_frame_at = sim_time_ms + frame_duration_ms;
-            }
-
-            if sim_time_ms >= next_progress {
-                let pct = (sim_time_ms / total_duration_ms * 100.0).min(100.0);
-                eprint!("\r  Rendering... {:.0}%", pct);
-                next_progress += progress_interval;
-            }
-
-            sim_time_ms += frame_duration_ms;
-        }
-
-        eprintln!("\r  Rendering... 100%  ({} frames captured)", frames.len());
-
-        Ok(frames)
     }
 }
 

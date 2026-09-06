@@ -22,8 +22,8 @@ mod platform {
     };
     use objc2_user_notifications::{
         UNAuthorizationOptions, UNMutableNotificationContent, UNNotificationPresentationOptions,
-        UNNotificationRequest, UNNotificationResponse, UNNotificationSound,
-        UNUserNotificationCenter, UNUserNotificationCenterDelegate,
+        UNNotificationRequest, UNNotificationResponse, UNUserNotificationCenter,
+        UNUserNotificationCenterDelegate,
     };
 
     const BROKER_EXECUTABLE_NAME: &str = "jcode-notification-broker";
@@ -55,8 +55,7 @@ mod platform {
                 completion_handler: &block2::DynBlock<dyn Fn(UNNotificationPresentationOptions)>,
             ) {
                 completion_handler.call((UNNotificationPresentationOptions::Banner
-                    | UNNotificationPresentationOptions::List
-                    | UNNotificationPresentationOptions::Sound,));
+                    | UNNotificationPresentationOptions::List,));
             }
 
             #[unsafe(method(userNotificationCenter:didReceiveNotificationResponse:withCompletionHandler:))]
@@ -140,7 +139,7 @@ mod platform {
             );
         });
         center.requestAuthorizationWithOptions_completionHandler(
-            UNAuthorizationOptions::Alert | UNAuthorizationOptions::Sound,
+            UNAuthorizationOptions::Alert,
             &callback,
         );
     }
@@ -274,10 +273,6 @@ mod platform {
         // SAFETY: NSString is a property-list type accepted by UserNotifications,
         // and both key and value remain retained by the immutable dictionary.
         unsafe { content.setUserInfo(metadata.cast_unchecked()) };
-        if let Some(sound) = envelope.sound.as_deref() {
-            let sound = UNNotificationSound::soundNamed(&NSString::from_str(sound));
-            content.setSound(Some(&sound));
-        }
 
         let request = UNNotificationRequest::requestWithIdentifier_content_trigger(
             &NSString::from_str(&envelope.notification_id),

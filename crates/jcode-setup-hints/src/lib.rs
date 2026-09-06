@@ -463,44 +463,6 @@ For full color, use Ghostty, iTerm2, kitty, or WezTerm, or set JCODE_GLYPH_SAFE_
     )
 }
 
-/// Manual `jcode setup-launcher` command.
-pub fn run_setup_launcher() -> Result<()> {
-    #[cfg(target_os = "macos")]
-    {
-        let mut state = SetupHintsState::load();
-        eprintln!("\x1b[1mjcode setup-launcher\x1b[0m");
-        eprintln!();
-
-        match install_macos_app_launcher() {
-            Ok((app_dir, terminal)) => {
-                state.desktop_shortcut_created = true;
-                let _ = state.save();
-                eprintln!(
-                    "  \x1b[32m✓\x1b[0m Installed launcher: {}",
-                    app_dir.display()
-                );
-                eprintln!(
-                    "  \x1b[32m✓\x1b[0m Spotlight/Launchpad/Dock will launch jcode in {}",
-                    terminal.label()
-                );
-                eprintln!();
-                eprintln!("  Tip: pin Jcode.app to your Dock or launch it with Cmd+Space.");
-                return Ok(());
-            }
-            Err(e) => {
-                eprintln!("  \x1b[31m✗\x1b[0m Failed: {}", e);
-                anyhow::bail!("macOS launcher setup failed: {}", e);
-            }
-        }
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        eprintln!("Launcher setup is currently only supported on macOS.");
-        Ok(())
-    }
-}
-
 /// Create a desktop shortcut/launcher for jcode.
 ///
 /// - macOS: creates a jcode.app bundle in ~/Applications/

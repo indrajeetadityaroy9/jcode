@@ -106,7 +106,6 @@ impl App {
         self.centered_toggle_keys = keybind::load_centered_toggle_key();
         self.toggle_keys = keybind::load_toggle_keys();
         self.workspace_navigation_keys = keybind::load_workspace_navigation_keys();
-        self.dictation_key = keybind::load_dictation_key();
         self.new_terminal_key = keybind::load_new_terminal_key();
         self.open_resume_key = keybind::load_open_resume_key();
         self.fallback_switch_key = keybind::load_fallback_switch_key();
@@ -454,7 +453,6 @@ impl App {
             pending_provider_failover: None,
             pending_fallback_offer: None,
             pending_fallback_resend: None,
-            pending_merge_offer: None,
             session_save_pending: false,
             streaming_tool_calls: Vec::new(),
             attempt_committed_assistant_messages: 0,
@@ -478,7 +476,6 @@ impl App {
             turn_reasoning_traces: Vec::new(),
             reload_requested: None,
             rebuild_requested: None,
-            update_requested: None,
             background_client_action: None,
             pending_background_client_reload: None,
             restart_requested: None,
@@ -633,16 +630,11 @@ impl App {
             centered_toggle_keys: keybind::load_centered_toggle_key(),
             toggle_keys: keybind::load_toggle_keys(),
             workspace_navigation_keys: keybind::load_workspace_navigation_keys(),
-            dictation_key: keybind::load_dictation_key(),
             new_terminal_key: keybind::load_new_terminal_key(),
             open_resume_key: keybind::load_open_resume_key(),
             fallback_switch_key: keybind::load_fallback_switch_key(),
             scroll_keys: keybind::load_scroll_keys(),
             keybindings_config_generation: crate::config::config_reload_generation(),
-            dictation_session: None,
-            dictation_in_flight: false,
-            dictation_request_id: None,
-            dictation_target_session_id: None,
             scroll_bookmark: None,
             typing_scroll_lock: false,
             stashed_input: None,
@@ -872,7 +864,6 @@ impl App {
             pending_provider_failover: None,
             pending_fallback_offer: None,
             pending_fallback_resend: None,
-            pending_merge_offer: None,
             session_save_pending: false,
             streaming_tool_calls: Vec::new(),
             attempt_committed_assistant_messages: 0,
@@ -896,7 +887,6 @@ impl App {
             turn_reasoning_traces: Vec::new(),
             reload_requested: None,
             rebuild_requested: None,
-            update_requested: None,
             background_client_action: None,
             pending_background_client_reload: None,
             restart_requested: None,
@@ -1051,16 +1041,11 @@ impl App {
             centered_toggle_keys: keybind::load_centered_toggle_key(),
             toggle_keys: keybind::load_toggle_keys(),
             workspace_navigation_keys: keybind::load_workspace_navigation_keys(),
-            dictation_key: keybind::load_dictation_key(),
             new_terminal_key: keybind::load_new_terminal_key(),
             open_resume_key: keybind::load_open_resume_key(),
             fallback_switch_key: keybind::load_fallback_switch_key(),
             scroll_keys: keybind::load_scroll_keys(),
             keybindings_config_generation: crate::config::config_reload_generation(),
-            dictation_session: None,
-            dictation_in_flight: false,
-            dictation_request_id: None,
-            dictation_target_session_id: None,
             scroll_bookmark: None,
             typing_scroll_lock: false,
             stashed_input: None,

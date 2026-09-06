@@ -1,11 +1,9 @@
 {
-  "total": 17,
   "files": {
     "crates/jcode-app-core/src/lib.rs": 1,
     "crates/jcode-app-core/src/setup_hints.rs": 1,
     "crates/jcode-base/src/env.rs": 1,
     "crates/jcode-base/src/id.rs": 1,
-    "crates/jcode-base/src/lib.rs": 1,
     "crates/jcode-base/src/logging.rs": 1,
     "crates/jcode-base/src/memory_types.rs": 1,
     "crates/jcode-base/src/plan.rs": 1,
@@ -16,7 +14,7 @@
     "crates/jcode-base/src/transport/mod.rs": 1,
     "crates/jcode-base/src/util.rs": 1,
     "crates/jcode-tui/src/lib.rs": 1,
-    "crates/jcode-tui/src/tui/mod.rs": 1,
     "src/lib.rs": 1
-  }
+  },
+  "total": 15
 }

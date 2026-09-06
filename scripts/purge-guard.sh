@@ -114,6 +114,43 @@ verdict "$(grep -rnE \
     'subscription_api|subscription_catalog|JcodeProvider|JCODE_LOGIN_PROVIDER|JCODE_ACCOUNT_URL|jcode_device|subscribe_nudge|(ProviderChoice|LoginProviderTarget|LoginProviderAuthStateKey|RuntimeProviderId)::Jcode\b|(RuntimeKey|ModelRouteApiMethod|OpenRouterTransportState|NativeProviderKind)::Jcode(Subscription)?\b|AccountCommand::Jcode|"jcode-subscription"|disable_subscription_runtime_mode|is_jcode_subscription_runtime' \
     --include='*.rs' crates/ src/ tests/ 2>/dev/null | sed 's/^/  /')"
 
+# The self-updater, the Cloud/Jade integration, `setup-launcher` and the four
+# user-facing `ambient` verbs are purged (docs/FORK_WORKFLOW.md §1).
+#
+# Deliberately NOT matched: `--no-update` (hot_exec still emits it into its own
+# re-exec argv), every `reload`/`rebuild` path (`session_rebuild`, `jcode server
+# reload` — the owner's real source-build route), `ambient run-visible` and the
+# whole ambient *runner* (the model-callable `schedule` tool rides on it), and
+# `create_desktop_shortcut`/`maybe_show_setup_hints`, which install the app
+# bundle automatically on first launch.
+section "updater / cloud-jade / setup-launcher must stay deleted"
+verdict "$(grep -rnE \
+    'jcode_update_core|jcode-update-core|update_metadata|update_rate_limit|should_auto_update|spawn_background_update_check|run_auto_update|claim_update_fetch_slot|reload_server_after_update|\bhot_update\b|BusEvent::UpdateStatus|ClientMaintenanceAction::Update\b|UpdateChannel|JCODE_CHECK_UPDATES|JCODE_UPDATE_CHANNEL|jade_relay|JadeRelayChannel|JCODE_JADE|Command::(Update|Cloud|SetupLauncher)\b|Cloud(Command|SessionsCommand|SessionViewFormat)|JadeCloudOptions|run_setup_launcher|setup-launcher|AmbientCommand::(Status|Log|Trigger|Stop)\b' \
+    --include='*.rs' --include='*.sh' --include='*.toml' crates/ src/ scripts/ tests/ Cargo.toml 2>/dev/null \
+    | grep -v 'scripts/purge-guard.sh' | sed 's/^/  /')"
+
+# Dictation (speech-to-text) and the replay video encoder are purged
+# (docs/FORK_WORKFLOW.md §1).
+#
+# Deliberately NOT matched, because the owner asked for these to stay: the
+# `image` crate and every inline/pinned-image path; `jcode transcript` and
+# `Request::Transcript`, a standalone text-injection API any external STT
+# script can drive; `storage::{remember,last}_focused_session`, which routes
+# that injection; `jcode replay` interactive playback with `--export`
+# (timeline JSON), `--speed`, `--swarm`, `--timeline`, `--auto-edit` and
+# `--centered`; and `IMAGE_PLACEHOLDER_MODE` in jcode-tui-mermaid, which is the
+# renamed image-placeholder path, not the encoder.
+section "video media assets must stay deleted"
+verdict "$( { git ls-files | grep -iE '\.(mp4|mov|webm|gif|avi|mkv)$' | sed 's/^/  RESURRECTED: /'
+    git ls-files assets/demos 2>/dev/null | grep -i timeline | sed 's/^/  RESURRECTED: /'; } )"
+
+section "dictation / video encoder must stay deleted"
+verdict "$(grep -rnE \
+    'video_export|export_swarm_video|export_video|run_headless_replay|compose_swarm_buffers|VIDEO_EXPORT_MODE|write_video_export_marker|JMERMAID|rsvg-convert|\bffmpeg\b|mod dictation|DictationConfig|DictationRun|ActiveDictation|BusEvent::Dictation|dictation_key|Command::Dictate\b|run_dictate_command|JCODE_DICTATION|replay_recording\.sh|record_demo\.sh|capture_demo\.sh|EventRecorder|RecordedEvent \{ offset_ms|get_event_recorder|EVENT_RECORDER|start_recording|stop_recording|get_recorded_events_json|"/record"|turn_complete_sound|UNNotificationSound|sound name \\"|tui::screenshot|mod screenshot|screenshot::(enable|disable|signal_ready|clear_all_signals)|"/screenshot"|"/screenshot-mode"|screenshot_watcher|auto_screenshot|niri msg' \
+    --include='*.rs' --include='*.sh' --include='*.toml' crates/ src/ scripts/ tests/ 2>/dev/null \
+    | grep -v 'scripts/purge-guard.sh' \
+    | grep -v 'config_tests.rs' | sed 's/^/  /')"
+
 # The Windows launcher/hotkey port and the PowerShell installer are purged: this
 # fork is macOS-only. Upstream never touched these files across the 236 commits
 # of the v0.75.3 and v0.76.0 syncs, so a hit here means a sync reintroduced them
@@ -141,6 +178,25 @@ verdict "$( { grep -rnE \
       'notify-send|xdg-open|wl-copy|wl-paste|xclip|xsel|wmctrl|xdotool|systemd-inhibit|taskkill|cmd\.exe\b|WAYLAND_DISPLAY|niri msg|/proc/self/(status|statm|task|fd|limits|stat)|/proc/cpuinfo|/proc/meminfo|/proc/version|/sys/devices|lspci' \
       --include='*.rs' crates/ src/ 2>/dev/null \
       | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*)' | sed 's/^/  /'; } )"
+
+# The orphaned client SDK, the consumer-less bridge *binary target*, the
+# deprecated legacy-provider smoke bin and the Windows-only e2e module are
+# purged (docs/FORK_WORKFLOW.md §1). The SDK's only consumer was the deleted
+# desktop app; the bridge binary's only spawner was the SDK.
+#
+# Deliberately NOT matched: `run_bridge`, the `jcode api-bridge` subcommand and
+# the server's wire-identity string `"jcode-harness-api-bridge/<version>"`
+# (jcode-harness-api-server/src/lib.rs) are all live protocol surface - only the
+# standalone binary target is gone. So this checks for the deleted *files* and
+# the `[[bin]]` declaration rather than grepping the name.
+section "orphaned client SDK / bridge binary / deprecated smoke bin"
+verdict "$( { grep -rn 'crates/jcode-sdk\|jcode_sdk::' \
+      --include='*.rs' --include='*.toml' . 2>/dev/null \
+      | grep -v '/target/' | sed 's/^/  /'
+    grep -rn 'name = "jcode-harness-api-bridge"\|name = "test_api"' \
+      --include='*.toml' . 2>/dev/null | sed 's/^/  /'
+    ls crates/jcode-harness-api-server/src/bin/bridge.rs src/bin/test_api.rs \
+       tests/e2e/windows_lifecycle.rs 2>/dev/null | sed 's/^/  /'; } )"
 
 section "network egress endpoints"
 verdict "$(grep -rn 'telemetry\.jcode\.sh\|api\.jcode\.sh/v1/discovery' \

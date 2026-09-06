@@ -11,8 +11,8 @@
 //! repeat until the graph is fully terminal or it stalls.
 
 use super::{
-    DagError, HandoffArtifact, Mode, NodeKind, NodeSpec, TaskGraph, complete_node, dispatch,
-    expand_node, fail_node, inject_from_gate, ready_nodes,
+    DagError, HandoffArtifact, NodeKind, NodeSpec, TaskGraph, complete_node, dispatch, expand_node,
+    fail_node, inject_from_gate, ready_nodes,
 };
 
 /// What a mock worker decides to do with the node it was handed.
@@ -147,9 +147,4 @@ pub fn gate_pass_artifact(input: &str) -> HandoffArtifact {
         )
     };
     HandoffArtifact::brief(findings)
-}
-
-/// Convenience: build a graph in a mode for sims/tests.
-pub fn graph(mode: Mode) -> TaskGraph {
-    TaskGraph::new(mode)
 }

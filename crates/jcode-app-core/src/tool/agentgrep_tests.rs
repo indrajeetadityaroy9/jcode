@@ -1129,3 +1129,35 @@ fn grep_defaults_to_a_bounded_match_count() {
         DEFAULT_GREP_MAX_REGIONS
     );
 }
+
+/// Context multiplies a match's rendered height, so the default cap has to
+/// shrink with it or a wide-context search trips the tool-output guard and
+/// returns nothing useful instead of a clipped result.
+///
+/// An explicit `max_regions` is the caller's decision and is never adjusted.
+#[test]
+fn effective_max_regions_shrinks_the_default_when_context_is_requested() {
+    assert_eq!(
+        effective_max_regions(None, 0),
+        DEFAULT_GREP_MAX_REGIONS,
+        "no context means no adjustment"
+    );
+
+    // Each match renders 1 + 2 * context_lines lines, so the cap divides by
+    // that factor: 200 / 5 at two lines of context.
+    assert_eq!(effective_max_regions(None, 2), 40);
+
+    // At the clamp ceiling the arithmetic would give 200 / 11 = 18, below the
+    // floor, so the floor wins: a context search still returns enough matches
+    // to be worth reading.
+    assert_eq!(
+        effective_max_regions(None, MAX_CONTEXT_LINES),
+        MIN_CONTEXT_ADJUSTED_MAX_REGIONS
+    );
+
+    assert_eq!(
+        effective_max_regions(Some(7), 3),
+        7,
+        "an explicit cap must pass through untouched, context or not"
+    );
+}

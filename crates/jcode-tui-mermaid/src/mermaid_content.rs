@@ -41,9 +41,9 @@ pub fn result_to_content(result: RenderResult, max_width: Option<usize>) -> Merm
             height,
             ..
         } => {
-            // Check if we have picker/protocol support (or video export mode)
+            // Check if we have picker/protocol support (or placeholder mode)
             if PICKER.get().and_then(|p| p.as_ref()).is_some()
-                || VIDEO_EXPORT_MODE.load(Ordering::Relaxed)
+                || IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed)
             {
                 let max_w = max_width.map(|w| w as u16).unwrap_or(80);
                 let estimated_height = estimate_image_height(width, height, max_w);
@@ -218,13 +218,13 @@ pub fn inline_fit_geometry(width: u32, height: u32, chat_width: u16, cap_rows: u
 
 /// Convert render result to lines. Diagrams emit the same inline-fit
 /// placeholder raster images use, so they share the fit/border/stable-scroll
-/// draw pipeline. Video export keeps the legacy crop marker, whose draw path
-/// writes the printable region markers the SVG exporter scans for.
+/// draw pipeline. Image-placeholder mode instead emits the legacy crop marker,
+/// which renders without any terminal image protocol.
 pub fn result_to_lines(result: RenderResult, max_width: Option<usize>) -> Vec<Line<'static>> {
     result_to_lines_with_capabilities(
         result,
         max_width,
-        VIDEO_EXPORT_MODE.load(Ordering::Relaxed),
+        IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed),
         PICKER.get().and_then(|p| p.as_ref()).is_some(),
         uses_text_image_fallback(),
     )
@@ -233,7 +233,7 @@ pub fn result_to_lines(result: RenderResult, max_width: Option<usize>) -> Vec<Li
 fn result_to_lines_with_capabilities(
     result: RenderResult,
     max_width: Option<usize>,
-    video_export_mode: bool,
+    image_placeholder_mode: bool,
     image_renderer_available: bool,
     uses_text_fallback: bool,
 ) -> Vec<Line<'static>> {
@@ -244,7 +244,7 @@ fn result_to_lines_with_capabilities(
             height,
             ..
         } => {
-            if video_export_mode {
+            if image_placeholder_mode {
                 let max_w = max_width.map(|w| w as u16).unwrap_or(80);
                 let estimated_height = estimate_image_height(width, height, max_w);
                 return image_widget_placeholder(hash, estimated_height);
@@ -421,31 +421,6 @@ pub fn parse_inline_image_placeholder(line: &Line<'_>) -> Option<(u64, u16, u16)
         return None;
     }
     Some((hash, rows, cols))
-}
-
-/// Write a mermaid image marker into a buffer area (for video export mode).
-/// This allows the SVG pipeline to detect the region and embed the cached PNG.
-pub fn write_video_export_marker(hash: u64, area: Rect, buf: &mut Buffer) {
-    if area.width == 0 || area.height == 0 {
-        return;
-    }
-    let invisible = Style::default().fg(Color::Black).bg(Color::Black);
-    // Use printable marker characters that won't break SVG XML
-    let marker = format!("JMERMAID:{:016x}:END", hash);
-    // Write marker on the first row
-    let y = area.y;
-    for (i, ch) in marker.chars().enumerate() {
-        let x = area.x + i as u16;
-        if x < area.x + area.width {
-            buf[(x, y)].set_char(ch).set_style(invisible);
-        }
-    }
-    // Clear remaining rows (empty for region detection)
-    for row in (area.y + 1)..(area.y + area.height) {
-        for col in area.x..(area.x + area.width) {
-            buf[(col, row)].set_char(' ').set_style(invisible);
-        }
-    }
 }
 
 /// Create placeholder lines for when image protocols aren't available

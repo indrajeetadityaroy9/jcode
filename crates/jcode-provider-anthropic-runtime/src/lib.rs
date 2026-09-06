@@ -611,9 +611,22 @@ impl AnthropicProvider {
             })
         });
 
+        // `JCODE_ANTHROPIC_MAX_TOKENS=8k` used to fall through to the model
+        // default with no trace, looking like it had applied. Absence stays
+        // silent; only a set-but-unparseable value is reported.
         let max_tokens_override = std::env::var("JCODE_ANTHROPIC_MAX_TOKENS")
             .ok()
-            .and_then(|v| v.trim().parse::<u32>().ok());
+            .filter(|raw| !raw.trim().is_empty())
+            .and_then(|raw| match raw.trim().parse::<u32>() {
+                Ok(value) => Some(value),
+                Err(err) => {
+                    jcode_base::logging::warn(&format!(
+                        "JCODE_ANTHROPIC_MAX_TOKENS={raw:?} is not a token count ({err}); \
+                         using the model default"
+                    ));
+                    None
+                }
+            });
         let reasoning_effort = jcode_base::config::config()
             .provider
             .anthropic_reasoning_effort

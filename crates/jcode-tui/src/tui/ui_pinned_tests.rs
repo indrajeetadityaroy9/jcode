@@ -11,18 +11,18 @@ fn mermaid_test_lock() -> &'static Mutex<()> {
 }
 
 fn with_mermaid_placeholder_mode<T>(f: impl FnOnce() -> T) -> T {
-    struct ResetVideoExportMode;
-    impl Drop for ResetVideoExportMode {
+    struct ResetImagePlaceholderMode;
+    impl Drop for ResetImagePlaceholderMode {
         fn drop(&mut self) {
-            crate::tui::mermaid::set_video_export_mode(false);
+            crate::tui::mermaid::set_image_placeholder_mode(false);
         }
     }
 
     let _guard = mermaid_test_lock()
         .lock()
         .expect("mermaid placeholder test lock");
-    crate::tui::mermaid::set_video_export_mode(true);
-    let _reset = ResetVideoExportMode;
+    crate::tui::mermaid::set_image_placeholder_mode(true);
+    let _reset = ResetImagePlaceholderMode;
     let result = f();
     result
 }
@@ -607,7 +607,7 @@ fn render_side_panel_markdown_without_native_protocol_shows_mermaid_source() {
     // Pin protocol availability OFF for this thread: PICKER is a
     // process-global OnceLock that other tests (e.g. the mermaid
     // flicker-bench debug test) initialize as a side effect, and
-    // VIDEO_EXPORT_MODE is a process-global atomic, so without the override
+    // IMAGE_PLACEHOLDER_MODE is a process-global atomic, so without the override
     // this test is order-dependent under a parallel test run.
     let rendered = with_serialized_mermaid_state(|| {
         crate::tui::mermaid::with_image_protocol_override(Some(false), || {

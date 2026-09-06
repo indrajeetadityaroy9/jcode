@@ -1,45 +1,62 @@
 # Jcode Server Memory Incident Runbook
 
 Status: active operational runbook
-Updated: 2026-09-05
+Updated: 2026-09-06
 
-## PLATFORM CAVEAT: this runbook does not work on macOS
+## PLATFORM NOTE: what this runbook measures on macOS
 
-**Read this before triaging anything.** Every RSS/PSS/smaps number this runbook depends on is
-collected only on Linux. `process_memory::snapshot_with_source` is
-`#[cfg(target_os = "linux")]` and parses `/proc/self/status` plus `smaps_rollup`
-(`crates/jcode-base/src/process_memory.rs:148`). The non-Linux build is a stub that logs
-`using default non-linux implementation` and returns `ProcessMemorySnapshot::default()`
-(`crates/jcode-base/src/process_memory.rs:180`), i.e. `rss_bytes`, `peak_rss_bytes`,
-`virtual_bytes`, `thread_count`, `main_stack_bytes` and the whole `os` block (PSS, anon PSS, file
-PSS, private/shared dirty, swap) are all `None`. This fork is macOS-only, so in practice:
+**Read this before triaging anything.** This fork is macOS-only, and
+`process_memory::snapshot_with_source` reads the process's memory from the kernel with two
+calls (`crates/jcode-base/src/process_memory.rs`):
 
-- `server:memory-incident` reports `pss = 0` and `pss_growth = 0`: the payload takes
-  `os.pss_bytes` or `rss_bytes` and falls back to `0`
-  (`crates/jcode-app-core/src/server/debug_server_state.rs:414-430`).
-- Consequently the PSS warning/critical thresholds and the `non_heap_or_mapping_growth` branch can
-  never fire (`debug_server_state.rs:365`, `:371-376`), and severity reports `healthy` unless the
-  live-session count alone crosses a threshold.
-- On a default (system-allocator) build `allocator_live_bytes` is also `0`: `glibc_malloc_stats` is
-  a `None`-returning stub off glibc (`process_memory.rs:290`), so `allocator_retention` and
-  `unattributed_live_heap` cannot fire either.
-- `allocator:purge` fails outright with `allocator purge unavailable on this platform: rebuild with
-  --features jemalloc` (`process_memory.rs:336-339`).
-- The `/proc`-based commands in §5 (`smaps_rollup`, `pmap`, `ps -T`) do not exist on macOS.
+- `proc_pidinfo(PROC_PIDTASKINFO)` → `rss_bytes`, `virtual_bytes`, `thread_count`
+- `task_info(TASK_VM_INFO)` → `peak_rss_bytes` (the kernel's own resident high-water mark, the
+  macOS analogue of Linux `VmHWM`), plus `os.rss_anon_bytes` (`internal + reusable`),
+  `os.rss_file_bytes` (`external`) and `os.swap_bytes` (`compressed`, i.e. compressor-held
+  bytes — macOS compresses instead of swapping)
+- `getrlimit(RLIMIT_STACK)` → `main_stack_bytes`
 
-### What actually works on macOS
+`os.rss_anon_bytes + os.rss_file_bytes` is the entire resident set. The system allocator's live
+and mapped bytes come from `malloc_zone_statistics` across all zones, so
+`allocator.stats.allocated_bytes` is populated on a default build, not only under
+`--features jemalloc`.
 
-| Need | macOS substitute |
-|---|---|
-| Live session population, swarm attribution, status counts | Works unchanged — pure application state (`debug_server_state.rs:441-491`). This is the one decision-tree branch that stays valid. |
-| Per-session payload attribution (transcript / provider cache / tool results / blobs) | Works unchanged — `jcode debug 'server:memory'` and `agent:memory` are JSON-byte accounting, not OS metrics. |
-| Allocator live/retained bytes, purge A/B | Requires a rebuild with `--features jemalloc` (or `jemalloc-prof`). The jemalloc feature is not target-gated, so a macOS jemalloc build does populate `allocated/active/resident/retained` and enables arena purge (`process_memory.rs:200-211`, `:295-316`). Note the retained-resident estimate degrades to raw `retained` because anon PSS is unavailable to cap it (`runtime_memory_log.rs:734-737`). |
-| Process RSS / footprint | **No in-product substitute.** Use the OS directly: `ps -o rss=,vsz= -p <pid>`, `footprint -p <pid>`, or `vmmap <pid>`. jcode will not log or report it, and the JSONL memory logs will record zeros, so `analyze_runtime_memory_log.py` PSS trends and spike lists are empty by construction. |
-| Mapping / thread growth | `vmmap <pid>` and `sample <pid>` in place of `pmap`/`ps -T`. |
+### What is still unavailable on macOS
 
-Until `process_memory` grows a Darwin implementation (`task_info`/`proc_pid_rusage` for RSS,
-`mach_vm_region` for mapping detail), treat the sections below as Linux-only procedure. The
-session-population and payload-attribution paths are the only parts an operator can act on here.
+The PSS family has no macOS equivalent — proportional accounting is a Linux `smaps_rollup`
+concept — so these stay `None` and are never guessed: `os.pss_bytes`, `os.pss_anon_bytes`,
+`os.pss_file_bytes`, `os.pss_shmem_bytes`, `os.anon_huge_pages_bytes`, `os.rss_shmem_bytes`, and
+the private/shared clean/dirty splits. Consequences:
+
+- `server:memory-incident` takes `os.pss_bytes` **or** `rss_bytes`
+  (`crates/jcode-app-core/src/server/debug_server_state.rs:414-430`), so every "PSS" number in
+  its payload is really RSS on this platform. RSS counts shared pages in full, so it reads
+  slightly higher than PSS would; the growth trend, the warning/critical thresholds and the
+  `non_heap_or_mapping_growth` branch all work.
+- `scripts/analyze_runtime_memory_log.py` applies the same fallback through
+  `Sample.footprint_bytes` and, unlike the payload, **names the metric it read** in every
+  label: `metric: RSS (rss_bytes; os.pss_bytes has no macOS source)`, `final RSS 47.5 MB`,
+  `Top RSS spikes`, `coverage: vs RSS`. A macOS log therefore reports a real footprint instead
+  of the `final PSS 0.0 MB` it printed while it keyed on `os.pss_bytes` alone. Genuinely
+  PSS-only fields are reported as unavailable rather than as zero: the `PSS split` line is
+  replaced by an `RSS split` line ending `PSS split n/a on macOS`. Spikes are never computed
+  across a PSS/RSS metric change. The thresholds below are unchanged; see "Severity
+  thresholds".
+- The retained-resident estimate needs the allocator's `retained_bytes`, which libmalloc does
+  not report, so on a default build `allocator_retained_resident_bytes` is `0` and the
+  `allocator_retention` branch cannot fire. Rebuild with `--features jemalloc` for that one
+  signal. `unattributed_live_heap` works either way, since it only needs live bytes.
+- §5's actions use the macOS tools (`footprint`, `vmmap`, `sample`) rather than the Linux
+  `/proc` commands, which do not exist here. Note that `footprint`'s "phys_footprint" is a
+  different (ledger) number than `rss_bytes` and will not match exactly.
+- `allocator:purge` works on both builds: jemalloc purges every initialised arena, libmalloc
+  gets `malloc_zone_pressure_relief` across all zones. On macOS the recoverable memory sits on
+  the `reusable` ledger — freeing a large block leaves its pages mapped and resident until
+  something reclaims them — and a relief call returns it (measured: 128 MiB freed then relieved
+  dropped resident size from 135 MB to 1.3 MB).
+
+Per-session payload attribution (`jcode debug 'server:memory'`, `agent:memory`) is JSON-byte
+accounting rather than an OS metric, and works unchanged.
 
 This runbook answers two questions:
 
@@ -47,6 +64,27 @@ This runbook answers two questions:
 2. What is the safest next action for that specific cause?
 
 The goal is not to react to every high RSS value. The goal is to distinguish live application state, allocator retention, and non-heap mappings before changing or stopping anything.
+
+## Prerequisite: debug control must be enabled on the daemon
+
+Every `jcode debug '...'` command in this runbook fails with
+`Debug control is disabled` unless debug control is enabled **in the process that
+serves the session** - the long-lived daemon, not your shell. Exporting
+`JCODE_DEBUG_CONTROL=1` next to the `jcode debug` invocation does nothing if the
+daemon was started without it.
+
+During an incident the daemon is already running and you do not want to restart
+it, so use the file toggle, which is read per request and needs no restart:
+
+```bash
+touch ~/.jcode/debug_control      # enable, no restart
+rm ~/.jcode/debug_control         # disable when finished
+```
+
+The other two routes both require the daemon to start with them in effect:
+`display.debug_socket = true` in `~/.jcode/config.toml` (persistent), or
+`JCODE_DEBUG_CONTROL=1` in the daemon's own environment. All three are checked by
+`debug_control_allowed()` (`crates/jcode-app-core/src/server/util.rs:13`).
 
 ## One-command triage
 
@@ -81,7 +119,7 @@ Runtime memory logging is enabled by default and writes daily JSONL files under:
 Analyze the latest server process lifetime:
 
 ```bash
-python scripts/analyze_runtime_memory_log.py --days 1
+python3 scripts/analyze_runtime_memory_log.py --days 1
 ```
 
 The analyzer selects the latest server and client process instances by default. This is important because comparing PSS across a server reload produces false spikes. Use `--all-instances` only for explicit cross-instance forensics.
@@ -89,8 +127,8 @@ The analyzer selects the latest server and client process instances by default. 
 List recorded process lifetimes and select a pre-reload incident directly:
 
 ```bash
-python scripts/analyze_runtime_memory_log.py --days 1 --list-instances
-python scripts/analyze_runtime_memory_log.py --days 1 --instance <server-instance-id>
+python3 scripts/analyze_runtime_memory_log.py --days 1 --list-instances
+python3 scripts/analyze_runtime_memory_log.py --days 1 --instance <server-instance-id>
 ```
 
 Prefer `--instance` for postmortems. It preserves one coherent process lifetime without mixing a high-memory server with its low-memory replacement.
@@ -98,7 +136,7 @@ Prefer `--instance` for postmortems. It preserves one coherent process lifetime 
 For machine-readable output:
 
 ```bash
-python scripts/analyze_runtime_memory_log.py --days 1 --json > /tmp/jcode-memory-analysis.json
+python3 scripts/analyze_runtime_memory_log.py --days 1 --json > /tmp/jcode-memory-analysis.json
 ```
 
 ## Severity thresholds
@@ -115,11 +153,20 @@ The built-in incident report uses these operational thresholds
 
 A threshold starts an investigation. It does not authorize destructive cleanup by itself.
 
+These numbers were calibrated against Linux PSS and are **unchanged** on macOS, where the
+footprint is RSS. Because RSS counts every shared page in full rather than proportionally, an
+RSS footprint reads at or above the PSS value for the same process, so a fixed threshold trips
+marginally earlier here. The gap is the process's share of shared mappings — tens of MB for
+this binary against a 1 GiB warning — so the thresholds are left alone rather than quietly
+discounted; the analyzer names the metric in its output so a reader can apply the discount
+themselves. If shared-mapping growth ever makes the gap material, adjust the constants
+deliberately rather than changing what the analyzer reports.
+
 The two classifiers emit different cause sets. `classify_memory_incident`
 (`debug_server_state.rs:349-390`) emits exactly `runaway_live_session_population`,
 `allocator_retention`, `unattributed_live_heap`, `non_heap_or_mapping_growth`, or
 `within_normal_operating_range`. The offline analyzer additionally emits
-`session_payload_growth` (`scripts/analyze_runtime_memory_log.py:746`) because it can see the
+`session_payload_growth` (`scripts/analyze_runtime_memory_log.py:876`) because it can see the
 per-session attribution walk. §3 below therefore only appears in analyzer output, never in
 `server:memory-incident`.
 
@@ -198,26 +245,30 @@ jcode debug 'allocator:profile:dump /tmp/jcode-server.heap'
 
 The normal system-allocator build cannot produce allocation-stack profiles. Do not claim heap ownership from RSS alone.
 
-### 5. `non_heap_or_mapping_growth` (Linux only)
+### 5. `non_heap_or_mapping_growth`
 
 Evidence:
 
-- PSS is high but allocator live bytes are not
+- resident memory is high but allocator live bytes are not
 - file-backed, shared-memory, or thread-stack mappings are growing
+- `os.rss_file_bytes` and `process_diagnostics.thread_stack_estimate_bytes` are where the
+  in-product evidence for this lives on macOS
 
-Actions:
+Actions (all four binaries ship with macOS, in `/usr/bin`):
 
 ```bash
-cat /proc/<server-pid>/smaps_rollup
-pmap -x <server-pid> | sort -k3 -nr | head -40
-ps -T -p <server-pid> -o pid,tid,%cpu,time,comm,wchan:32
+footprint -p <server-pid>                 # per-category dirty/clean/reclaimable ledger
+vmmap <server-pid> | head -40             # individual mappings, largest first
+vmmap -summary <server-pid>               # totals by region type
+sample <server-pid> 5                     # thread activity over 5s, if threads are the suspect
 ```
 
 Investigate model mappings, shared memory, thread creation, or large anonymous mappings outside the allocator.
 
-On macOS none of the three commands above exist and this cause can never be classified (PSS is
-always 0). Use `vmmap <server-pid>` for mapping detail and `sample <server-pid>` for thread
-activity instead.
+`footprint` is the closest analogue to the Linux `smaps_rollup` output this section used to
+recommend: its Reclaimable column is where freed-but-resident allocator pages show up, which is
+the distinction this cause turns on. The Linux commands (`cat /proc/<pid>/smaps_rollup`,
+`pmap -x`, `ps -T`) do not exist here.
 
 ## Escalation ladder
 

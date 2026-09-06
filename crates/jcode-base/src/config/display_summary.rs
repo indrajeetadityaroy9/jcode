@@ -33,12 +33,6 @@ impl Config {
 - Workspace up: `{}`
 - Workspace right: `{}`
 
-**Dictation:**
-- Command: `{}`
-- Mode: `{}`
-- Hotkey: `{}`
-- Timeout: {}s
-
 **Display:**
 - Diff mode: {}
 - Centered: {}
@@ -67,14 +61,12 @@ impl Config {
 - Custom colors: {}
 
 **Features:**
-- Check updates: {}
 - Memory: {}
 - Swarm: {}
 - Auto-poke: {}
 - Message timestamps: {}
 - Persist memory injections: {}
 - KV cache miss notices: {}
-- Update channel: {}
 
 **Tools:**
 - Profile: {}
@@ -144,19 +136,6 @@ impl Config {
             self.keybindings.workspace_down,
             self.keybindings.workspace_up,
             self.keybindings.workspace_right,
-            if self.dictation.command.trim().is_empty() {
-                "(disabled)"
-            } else {
-                self.dictation.command.as_str()
-            },
-            match self.dictation.mode {
-                crate::protocol::TranscriptMode::Insert => "insert",
-                crate::protocol::TranscriptMode::Append => "append",
-                crate::protocol::TranscriptMode::Replace => "replace",
-                crate::protocol::TranscriptMode::Send => "send",
-            },
-            self.dictation.key,
-            self.dictation.timeout_secs,
             self.display.diff_mode.label(),
             self.display.centered,
             self.display.markdown_spacing.label(),
@@ -211,14 +190,12 @@ impl Config {
                         .join(", ")
                 )
             },
-            self.features.check_updates,
             self.features.memory,
             self.features.swarm,
             self.features.auto_poke,
             self.features.message_timestamps,
             self.features.persist_memory_injections,
             self.features.kv_cache_miss_notices,
-            self.features.update_channel,
             if self.tools.profile.trim().is_empty() {
                 "full"
             } else {

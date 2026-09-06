@@ -797,7 +797,16 @@ pub fn load_todos(session_id: &str) -> Result<Vec<TodoItem>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    storage::read_json(&path).or_else(|_| Ok(Vec::new()))
+    // A corrupt file still reads as "no todos" - it must not fail the turn that
+    // consults it - but that used to be indistinguishable from an empty list,
+    // which is how a dropped todo list looked like a finished one.
+    storage::read_json(&path).or_else(|error| {
+        crate::logging::warn(&format!(
+            "Todo file {} could not be read ({error}); treating it as no todos",
+            path.display()
+        ));
+        Ok(Vec::new())
+    })
 }
 
 pub fn todos_exist(session_id: &str) -> Result<bool> {

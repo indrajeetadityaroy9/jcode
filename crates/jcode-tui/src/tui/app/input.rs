@@ -405,7 +405,7 @@ mod tests {
     }
 
     #[test]
-    fn smart_paste_empty_clipboard_stays_empty_not_dictation() {
+    fn smart_paste_empty_clipboard_stays_empty() {
         let content =
             read_clipboard_for_paste_with(&ClipboardPasteKind::Smart, || None, || None, |_| None);
 
@@ -2230,10 +2230,6 @@ pub(super) fn handle_pre_control_shortcuts(
         app.toggle_todo_card();
         return true;
     }
-    if app.dictation_key_matches(code, modifiers) {
-        app.handle_dictation_trigger();
-        return true;
-    }
 
     // Swarm views: Alt+N cycles chat → inline controls → full live page → chat.
     // Selection/open/prompt controls stay available in both active views, while
@@ -2743,27 +2739,6 @@ fn paste_placeholder(content: &str) -> String {
 
 impl App {
     pub(super) fn handle_key_event(&mut self, event: crossterm::event::KeyEvent) {
-        // Record the event if recording is active
-        use crate::tui::test_harness::{TestEvent, record_event};
-        let modifiers: Vec<String> = {
-            let mut mods = vec![];
-            if event.modifiers.contains(KeyModifiers::CONTROL) {
-                mods.push("ctrl".to_string());
-            }
-            if event.modifiers.contains(KeyModifiers::ALT) {
-                mods.push("alt".to_string());
-            }
-            if event.modifiers.contains(KeyModifiers::SHIFT) {
-                mods.push("shift".to_string());
-            }
-            mods
-        };
-        let code_str = format!("{:?}", event.code);
-        record_event(TestEvent::Key {
-            code: code_str,
-            modifiers,
-        });
-
         self.update_copy_badge_key_event(event);
         if matches!(
             event.kind,
@@ -2842,13 +2817,6 @@ impl App {
             && self.fallback_switch_key_matches(code, modifiers)
         {
             self.apply_pending_fallback_offer();
-            return Ok(());
-        }
-
-        // Accept an armed "merge the diverged update" offer: spawn a jcode agent
-        // to reconcile the branches. Shares the fallback-switch accept key.
-        if self.merge_offer_key_matches(code, modifiers) {
-            self.accept_update_merge_offer();
             return Ok(());
         }
 
@@ -3712,8 +3680,6 @@ impl App {
         // A fresh user turn supersedes any post-error fallback offer from the
         // previous turn; drop it so a stale keypress can't switch+resend.
         self.clear_pending_fallback_offer();
-        // Likewise drop any armed "merge the diverged update" offer.
-        self.clear_update_merge_offer();
 
         // Set up processing state - actual processing happens after UI redraws
         self.is_processing = true;

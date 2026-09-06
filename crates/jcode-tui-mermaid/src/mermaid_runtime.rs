@@ -365,7 +365,7 @@ pub fn protocol_type() -> Option<ProtocolType> {
     if real.is_some() {
         return real;
     }
-    if VIDEO_EXPORT_MODE.load(Ordering::Relaxed) {
+    if IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed) {
         Some(ProtocolType::Halfblocks)
     } else {
         None
@@ -401,14 +401,15 @@ pub fn image_protocol_available() -> bool {
     if let Some(enabled) = IMAGE_PROTOCOL_OVERRIDE.with(|cell| cell.get()) {
         return enabled;
     }
-    PICKER.get().and_then(|p| p.as_ref()).is_some() || VIDEO_EXPORT_MODE.load(Ordering::Relaxed)
+    PICKER.get().and_then(|p| p.as_ref()).is_some()
+        || IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed)
 }
 
 fn protocol_supports_native_images(
     protocol: Option<ProtocolType>,
-    video_export_mode: bool,
+    image_placeholder_mode: bool,
 ) -> bool {
-    video_export_mode
+    image_placeholder_mode
         || matches!(
             protocol,
             Some(ProtocolType::Kitty | ProtocolType::Iterm2 | ProtocolType::Sixel)
@@ -423,31 +424,37 @@ pub fn native_image_protocol_available() -> bool {
     if let Some(enabled) = IMAGE_PROTOCOL_OVERRIDE.with(|cell| cell.get()) {
         return enabled;
     }
-    protocol_supports_native_images(protocol_type(), VIDEO_EXPORT_MODE.load(Ordering::Relaxed))
+    protocol_supports_native_images(
+        protocol_type(),
+        IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed),
+    )
 }
 
 fn protocol_uses_text_image_fallback(
     protocol: Option<ProtocolType>,
-    video_export_mode: bool,
+    image_placeholder_mode: bool,
 ) -> bool {
-    !video_export_mode && matches!(protocol, Some(ProtocolType::Halfblocks))
+    !image_placeholder_mode && matches!(protocol, Some(ProtocolType::Halfblocks))
 }
 
 /// Whether images are currently rendered through ratatui-image's Unicode
 /// half-block fallback instead of a native terminal image protocol.
 pub fn uses_text_image_fallback() -> bool {
-    protocol_uses_text_image_fallback(protocol_type(), VIDEO_EXPORT_MODE.load(Ordering::Relaxed))
+    protocol_uses_text_image_fallback(
+        protocol_type(),
+        IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed),
+    )
 }
 
-/// Enable video-export mode: mermaid images produce hash-placeholder lines
-/// even without a real terminal image protocol.
-pub fn set_video_export_mode(enabled: bool) {
-    VIDEO_EXPORT_MODE.store(enabled, Ordering::Relaxed);
+/// Enable image-placeholder mode: mermaid images produce hash-placeholder
+/// lines even without a real terminal image protocol.
+pub fn set_image_placeholder_mode(enabled: bool) {
+    IMAGE_PLACEHOLDER_MODE.store(enabled, Ordering::Relaxed);
 }
 
-/// Check if video export mode is active.
-pub fn is_video_export_mode() -> bool {
-    VIDEO_EXPORT_MODE.load(Ordering::Relaxed)
+/// Check if image-placeholder mode is active.
+pub fn is_image_placeholder_mode() -> bool {
+    IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed)
 }
 
 /// Look up a cached PNG for the given mermaid content hash.
@@ -886,7 +893,7 @@ mod tests {
     }
 
     #[test]
-    fn native_image_capability_excludes_halfblocks_but_allows_video_export() {
+    fn native_image_capability_excludes_halfblocks_but_allows_placeholder_mode() {
         assert!(protocol_supports_native_images(
             Some(ProtocolType::Kitty),
             false

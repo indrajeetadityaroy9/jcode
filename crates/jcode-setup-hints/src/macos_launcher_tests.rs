@@ -8,7 +8,7 @@ fn macos_launcher_script_shows_alerts_and_uses_terminal_launcher() {
         Path::new("/Users/test/Applications/Jcode.app"),
     );
     assert!(script.contains("display alert \"Jcode launch failed\""));
-    assert!(script.contains("jcode setup-launcher"));
+    assert!(script.contains("start it once from a terminal to refresh this launcher"));
     assert!(script.contains("/usr/bin/open -na Ghostty"));
     assert!(script.contains("macos-launcher.log"));
 }

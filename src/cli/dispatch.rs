@@ -6,15 +6,14 @@ use std::process::{Command as ProcessCommand, Stdio};
 use std::time::Instant;
 
 use super::args::{
-    AmbientCommand, Args, AuthCommand, CloudCommand, CloudSessionsCommand, Command, MemoryCommand,
-    ModelCommand, ProviderCommand, RestartCommand, ServerCommand, SessionCommand,
-    TranscriptModeArg,
+    AmbientCommand, Args, AuthCommand, Command, MemoryCommand, ModelCommand, ProviderCommand,
+    RestartCommand, ServerCommand, SessionCommand, TranscriptModeArg,
 };
 use crate::{
     agent, auth, build, provider, provider_catalog, server, session, setup_hints, startup_profile,
 };
 
-use super::{acp, commands, debug, hot_exec, login, output, provider_init, terminal, tui_launch};
+use super::{acp, commands, debug, login, output, provider_init, terminal, tui_launch};
 use provider_init::ProviderChoice;
 
 pub(crate) async fn run_main(mut args: Args) -> Result<()> {
@@ -223,9 +222,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             let mut agent = agent::Agent::new(provider, registry);
             agent.repl().await?;
         }
-        Some(Command::Update) => {
-            hot_exec::run_update()?;
-        }
         Some(Command::Version { json }) => {
             commands::run_version_command(json)?;
         }
@@ -309,11 +305,8 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 json,
             } => commands::run_session_rename_command(&session, name.as_deref(), clear, json)?,
         },
-        Some(Command::Ambient(subcmd)) => {
-            commands::run_ambient_command(map_ambient_subcommand(subcmd)).await?;
-        }
-        Some(Command::Cloud(subcmd)) => {
-            commands::run_cloud_command(map_cloud_subcommand(subcmd))?;
+        Some(Command::Ambient(AmbientCommand::RunVisible)) => {
+            commands::run_ambient_visible().await?;
         }
         Some(Command::Transcript {
             text,
@@ -322,12 +315,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         }) => {
             commands::run_transcript_command(text, map_transcript_mode(mode), session).await?;
         }
-        Some(Command::Dictate) => {
-            commands::run_dictate_command().await?;
-        }
-        Some(Command::SetupLauncher) => {
-            setup_hints::run_setup_launcher()?;
-        }
         Some(Command::Replay {
             session,
             swarm,
@@ -335,10 +322,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             speed,
             timeline,
             auto_edit,
-            video,
-            cols,
-            rows,
-            fps,
             centered,
             no_centered,
         }) => {
@@ -356,10 +339,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 auto_edit,
                 speed,
                 timeline.as_deref(),
-                video.as_deref(),
-                cols,
-                rows,
-                fps,
                 centered_override,
             )
             .await?;
@@ -424,19 +403,9 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             prompt,
             json,
             output,
-            coverage,
             context_audit,
-            coverage_file,
-            coverage_limit,
         }) => {
-            if coverage {
-                commands::run_auth_test_coverage_command(
-                    json,
-                    output.as_deref(),
-                    coverage_file.as_deref(),
-                    coverage_limit,
-                )?;
-            } else if context_audit {
+            if context_audit {
                 commands::run_auth_test_context_audit_command(
                     &args.provider,
                     all_configured,
@@ -590,150 +559,6 @@ fn map_memory_subcommand(subcmd: MemoryCommand) -> commands::MemorySubcommand {
         },
         MemoryCommand::Stats => commands::MemorySubcommand::Stats,
         MemoryCommand::ClearTest => commands::MemorySubcommand::ClearTest,
-    }
-}
-
-fn map_ambient_subcommand(subcmd: AmbientCommand) -> commands::AmbientSubcommand {
-    match subcmd {
-        AmbientCommand::Status => commands::AmbientSubcommand::Status,
-        AmbientCommand::Log => commands::AmbientSubcommand::Log,
-        AmbientCommand::Trigger => commands::AmbientSubcommand::Trigger,
-        AmbientCommand::Stop => commands::AmbientSubcommand::Stop,
-        AmbientCommand::RunVisible => commands::AmbientSubcommand::RunVisible,
-    }
-}
-
-fn map_cloud_subcommand(subcmd: CloudCommand) -> commands::CloudSubcommand {
-    match subcmd {
-        CloudCommand::Sessions { action } => {
-            commands::CloudSubcommand::Sessions(map_cloud_sessions_subcommand(action))
-        }
-    }
-}
-
-fn map_cloud_sessions_subcommand(
-    action: CloudSessionsCommand,
-) -> commands::CloudSessionsSubcommand {
-    match action {
-        CloudSessionsCommand::Configure {
-            api_base,
-            api_token,
-            api_token_env,
-            api_token_id,
-            user_id,
-            helper,
-            clear,
-        } => commands::CloudSessionsSubcommand::Configure {
-            api_base,
-            api_token,
-            api_token_env,
-            api_token_id,
-            user_id,
-            helper,
-            clear,
-        },
-        CloudSessionsCommand::Status { json } => commands::CloudSessionsSubcommand::Status { json },
-        CloudSessionsCommand::Upload {
-            session_file,
-            raw,
-            jade,
-        } => commands::CloudSessionsSubcommand::Upload {
-            session_file,
-            raw,
-            user_id: jade.user_id,
-            profile: jade.profile,
-            region: jade.region,
-            helper: jade.helper,
-        },
-        CloudSessionsCommand::UploadLatest {
-            sessions_dir,
-            raw,
-            jade,
-        } => commands::CloudSessionsSubcommand::UploadLatest {
-            sessions_dir,
-            raw,
-            user_id: jade.user_id,
-            profile: jade.profile,
-            region: jade.region,
-            helper: jade.helper,
-        },
-        CloudSessionsCommand::Sync {
-            sessions_dir,
-            since_days,
-            all,
-            max,
-            min_interval_mins,
-            raw,
-            dry_run,
-            force,
-            json,
-            jade,
-        } => commands::CloudSessionsSubcommand::Sync {
-            sessions_dir,
-            since_days,
-            all,
-            max,
-            min_interval_mins,
-            raw,
-            dry_run,
-            force,
-            json,
-            user_id: jade.user_id,
-            profile: jade.profile,
-            region: jade.region,
-            helper: jade.helper,
-        },
-        CloudSessionsCommand::List { limit, json, jade } => {
-            commands::CloudSessionsSubcommand::List {
-                limit,
-                json,
-                user_id: jade.user_id,
-                profile: jade.profile,
-                region: jade.region,
-                helper: jade.helper,
-            }
-        }
-        CloudSessionsCommand::Verify { session_id, jade } => {
-            commands::CloudSessionsSubcommand::Verify {
-                session_id,
-                user_id: jade.user_id,
-                profile: jade.profile,
-                region: jade.region,
-                helper: jade.helper,
-            }
-        }
-        CloudSessionsCommand::Dashboard {
-            limit,
-            output,
-            open,
-            with_view,
-            jade,
-        } => commands::CloudSessionsSubcommand::Dashboard {
-            limit,
-            output,
-            open,
-            with_view,
-            user_id: jade.user_id,
-            profile: jade.profile,
-            region: jade.region,
-            helper: jade.helper,
-        },
-        CloudSessionsCommand::View {
-            session_id,
-            format,
-            output,
-            open,
-            jade,
-        } => commands::CloudSessionsSubcommand::View {
-            session_id,
-            format: format.as_arg().to_string(),
-            output,
-            open,
-            user_id: jade.user_id,
-            profile: jade.profile,
-            region: jade.region,
-            helper: jade.helper,
-        },
     }
 }
 

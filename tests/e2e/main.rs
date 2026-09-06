@@ -13,5 +13,3 @@ mod provider_behavior;
 mod reload_multiclient;
 mod session_flow;
 mod transport;
-#[cfg(windows)]
-mod windows_lifecycle;

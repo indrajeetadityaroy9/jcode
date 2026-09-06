@@ -7,104 +7,6 @@ impl Config {
         reason = "Environment override parsing is intentionally explicit and grouped by config area"
     )]
     pub(crate) fn apply_env_overrides(&mut self) {
-        // Keybindings
-        if let Ok(v) = std::env::var("JCODE_SCROLL_UP_KEY") {
-            self.keybindings.scroll_up = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_SCROLL_DOWN_KEY") {
-            self.keybindings.scroll_down = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_SCROLL_PAGE_UP_KEY") {
-            self.keybindings.scroll_page_up = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_SCROLL_PAGE_DOWN_KEY") {
-            self.keybindings.scroll_page_down = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_MODEL_SWITCH_KEY") {
-            self.keybindings.model_switch_next = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_MODEL_SWITCH_PREV_KEY") {
-            self.keybindings.model_switch_prev = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_EFFORT_INCREASE_KEY") {
-            self.keybindings.effort_increase = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_EFFORT_DECREASE_KEY") {
-            self.keybindings.effort_decrease = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_CENTERED_TOGGLE_KEY") {
-            self.keybindings.centered_toggle = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_SCROLL_PROMPT_UP_KEY") {
-            self.keybindings.scroll_prompt_up = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_SCROLL_PROMPT_DOWN_KEY") {
-            self.keybindings.scroll_prompt_down = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_SCROLL_BOOKMARK_KEY") {
-            self.keybindings.scroll_bookmark = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_SCROLL_UP_FALLBACK_KEY") {
-            self.keybindings.scroll_up_fallback = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_SCROLL_DOWN_FALLBACK_KEY") {
-            self.keybindings.scroll_down_fallback = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_WORKSPACE_LEFT_KEY") {
-            self.keybindings.workspace_left = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_WORKSPACE_DOWN_KEY") {
-            self.keybindings.workspace_down = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_WORKSPACE_UP_KEY") {
-            self.keybindings.workspace_up = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_WORKSPACE_RIGHT_KEY") {
-            self.keybindings.workspace_right = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_SIDE_PANEL_TOGGLE_KEY") {
-            self.keybindings.side_panel_toggle = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_COPY_SELECTION_TOGGLE_KEY") {
-            self.keybindings.copy_selection_toggle = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_DIAGRAM_PANE_TOGGLE_KEY") {
-            self.keybindings.diagram_pane_toggle = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_TYPING_SCROLL_LOCK_TOGGLE_KEY") {
-            self.keybindings.typing_scroll_lock_toggle = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_DIFF_MODE_CYCLE_KEY") {
-            self.keybindings.diff_mode_cycle = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_INFO_WIDGET_TOGGLE_KEY") {
-            self.keybindings.info_widget_toggle = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_NEW_TERMINAL_KEY") {
-            self.keybindings.new_terminal = v;
-        }
-
-        // Dictation
-        if let Ok(v) = std::env::var("JCODE_DICTATION_COMMAND") {
-            self.dictation.command = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_DICTATION_MODE")
-            && let Ok(mode) = toml::from_str::<crate::protocol::TranscriptMode>(&format!(
-                "\"{}\"",
-                v.trim().to_ascii_lowercase()
-            ))
-        {
-            self.dictation.mode = mode;
-        }
-        if let Ok(v) = std::env::var("JCODE_DICTATION_KEY") {
-            self.dictation.key = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_DICTATION_TIMEOUT_SECS")
-            && let Ok(parsed) = v.trim().parse::<u64>()
-        {
-            self.dictation.timeout_secs = parsed;
-        }
-
         // Tools
         if let Ok(v) = std::env::var("JCODE_TOOL_PROFILE") {
             self.tools.profile = v;
@@ -319,11 +221,6 @@ impl Config {
                 self.features.mermaid = parsed;
             }
         }
-        if let Ok(v) = std::env::var("JCODE_CHECK_UPDATES") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.features.check_updates = parsed;
-            }
-        }
         if let Ok(v) = std::env::var("JCODE_AUTO_POKE") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.features.auto_poke = parsed;
@@ -344,12 +241,6 @@ impl Config {
                 self.features.kv_cache_miss_notices = parsed;
             }
         }
-        if let Ok(v) = std::env::var("JCODE_UPDATE_CHANNEL")
-            && let Some(channel) = UpdateChannel::parse(&v)
-        {
-            self.features.update_channel = channel;
-        }
-
         // Agents (spawned helper sessions)
         if let Ok(v) = std::env::var("JCODE_SWARM_MODEL") {
             let trimmed = v.trim();
@@ -604,44 +495,6 @@ impl Config {
         if let Ok(v) = std::env::var("JCODE_DISCORD_REPLY_ENABLED") {
             if let Some(parsed) = parse_env_bool(&v) {
                 self.safety.discord_reply_enabled = parsed;
-            }
-        }
-        // Jade cloud relay channel
-        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_API_BASE") {
-            self.safety.jade_relay_api_base = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_TOKEN") {
-            self.safety.jade_relay_token = Some(v);
-            self.safety.jade_relay_enabled = true;
-        }
-        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_TOKEN_ID") {
-            self.safety.jade_relay_token_id = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_USER_ID") {
-            self.safety.jade_relay_user_id = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_SESSION_ID") {
-            self.safety.jade_relay_session_id = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.safety.jade_relay_enabled = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_REPLY_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.safety.jade_relay_reply_enabled = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_LAUNCH_ENABLED") {
-            if let Some(parsed) = parse_env_bool(&v) {
-                self.safety.jade_relay_launch_enabled = parsed;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_JADE_RELAY_LAUNCH_WORKING_DIR") {
-            let trimmed = v.trim();
-            if !trimmed.is_empty() {
-                self.safety.jade_relay_launch_working_dir = Some(trimmed.to_string());
             }
         }
         if let Ok(v) = std::env::var("JCODE_AMBIENT_VISIBLE") {

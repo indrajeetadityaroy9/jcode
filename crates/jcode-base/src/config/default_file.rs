@@ -98,25 +98,6 @@ swarm_panel_focus = "alt+n"
 # By default Enter resumes in this terminal; Ctrl+Enter performs the alternate action.
 session_picker_enter = "current-terminal"
 
-[dictation]
-# External speech-to-text command.
-# The command should record/transcribe speech and print the final transcript to stdout.
-# You can include any tool-specific flags here too, for example a grammar target.
-# Examples:
-# command = "~/.local/bin/my-whisper-script"
-# command = "~/.local/bin/my-whisper-script --grammar-target code"
-command = ""
-
-# How to apply the transcript inside jcode: insert|append|replace|send
-mode = "send"
-
-# Optional in-app hotkey to trigger dictation. Set to "off" to disable.
-# Example: "alt+;"
-key = "off"
-
-# Max seconds to wait for the dictation command to finish (0 = no timeout)
-timeout_secs = 90
-
 [display]
 # Diff display mode: "off", "inline" (default), "full-inline", "pinned" (dedicated pane), or "file"
 diff_mode = "inline"
@@ -261,9 +242,6 @@ prompt_entry_animation = true
 # error = "#ff6464"
 
 [features]
-# Check for and install updates during startup. Set to false for the persistent
-# equivalent of passing --no-update on every invocation.
-check_updates = false
 # Memory: retrieval + extraction sidecar features
 memory = true
 # Swarm: multi-session coordination features
@@ -281,9 +259,6 @@ persist_memory_injections = false
 # (avoidable) reason: system prompt, tool set, or message prefix changed. These
 # should essentially never happen and indicate a prefix-cache bug.
 kv_cache_miss_notices = true
-# Update channel: "stable" (releases only) or "main" (latest commits on push)
-# Set to "main" for bleeding edge updates every time code is pushed
-update_channel = "stable"
 
 [websearch]
 # Preferred websearch engine: "duckduckgo", "bing", or "searxng".
@@ -521,9 +496,6 @@ swarm_max_concurrent_agents = 32
 # turn_complete_todo_min_secs = 30
 # Only notify while the terminal window is unfocused (default: true)
 # turn_complete_only_when_unfocused = true
-# macOS Notification Center sound played on completion (e.g. "Glass", "Ping",
-# "Hero"). Empty string disables the sound. Ignored on non-macOS. (default: "Glass")
-# turn_complete_sound = "Glass"
 
 [hooks]
 # Lifecycle hooks: external commands jcode runs at well-defined points so other
@@ -626,15 +598,6 @@ desktop_notifications = true
 # discord_channel_id = ""    # Channel ID to post in
 # discord_bot_user_id = ""   # Bot's user ID (for filtering own messages)
 # discord_reply_enabled = false  # Messages in channel become agent directives
-
-# Jade cloud relay (outbound-only long polling, disabled by default).
-# Prefer environment variables for secrets:
-# JCODE_JADE_RELAY_API_BASE, JCODE_JADE_RELAY_TOKEN, JCODE_JADE_RELAY_TOKEN_ID,
-# JCODE_JADE_RELAY_USER_ID, JCODE_JADE_RELAY_SESSION_ID.
-# jade_relay_enabled = false
-# jade_relay_reply_enabled = false   # Deliver cloud prompts to one configured live session.
-# jade_relay_launch_enabled = false  # Allow cloud device commands to open headed local sessions.
-# jade_relay_launch_working_dir = "" # Optional default cwd for launched sessions.
 
 	"##;
 

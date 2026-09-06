@@ -202,10 +202,11 @@ pub(crate) struct DrawCallAttribution {
     pub input: FrameInputAttribution,
 }
 
+/// Process-level counters captured at the start of a frame, so the frame's own
+/// CPU cost can be differenced out of them at the end.
 #[derive(Clone, Copy, Debug, Default)]
 struct FrameResourceStart {
-    process_cpu_ticks: Option<u64>,
-    ticks_per_second: Option<f64>,
+    process_cpu_micros: Option<u64>,
 }
 
 fn frame_input_attribution_slot() -> &'static Mutex<FrameInputAttribution> {
@@ -492,8 +493,7 @@ pub(super) fn begin_frame_resource_sample() {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     *start = Some(FrameResourceStart {
-        process_cpu_ticks: process_cpu_ticks(),
-        ticks_per_second: clock_ticks_per_second(),
+        process_cpu_micros: process_cpu_micros(),
     });
 }
 
@@ -807,18 +807,12 @@ fn frame_resource_attribution(total_elapsed: Duration) -> FrameResourceAttributi
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .take();
-    let end_ticks = process_cpu_ticks();
-    let tick_hz = start
-        .and_then(|start| start.ticks_per_second)
-        .or_else(clock_ticks_per_second);
-    let process_cpu_ms = match (
-        start.and_then(|start| start.process_cpu_ticks),
-        end_ticks,
-        tick_hz,
-    ) {
-        (Some(start_ticks), Some(end_ticks), Some(tick_hz)) if tick_hz > 0.0 => {
-            let diff = end_ticks.saturating_sub(start_ticks) as f64;
-            Some((diff / tick_hz) * 1000.0)
+    let end_micros = process_cpu_micros();
+    let process_cpu_ms = match (start.and_then(|start| start.process_cpu_micros), end_micros) {
+        // `getrusage` is monotonic, so a saturating difference only absorbs a
+        // sample the kernel refused mid-frame.
+        (Some(start_micros), Some(end_micros)) => {
+            Some(end_micros.saturating_sub(start_micros) as f64 / 1000.0)
         }
         _ => None,
     };
@@ -830,7 +824,9 @@ fn frame_resource_attribution(total_elapsed: Duration) -> FrameResourceAttributi
             None
         }
     });
-    let (host_load_1m, host_cpu_count) = host_load_and_cpu_count();
+    // Shared with the overnight resource card and performance-tier detection,
+    // so the three surfaces cannot disagree about the machine's load.
+    let (host_load_1m, host_cpu_count) = crate::host_metrics::load_and_cpu_count();
     let host_load_per_cpu = match (host_load_1m, host_cpu_count) {
         (Some(load), Some(cpus)) if cpus > 0 => Some(load / cpus as f64),
         _ => None,
@@ -881,31 +877,58 @@ fn classify_host_pressure(
     }
 }
 
-fn host_load_and_cpu_count() -> (Option<f64>, Option<usize>) {
-    let load = read_loadavg_1m();
-    let cpus = std::thread::available_parallelism().ok().map(|n| n.get());
-    (load, cpus)
-}
-
-fn read_loadavg_1m() -> Option<f64> {
-    None
-}
-
+/// `(available_mb, total_mb)` for [`classify_host_pressure`].
+///
+/// "Available" is `host_statistics64(HOST_VM_INFO64)`'s free + inactive +
+/// purgeable pages, exactly as the overnight resource card defines it — see
+/// [`jcode_base::host_metrics::available_memory_bytes`] for why free pages
+/// alone would be wrong on macOS.
 fn host_memory_mb() -> (Option<u64>, Option<u64>) {
-    (None, None)
+    let (total_mb, available_mb) = crate::host_metrics::memory_mb();
+    (available_mb, total_mb)
 }
 
+/// This frame's resident set size in MB.
+///
+/// Deliberately [`crate::process_memory::resident_bytes`] and not
+/// `process_memory::snapshot()`: the snapshot also reads the `TASK_VM_INFO`
+/// ledgers and allocator statistics and appends to a process-global history
+/// ring, none of which belongs on a per-frame path. This is one
+/// `proc_pidinfo` call and no allocation.
 fn process_rss_mb() -> Option<u64> {
-    None
+    crate::process_memory::resident_bytes().map(|bytes| bytes / (1024 * 1024))
 }
 
-fn process_cpu_ticks() -> Option<u64> {
-    None
-}
-
-fn clock_ticks_per_second() -> Option<f64> {
-    let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) };
-    if ticks > 0 { Some(ticks as f64) } else { None }
+/// CPU time this process has consumed since exec, in microseconds, from
+/// `getrusage(RUSAGE_SELF)`.
+///
+/// Microseconds because that is the resolution `rusage` reports (two
+/// `timeval`s), and there is no tick conversion to apply: the `_SC_CLK_TCK`
+/// dance this function used to imply is a Linux `/proc/self/stat` artifact.
+/// `proc_pidinfo(PROC_PIDTASKINFO)`'s `pti_total_user`/`pti_total_system`
+/// cannot substitute — on macOS they accumulate only *exited* threads' time
+/// (measured: 3.6 ms across a 150 ms busy loop), so they would report a frame
+/// as costing no CPU at all.
+fn process_cpu_micros() -> Option<u64> {
+    // Safety: `rusage` is a `#[repr(C)]` struct of integers and `timeval`s, so
+    // an all-zero bit pattern is a valid inhabitant.
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    // Safety: `getrusage` writes only through the pointer, which addresses a
+    // live `rusage` local that outlives the call, and retains nothing.
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut usage) };
+    if rc != 0 {
+        return None;
+    }
+    let micros = |time: libc::timeval| -> u64 {
+        // Both fields are non-negative for a live process; a negative value
+        // would mean a failed read, which reports nothing rather than a
+        // wrapped count.
+        if time.tv_sec < 0 || time.tv_usec < 0 {
+            return 0;
+        }
+        (time.tv_sec as u64).saturating_mul(1_000_000) + time.tv_usec as u64
+    };
+    Some(micros(usage.ru_utime).saturating_add(micros(usage.ru_stime)))
 }
 
 fn maybe_record_flicker_event(history: &mut FlickerFrameHistory, current: &FlickerFrameSample) {
@@ -1365,5 +1388,114 @@ mod draw_call_tests {
         let other = vec![Line::from("hello world!"), Line::from("second line")];
         let c = viewport_stability_hash(&other, &[1], 80, 2);
         assert_ne!(a, c);
+    }
+}
+
+#[cfg(test)]
+mod frame_resource_tests {
+    use super::*;
+
+    /// One test, not four: `frame_resource_attribution` consumes the shared
+    /// `FRAME_RESOURCE_START` slot, so two concurrent tests would steal each
+    /// other's start sample.
+    #[test]
+    fn frame_attribution_reports_real_host_and_process_numbers() {
+        let (machine_total_mb, _) = crate::host_metrics::memory_mb();
+        let machine_total_mb = machine_total_mb.expect("hw.memsize is readable on macOS");
+
+        begin_frame_resource_sample();
+        // Burn measurable CPU inside the "frame" so the attribution has
+        // something to attribute. A reader stuck at `None` (the state this
+        // fixed) fails the assertion below regardless of the burn.
+        let spin_start = std::time::Instant::now();
+        let mut sink = 0u64;
+        while spin_start.elapsed() < Duration::from_millis(60) {
+            for i in 0..4096u64 {
+                sink = sink.wrapping_add(i * i);
+            }
+        }
+        std::hint::black_box(sink);
+        let wall = spin_start.elapsed();
+        let resources = frame_resource_attribution(wall);
+
+        let rss_mb = resources
+            .process_rss_mb
+            .expect("PROC_PIDTASKINFO reports this process's resident size");
+        assert!(
+            rss_mb > 0 && rss_mb < machine_total_mb,
+            "resident {rss_mb} MB is outside 1..{machine_total_mb} MB"
+        );
+
+        assert_eq!(
+            resources.host_mem_total_mb,
+            Some(machine_total_mb),
+            "frame metrics must report the machine's real physical RAM"
+        );
+        let available_mb = resources
+            .host_mem_available_mb
+            .expect("host_statistics64 reports reclaimable memory");
+        assert!(
+            available_mb > 0 && available_mb < machine_total_mb,
+            "available {available_mb} MB is outside 1..{machine_total_mb} MB"
+        );
+
+        let load = resources
+            .host_load_1m
+            .expect("getloadavg fills at least one sample");
+        assert!(
+            load >= 0.0 && load < 200.0,
+            "implausible load average {load}"
+        );
+        let cpus = resources.host_cpu_count.expect("cpu count");
+        let per_cpu = resources.host_load_per_cpu.expect("load per cpu");
+        assert!(
+            (per_cpu - load / cpus as f64).abs() < 1e-9,
+            "load per cpu {per_cpu} does not match {load}/{cpus}"
+        );
+
+        // Blind classification reported "unknown"; with both inputs readable
+        // it must commit to a verdict.
+        assert!(
+            ["none", "cpu", "memory", "cpu+memory"].contains(&resources.host_pressure.as_str()),
+            "host pressure {} is not a real verdict",
+            resources.host_pressure
+        );
+
+        let cpu_ms = resources
+            .process_cpu_ms
+            .expect("getrusage reports this process's CPU time");
+        assert!(
+            cpu_ms >= 40.0,
+            "a 60 ms busy frame must cost at least 40 ms of CPU; got {cpu_ms} ms"
+        );
+        // Millisecond units, not ticks or microseconds: a tick-scaled reading
+        // would land near 6 and a microsecond one near 60_000.
+        assert!(
+            cpu_ms < wall.as_secs_f64() * 1000.0 * 16.0,
+            "CPU {cpu_ms} ms is implausible against {} ms of wall time",
+            wall.as_secs_f64() * 1000.0
+        );
+        let ratio = resources.process_cpu_ratio.expect("cpu ratio");
+        assert!(
+            (ratio - cpu_ms / (wall.as_secs_f64() * 1000.0)).abs() < 1e-9,
+            "ratio {ratio} does not match cpu/wall"
+        );
+    }
+
+    #[test]
+    fn frame_metrics_and_the_overnight_card_report_the_same_machine() {
+        // The two surfaces now share one reader, so their totals are equal by
+        // construction and their available figures differ only by sampling.
+        let (frame_available_mb, frame_total_mb) = host_memory_mb();
+        let card = crate::overnight::gather_resource_snapshot(None);
+        assert_eq!(frame_total_mb, card.memory_total_mb);
+        let frame_available_mb = frame_available_mb.expect("reclaimable memory");
+        let card_available_mb = card.memory_available_mb.expect("reclaimable memory");
+        let drift = frame_available_mb.abs_diff(card_available_mb);
+        assert!(
+            drift < 4096,
+            "frame {frame_available_mb} MB and card {card_available_mb} MB \
+             disagree by {drift} MB, which is more than sampling drift"
+        );
     }
 }

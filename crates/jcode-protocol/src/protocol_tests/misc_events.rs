@@ -2,7 +2,7 @@
 fn test_transcript_request_roundtrip() -> Result<()> {
     let req = Request::Transcript {
         id: 77,
-        text: "hello from whisper".to_string(),
+        text: "injected transcript text".to_string(),
         mode: TranscriptMode::Send,
         session_id: Some("sess_abc".to_string()),
     };
@@ -19,7 +19,7 @@ fn test_transcript_request_roundtrip() -> Result<()> {
     else {
         return Err(anyhow!("expected Transcript request"));
     };
-    assert_eq!(text, "hello from whisper");
+    assert_eq!(text, "injected transcript text");
     assert_eq!(mode, TranscriptMode::Send);
     assert_eq!(session_id.as_deref(), Some("sess_abc"));
     Ok(())

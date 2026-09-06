@@ -28,26 +28,31 @@ struct JemallocProfilingMibs {
     enabled: tikv_jemalloc_ctl::profiling::prof_mib,
 }
 
-/// Process-level memory numbers.
+/// Process-level memory numbers, read from the macOS kernel by
+/// [`snapshot_with_source`].
 ///
-/// Only `allocator` is populated on this macOS-only fork: `snapshot_with_source`
-/// returns [`ProcessMemorySnapshot::default`], so every OS-side field below
-/// (`rss_bytes`, `peak_rss_bytes`, `virtual_bytes`, `thread_count`,
-/// `main_stack_bytes`, `os`) is always `None`. Populating them needs a macOS
-/// reader (`proc_pidinfo`/`task_info`); until then, consumers that treat these
-/// as numbers see zero.
+/// Every field is `Option` because each has its own reader and any of them can
+/// fail; a failed read stays `None` rather than being reported as zero.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct ProcessMemorySnapshot {
+    /// Resident set size, from `proc_pidinfo(PROC_PIDTASKINFO)`'s
+    /// `pti_resident_size`.
     pub rss_bytes: Option<u64>,
+    /// Kernel-tracked high-water resident size since process start, from
+    /// `task_info(TASK_VM_INFO)`'s `resident_size_peak`. This is a real
+    /// kernel counter — macOS's analogue of Linux's `VmHWM` — not a maximum
+    /// accumulated over the samples in [`history`].
     pub peak_rss_bytes: Option<u64>,
+    /// Virtual size, from `pti_virtual_size`. On macOS this is dominated by
+    /// large reserved-but-unbacked regions (hundreds of GB is normal) and says
+    /// nothing about memory pressure; `rss_bytes` is the number to watch.
     pub virtual_bytes: Option<u64>,
-    /// Number of OS threads. Currently always `None`: there is no macOS
-    /// producer for this field.
+    /// Number of OS threads in the task, from `pti_threadnum`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_count: Option<u64>,
-    /// Main thread stack size. Auxiliary thread stacks live in anonymous
-    /// mappings and would not be included here. Currently always `None`:
-    /// there is no macOS producer for this field.
+    /// Main thread stack size, from `getrlimit(RLIMIT_STACK)`: macOS sizes
+    /// that mapping at exec from the soft limit. Auxiliary thread stacks live
+    /// in separate anonymous mappings and are not included here.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub main_stack_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -57,10 +62,12 @@ pub struct ProcessMemorySnapshot {
 
 /// Finer-grained OS accounting for the process.
 ///
-/// Nothing constructs this on this fork (the `/proc`-based reader it described
-/// never existed on macOS), so `ProcessMemorySnapshot::os` is always `None` and
-/// every field here is unpopulated. The field docs describe the intended
-/// meaning, not an observed value.
+/// Filled from `task_info(TASK_VM_INFO)`'s ledgers, which supply the resident
+/// anonymous/file-backed split and the compressor footprint. The proportional
+/// (`pss_*`) figures, the clean/dirty splits, `rss_shmem_bytes` and
+/// `anon_huge_pages_bytes` are Linux `smaps_rollup` concepts with no macOS
+/// per-task equivalent and stay `None`; their docs below describe the intended
+/// meaning for the consumers that fall back to the fields that are populated.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct OsProcessMemoryInfo {
     pub pss_bytes: Option<u64>,
@@ -80,13 +87,26 @@ pub struct OsProcessMemoryInfo {
     /// pins a whole 2MB page).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub anon_huge_pages_bytes: Option<u64>,
+    /// Resident anonymous bytes, from `TASK_VM_INFO`'s `internal + reusable`
+    /// ledgers: live heap, thread stacks, private mappings, plus heap pages
+    /// libmalloc has freed that are still mapped and resident. Together with
+    /// `rss_file_bytes` this sums exactly to
+    /// `ProcessMemorySnapshot::rss_bytes`.
     pub rss_anon_bytes: Option<u64>,
+    /// Resident file-backed bytes, from `TASK_VM_INFO`'s `external` ledger:
+    /// executable text, dylibs and mapped files.
     pub rss_file_bytes: Option<u64>,
+    /// Always `None` on macOS: the kernel folds shared memory into the
+    /// `external` ledger rather than accounting for it separately.
     pub rss_shmem_bytes: Option<u64>,
     pub private_clean_bytes: Option<u64>,
     pub private_dirty_bytes: Option<u64>,
     pub shared_clean_bytes: Option<u64>,
     pub shared_dirty_bytes: Option<u64>,
+    /// Bytes of this task's anonymous memory held by the VM compressor, from
+    /// `TASK_VM_INFO`'s `compressed` ledger. macOS compresses rather than
+    /// swapping, so this is the closest analogue to Linux's `VmSwap`; it
+    /// counts compressor-resident bytes, not bytes written to a swap file.
     pub swap_bytes: Option<u64>,
 }
 
@@ -151,18 +171,233 @@ fn memory_history() -> &'static Mutex<VecDeque<ProcessMemoryHistoryEntry>> {
     MEMORY_HISTORY.get_or_init(|| Mutex::new(VecDeque::with_capacity(MAX_HISTORY_SAMPLES)))
 }
 
+/// Sample this process's memory usage from the kernel.
 pub fn snapshot() -> ProcessMemorySnapshot {
     snapshot_with_source("snapshot")
 }
 
+/// Sample this process's memory usage, tagging the history entry with `source`.
+///
+/// Two kernel calls back this: `proc_pidinfo(PROC_PIDTASKINFO)` for resident
+/// size, virtual size and thread count, and `task_info(TASK_VM_INFO)` for the
+/// kernel-tracked resident high-water mark and the anonymous/file-backed/
+/// compressed breakdown. A field whose reader fails stays `None`; nothing here
+/// substitutes an estimate.
 pub fn snapshot_with_source(source: impl Into<String>) -> ProcessMemorySnapshot {
     let source = source.into();
-    logging::debug(&format!(
-        "process memory snapshot source={source} using default implementation"
-    ));
-    let snapshot = ProcessMemorySnapshot::default();
+    let task = proc_task_info();
+    let vm = task_vm_info();
+    let snapshot = ProcessMemorySnapshot {
+        rss_bytes: task.map(|task| task.pti_resident_size),
+        peak_rss_bytes: vm.as_ref().map(|vm| vm.resident_size_peak),
+        virtual_bytes: task.map(|task| task.pti_virtual_size),
+        thread_count: match task {
+            // The kernel reports this as a signed count; a non-positive value
+            // would mean the read did not land, not that the task has no
+            // threads, so it is dropped rather than reported as a number.
+            Some(task) if task.pti_threadnum > 0 => Some(task.pti_threadnum as u64),
+            _ => None,
+        },
+        main_stack_bytes: main_thread_stack_bytes(),
+        os: vm.as_ref().map(os_memory_info),
+        allocator: allocator_info(),
+    };
     record_snapshot(source, snapshot.clone());
     snapshot
+}
+
+/// This process's resident set size in bytes: `pti_resident_size` from
+/// `proc_pidinfo(PROC_PIDTASKINFO)`, the same kernel read that fills
+/// [`ProcessMemorySnapshot::rss_bytes`].
+///
+/// Side-effect-free and allocation-free, which is what separates it from
+/// [`snapshot`]: that also reads the `TASK_VM_INFO` ledgers and the allocator
+/// statistics, and records an entry in the process-global history ring.
+/// Callers running on a frame cadence — the TUI's per-frame resource
+/// attribution — want this one number and none of that per-frame cost.
+pub fn resident_bytes() -> Option<u64> {
+    proc_task_info().map(|task| task.pti_resident_size)
+}
+
+// Note for future callers: `proc_taskinfo` also carries `pti_total_user` and
+// `pti_total_system`, but those two accumulate only the CPU time of *exited*
+// threads on macOS — measured here, they advanced 3.6 ms across a 150 ms
+// single-thread busy loop. They are therefore not a process CPU-time reader,
+// and nothing in this repo uses them; `getrusage(RUSAGE_SELF)` is
+// (`jcode-tui`'s per-frame resource attribution).
+
+// ---------------------------------------------------------------------------
+// macOS kernel readers.
+//
+// `libc` exposes `proc_pidinfo`, `proc_taskinfo` and `PROC_PIDTASKINFO`, so
+// those come from the crate. It does not expose the `TASK_VM_INFO` flavor or
+// its payload struct, so those are hand-declared below in the same style
+// `jcode-core`'s `stdin_detect` uses for `proc_fdinfo`/`PROC_PIDLISTFDS`.
+// ---------------------------------------------------------------------------
+
+/// `TASK_VM_INFO` from `<mach/task_info.h>`.
+const TASK_VM_INFO: libc::task_flavor_t = 22;
+
+/// `TASK_VM_INFO_REV0_COUNT`: [`TaskVmInfoRev0`]'s size in 32-bit words, and
+/// the smallest count `task_info` accepts for this flavor.
+const TASK_VM_INFO_REV0_COUNT: libc::mach_msg_type_number_t =
+    (std::mem::size_of::<TaskVmInfoRev0>() / std::mem::size_of::<libc::integer_t>())
+        as libc::mach_msg_type_number_t;
+
+/// `struct task_vm_info` from `<mach/task_info.h>`, truncated to its
+/// `TASK_VM_INFO_REV0` prefix: the fields present since OS X 10.9 and the
+/// minimum the kernel will fill for this flavor. Later revisions append
+/// `phys_footprint`, the task address range and a long tail of ledger
+/// counters; none are requested here, so this crate is not exposed to their
+/// churn.
+///
+/// `#[repr(C)]` layout: `mach_vm_size_t` is `u64` and `integer_t` is `i32`, so
+/// the two `i32` fields share the 8-byte slot after `virtual_size` and the
+/// struct is 144 bytes = 36 32-bit words. Verified against the macOS 15 SDK
+/// header with `offsetof`: `resident_size` 16, `resident_size_peak` 24,
+/// `internal` 48, `external` 64, `compressed` 120.
+///
+/// Only five fields are read; the rest are part of the kernel's ABI for this
+/// flavor and must stay declared for the layout to line up, hence the
+/// `dead_code` allowance.
+#[repr(C)]
+#[derive(Default)]
+#[allow(dead_code)]
+struct TaskVmInfoRev0 {
+    virtual_size: u64,
+    region_count: i32,
+    page_size: i32,
+    resident_size: u64,
+    /// High-water resident size since task creation, tracked by the kernel.
+    /// This is macOS's analogue of Linux's `VmHWM`.
+    resident_size_peak: u64,
+    device: u64,
+    device_peak: u64,
+    /// Resident bytes on the task's "internal" ledger: anonymous private
+    /// memory that is still in use — live heap, thread stacks and private
+    /// mappings. Freed-but-resident heap pages move to `reusable`, so this is
+    /// not the whole anonymous resident set on its own.
+    internal: u64,
+    internal_peak: u64,
+    /// Resident bytes on the "external" ledger: file-backed and shared pages,
+    /// i.e. executable text, dylibs and mapped files.
+    external: u64,
+    external_peak: u64,
+    /// Resident anonymous bytes libmalloc has released with
+    /// `MADV_FREE_REUSABLE`: still mapped and still resident, reclaimed by
+    /// the kernel on demand or by a pressure-relief call. The macOS analogue
+    /// of jemalloc's dirty pages.
+    reusable: u64,
+    reusable_peak: u64,
+    purgeable_volatile_pmap: u64,
+    purgeable_volatile_resident: u64,
+    purgeable_volatile_virtual: u64,
+    /// Bytes of this task's anonymous memory currently held by the VM
+    /// compressor: macOS compresses instead of swapping, so this is the
+    /// closest thing to Linux's `VmSwap`.
+    compressed: u64,
+    compressed_peak: u64,
+    compressed_lifetime: u64,
+}
+
+/// Read `proc_taskinfo` for this process.
+fn proc_task_info() -> Option<libc::proc_taskinfo> {
+    let size = std::mem::size_of::<libc::proc_taskinfo>() as libc::c_int;
+    // Safety: `proc_taskinfo` is a plain-data `#[repr(C)]` struct of integers,
+    // so an all-zero bit pattern is a valid inhabitant.
+    let mut info: libc::proc_taskinfo = unsafe { std::mem::zeroed() };
+    // Safety: the buffer pointer addresses a live local of exactly `size`
+    // bytes, which is the length passed to the kernel; `proc_pidinfo` writes
+    // only through it and retains nothing after returning.
+    let written = unsafe {
+        libc::proc_pidinfo(
+            std::process::id() as libc::c_int,
+            libc::PROC_PIDTASKINFO,
+            0,
+            &mut info as *mut libc::proc_taskinfo as *mut libc::c_void,
+            size,
+        )
+    };
+    // A short write means the kernel filled a different struct than the one
+    // declared here; reporting nothing beats reporting half a struct.
+    (written == size).then_some(info)
+}
+
+unsafe extern "C" {
+    /// This process's own task port. `libc`'s `mach_task_self()` accessor is
+    /// deprecated in favour of the `mach2` crate, and the C macro of the same
+    /// name expands to exactly this global, so declaring the symbol keeps the
+    /// reader on `libc` without adding a dependency.
+    static mach_task_self_: libc::mach_port_t;
+}
+
+/// Read the `TASK_VM_INFO` ledgers for this task.
+fn task_vm_info() -> Option<TaskVmInfoRev0> {
+    let mut info = TaskVmInfoRev0::default();
+    let mut count = TASK_VM_INFO_REV0_COUNT;
+    // Safety: `mach_task_self_` is written by dyld before `main` and never
+    // mutated afterwards, so reading it is a plain load of an initialised
+    // `mach_port_t`. `task_info` writes at most `count` 32-bit words through
+    // the info pointer, which addresses a live `TaskVmInfoRev0` of exactly
+    // that many words, and updates `count` in place; both pointers outlive
+    // the call and neither is retained.
+    let status = unsafe {
+        libc::task_info(
+            mach_task_self_,
+            TASK_VM_INFO,
+            &mut info as *mut TaskVmInfoRev0 as libc::task_info_t,
+            &mut count,
+        )
+    };
+    (status == libc::KERN_SUCCESS && count >= TASK_VM_INFO_REV0_COUNT).then_some(info)
+}
+
+/// Map the `TASK_VM_INFO` ledgers onto the fields macOS can actually supply.
+///
+/// Resident anonymous memory is `internal + reusable`, not `internal` alone.
+/// When libmalloc frees a large block it marks the pages `MADV_FREE_REUSABLE`,
+/// which moves them off the internal ledger while they stay mapped and
+/// resident, so `internal` alone undercounts by exactly the freed-but-resident
+/// heap this module exists to watch. The kernel keeps
+/// `internal + external + reusable == resident_size` exactly (verified across
+/// live/freed/purged states on macOS 15), so the two reported halves add up to
+/// [`ProcessMemorySnapshot::rss_bytes`].
+///
+/// The proportional figures (`pss_*`), the clean/dirty splits, `rss_shmem` and
+/// `anon_huge_pages` stay `None`: they come from Linux's `smaps_rollup`, and
+/// macOS has no per-task equivalent. Approximating them would need a
+/// `mach_vm_region_recurse` walk of every mapping, which is neither cheap nor
+/// a proportional accounting, and transparent huge pages do not exist here at
+/// all.
+fn os_memory_info(vm: &TaskVmInfoRev0) -> OsProcessMemoryInfo {
+    OsProcessMemoryInfo {
+        rss_anon_bytes: Some(vm.internal.saturating_add(vm.reusable)),
+        rss_file_bytes: Some(vm.external),
+        swap_bytes: Some(vm.compressed),
+        ..OsProcessMemoryInfo::default()
+    }
+}
+
+/// The main thread's stack reservation, from `getrlimit(RLIMIT_STACK)`.
+///
+/// macOS sizes the main thread's stack mapping at exec from `RLIMIT_STACK`'s
+/// soft limit, so this is that mapping's size: on the main thread
+/// `pthread_get_stacksize_np` returns exactly `rlim_cur` (8372224 by default,
+/// verified on macOS 15). It is a reservation, not a high-water usage figure,
+/// and auxiliary thread stacks are not included — `thread_stack_estimate` in
+/// `runtime_memory_log` extrapolates those from `thread_count`.
+///
+/// An unlimited or zero soft limit yields `None` rather than a nonsense size.
+fn main_thread_stack_bytes() -> Option<u64> {
+    // Safety: `rlimit` is two integers, so zero is a valid inhabitant.
+    let mut limit: libc::rlimit = unsafe { std::mem::zeroed() };
+    // Safety: `getrlimit` writes one `rlimit` through the pointer, which
+    // addresses a live, correctly sized local and is not retained.
+    let status = unsafe { libc::getrlimit(libc::RLIMIT_STACK, &mut limit as *mut libc::rlimit) };
+    if status != 0 || limit.rlim_cur == 0 || limit.rlim_cur == libc::RLIM_INFINITY {
+        return None;
+    }
+    Some(limit.rlim_cur)
 }
 
 pub fn history(limit: usize) -> Vec<ProcessMemoryHistoryEntry> {
@@ -189,7 +424,7 @@ pub fn allocator_info() -> AllocatorInfo {
 
     #[cfg(not(feature = "jemalloc"))]
     {
-        let stats = glibc_malloc_stats();
+        let stats = system_malloc_stats();
         AllocatorInfo {
             name: "system",
             stats_available: stats.is_some(),
@@ -200,9 +435,65 @@ pub fn allocator_info() -> AllocatorInfo {
     }
 }
 
+/// `struct malloc_statistics_t` from `<malloc/malloc.h>`, hand-declared for
+/// the same reason as [`TaskVmInfoRev0`]: `libc` does not bind libmalloc's
+/// introspection API.
+///
+/// `#[repr(C)]` layout: `unsigned` followed by three `size_t`, so on 64-bit
+/// targets four bytes of padding follow `blocks_in_use` and the struct is 32
+/// bytes. Verified against the macOS 15 SDK header with `offsetof`:
+/// `size_in_use` 8, `max_size_in_use` 16, `size_allocated` 24.
 #[cfg(not(feature = "jemalloc"))]
-fn glibc_malloc_stats() -> Option<AllocatorStats> {
-    None
+#[repr(C)]
+#[derive(Default)]
+#[allow(dead_code)]
+struct MallocStatistics {
+    blocks_in_use: libc::c_uint,
+    /// Bytes of live (allocated, not yet freed) blocks.
+    size_in_use: libc::size_t,
+    /// High-water mark of `size_in_use`.
+    max_size_in_use: libc::size_t,
+    /// Bytes the zones have mapped from the kernel to back those blocks.
+    size_allocated: libc::size_t,
+}
+
+#[cfg(not(feature = "jemalloc"))]
+unsafe extern "C" {
+    /// libmalloc introspection. A null `zone` aggregates every registered
+    /// malloc zone, which is what a whole-process figure needs: macOS runs
+    /// several (nano, scalable, and any zone a dylib creates).
+    fn malloc_zone_statistics(zone: *mut libc::c_void, stats: *mut MallocStatistics);
+    /// Ask libmalloc to hand freed pages back to the kernel. A null `zone`
+    /// covers every zone and `goal` 0 means "as much as possible". The return
+    /// value is only meaningful for a nonzero `goal`, so it is ignored here;
+    /// the effect is visible in `TASK_VM_INFO`'s `reusable` ledger dropping
+    /// to zero.
+    fn malloc_zone_pressure_relief(zone: *mut libc::c_void, goal: libc::size_t) -> libc::size_t;
+}
+
+/// Live and mapped byte counts for the macOS system allocator.
+///
+/// `active_bytes`, `resident_bytes` and `retained_bytes` have no libmalloc
+/// equivalent (they are jemalloc arena concepts) and stay `None`; the
+/// jemalloc build is the one that fills them.
+#[cfg(not(feature = "jemalloc"))]
+fn system_malloc_stats() -> Option<AllocatorStats> {
+    let mut stats = MallocStatistics::default();
+    // Safety: a null zone pointer is libmalloc's documented "all zones"
+    // selector, and the out-pointer addresses a live, correctly sized
+    // `MallocStatistics` that the call writes through and does not retain.
+    unsafe { malloc_zone_statistics(std::ptr::null_mut(), &mut stats as *mut MallocStatistics) };
+    // libmalloc reports through a void function, so an all-zero result is the
+    // only failure signal there is: a live process always has zones with
+    // mapped bytes, so zero means the read produced nothing.
+    if stats.size_allocated == 0 {
+        return None;
+    }
+    Some(AllocatorStats {
+        allocated_bytes: Some(stats.size_in_use as u64),
+        mapped_bytes: Some(stats.size_allocated as u64),
+        ..AllocatorStats::default()
+    })
 }
 
 pub fn purge_allocator() -> Result<AllocatorTuningInfo> {
@@ -231,10 +522,22 @@ pub fn purge_allocator() -> Result<AllocatorTuningInfo> {
 
     #[cfg(not(feature = "jemalloc"))]
     {
-        logging::warn("allocator purge requested but no purge mechanism is available");
-        Err(anyhow!(
-            "allocator purge unavailable on this platform: rebuild with --features jemalloc"
-        ))
+        // libmalloc has no arenas or decay tunables to report, but it does
+        // expose a pressure valve, and on macOS that is where the recoverable
+        // memory sits: freeing a large block leaves its pages mapped and
+        // resident on the `reusable` ledger until something reclaims them.
+        // Measured on macOS 15: 128 MiB freed then relieved dropped resident
+        // size from 135 MB to 1.3 MB.
+        logging::info("relieving libmalloc memory pressure across all zones");
+        // Safety: a null zone pointer is libmalloc's documented "all zones"
+        // selector and the call takes no out-pointers.
+        unsafe { malloc_zone_pressure_relief(std::ptr::null_mut(), 0) };
+        Ok(AllocatorTuningInfo {
+            // libmalloc exposes no tunables, so there is nothing to report
+            // beyond the purge having run.
+            available: false,
+            ..AllocatorTuningInfo::default()
+        })
     }
 }
 
@@ -375,21 +678,14 @@ pub fn estimate_json_bytes<T: Serialize>(value: &T) -> usize {
 
 /// Return freed-but-retained heap pages to the OS.
 ///
-/// On jemalloc builds this purges all arenas; on system-allocator builds it is
-/// a no-op.
+/// Both allocators have a real mechanism: jemalloc purges every initialised
+/// arena, libmalloc relieves pressure across every zone. See
+/// [`purge_allocator`].
 pub fn release_retained_heap(reason: &str) {
-    #[cfg(feature = "jemalloc")]
-    {
-        if let Err(err) = purge_allocator() {
-            logging::info(&format!("jemalloc purge ({reason}) failed: {err}"));
-        } else {
-            logging::debug(&format!("jemalloc purge ({reason}) completed"));
-        }
-    }
-
-    #[cfg(not(feature = "jemalloc"))]
-    {
-        let _ = reason;
+    if let Err(err) = purge_allocator() {
+        logging::info(&format!("allocator purge ({reason}) failed: {err}"));
+    } else {
+        logging::debug(&format!("allocator purge ({reason}) completed"));
     }
 
     // Whatever apparent retention remains after the release is the
@@ -437,10 +733,21 @@ static POST_TRIM_APPARENT_RETENTION: std::sync::atomic::AtomicU64 =
 /// the memory a trim/purge could plausibly return to the OS, measured from the
 /// OS side (resident anonymous bytes) minus the allocator's live bytes.
 ///
-/// Always `None` today: no macOS reader supplies resident anonymous bytes, so
-/// every caller takes its no-OS-metric path.
+/// The OS side is `TASK_VM_INFO`'s `internal + reusable` ledgers, i.e. every
+/// anonymous resident page. `reusable` is where libmalloc parks large freed
+/// blocks — mapped and resident until something reclaims them — so it is the
+/// recoverable part; `internal` also covers thread stacks and private
+/// mappings, so this figure carries a non-heap floor. That is why callers
+/// compare *growth above a post-trim baseline* rather than the absolute
+/// value.
+///
+/// `None` when either half is unreadable: no `task_info` result, or an
+/// allocator that reports no live-bytes figure.
 fn apparent_heap_retention_bytes() -> Option<u64> {
-    None
+    let vm = task_vm_info()?;
+    let resident_anon = vm.internal.saturating_add(vm.reusable);
+    let live_bytes = allocator_info().stats?.allocated_bytes?;
+    Some(resident_anon.saturating_sub(live_bytes))
 }
 
 /// Refresh the post-trim baseline from the current apparent retention.
@@ -462,10 +769,9 @@ fn retention_growth_exceeds(apparent: u64, baseline: u64, threshold: u64) -> boo
 /// threshold (one allocator stats read), debounced against other release
 /// paths when above it. Returns true when a release ran.
 ///
-/// Because [`apparent_heap_retention_bytes`] has no macOS producer, only the
-/// fallback path — an absolute threshold on the allocator's own retained
-/// counter — can run today; the growth-above-baseline logic below it encodes
-/// the intended design for when an OS-side reader exists.
+/// When [`apparent_heap_retention_bytes`] cannot read one of its two halves,
+/// this falls back to an absolute threshold on the allocator's own retained
+/// counter, which only the jemalloc build reports.
 ///
 /// This closes the gap left by event-driven trims (turn completion, history
 /// load): a server hosting many mostly-idle sessions can accumulate hundreds
@@ -742,6 +1048,9 @@ mod tests {
 
     #[test]
     fn release_retained_heap_is_safe_to_call() {
+        let _guard = PROCESS_MEMORY_TEST_LOCK
+            .lock()
+            .expect("process memory test lock");
         // Allocate and drop a large transient buffer, then release. This must
         // not crash on any allocator configuration.
         let buffer = vec![0u8; 8 * 1024 * 1024];
@@ -753,6 +1062,9 @@ mod tests {
     fn release_retained_heap_debounced_skips_within_interval() {
         // First call resets the shared debounce clock; the immediate second
         // call within a long interval must be skipped.
+        let _guard = PROCESS_MEMORY_TEST_LOCK
+            .lock()
+            .expect("process memory test lock");
         release_retained_heap_debounced("unit_test_first", std::time::Duration::ZERO);
         let ran = release_retained_heap_debounced(
             "unit_test_second",
@@ -784,6 +1096,9 @@ mod tests {
 
     #[test]
     fn release_retained_heap_if_excessive_skips_below_threshold() {
+        let _guard = PROCESS_MEMORY_TEST_LOCK
+            .lock()
+            .expect("process memory test lock");
         // u64::MAX growth threshold can never be exceeded, so no release
         // should run regardless of current allocator state.
         let ran = release_retained_heap_if_excessive(
@@ -821,5 +1136,318 @@ mod tests {
             assert_eq!(info.stats_available, info.stats.is_some());
             assert!(info.profiling.is_none());
         }
+    }
+
+    /// Serialises the tests that read or perturb process-global memory state:
+    /// the retention baseline, the heap-release debounce clock, and the
+    /// resident-size measurements a concurrent 128 MiB allocation would skew.
+    static PROCESS_MEMORY_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Installed RAM (`hw.memsize`): an upper bound this process's own
+    /// resident size cannot cross. Read through the shared host-metrics
+    /// primitive so this file holds no second `sysctlbyname` copy.
+    fn total_physical_memory_bytes() -> Option<u64> {
+        crate::host_metrics::total_physical_memory_bytes()
+    }
+
+    #[test]
+    fn snapshot_reports_resident_memory_that_tracks_real_allocations() {
+        let _guard = PROCESS_MEMORY_TEST_LOCK
+            .lock()
+            .expect("process memory test lock");
+        const BALLAST_BYTES: usize = 128 * 1024 * 1024;
+
+        let total_physical = total_physical_memory_bytes().expect("hw.memsize is readable");
+        let before = snapshot_with_source("unit_test_rss_before");
+        let rss_before = before
+            .rss_bytes
+            .expect("PROC_PIDTASKINFO must report a resident size for this process");
+        assert!(
+            rss_before > 1024 * 1024,
+            "a live Rust test process is resident in more than 1 MiB: {rss_before}"
+        );
+        assert!(
+            rss_before < total_physical,
+            "resident size {rss_before} cannot exceed installed RAM {total_physical}"
+        );
+
+        // Fault in 128 MiB of anonymous pages. `vec!` alone only reserves
+        // zero-fill pages, so each page is touched to force it resident. A
+        // reader returning a fabricated or constant value cannot follow this.
+        let mut ballast = vec![0u8; BALLAST_BYTES];
+        for page in ballast.chunks_mut(4096) {
+            page[0] = 1;
+        }
+        let during = snapshot_with_source("unit_test_rss_during");
+        std::hint::black_box(&ballast);
+        drop(ballast);
+
+        let rss_during = during
+            .rss_bytes
+            .expect("resident size while the ballast is live");
+        assert!(
+            rss_during >= rss_before + (BALLAST_BYTES as u64) * 3 / 4,
+            "resident size must follow the {BALLAST_BYTES}-byte ballast: before={rss_before} during={rss_during}"
+        );
+        assert!(
+            rss_during < total_physical,
+            "resident size {rss_during} cannot exceed installed RAM {total_physical}"
+        );
+
+        let peak = during
+            .peak_rss_bytes
+            .expect("TASK_VM_INFO must report resident_size_peak");
+        assert!(
+            peak >= rss_during,
+            "the kernel's resident high-water mark {peak} cannot be below the current resident size {rss_during}"
+        );
+
+        let virtual_bytes = during.virtual_bytes.expect("pti_virtual_size");
+        assert!(
+            virtual_bytes >= rss_during,
+            "virtual size {virtual_bytes} must cover the resident set {rss_during}"
+        );
+    }
+
+    #[test]
+    fn resident_bytes_agrees_with_the_snapshot_and_records_no_history() {
+        let _guard = PROCESS_MEMORY_TEST_LOCK
+            .lock()
+            .expect("process memory test lock");
+        let total_physical = total_physical_memory_bytes().expect("hw.memsize is readable");
+
+        let standalone = resident_bytes().expect("PROC_PIDTASKINFO reports a resident size");
+        assert!(
+            standalone > 1024 * 1024 && standalone < total_physical,
+            "resident size {standalone} is outside 1 MiB..{total_physical}"
+        );
+
+        // Same kernel field as the snapshot's, so the two readings can only
+        // differ by whatever the process allocated in between.
+        let snapshot_rss = snapshot_with_source("unit_test_resident_bytes")
+            .rss_bytes
+            .expect("snapshot resident size");
+        let drift = snapshot_rss.abs_diff(standalone);
+        assert!(
+            drift < 32 * 1024 * 1024,
+            "resident_bytes {standalone} and snapshot {snapshot_rss} disagree by {drift} bytes"
+        );
+
+        // The whole reason this accessor exists: it must not touch the global
+        // history ring, which the TUI would otherwise write to on a frame
+        // cadence. The explicit snapshot above left its own entry at the head;
+        // repeated accessor calls must leave that head untouched.
+        let marker = history(1);
+        let marker = marker
+            .first()
+            .expect("the explicit snapshot recorded an entry");
+        assert_eq!(marker.source, "unit_test_resident_bytes");
+        for _ in 0..5 {
+            resident_bytes().expect("resident size");
+        }
+        let newest = history(1);
+        let newest = newest.first().expect("history still holds the marker");
+        assert_eq!(
+            (newest.source.as_str(), newest.timestamp_ms),
+            (marker.source.as_str(), marker.timestamp_ms),
+            "resident_bytes must record nothing"
+        );
+    }
+
+    #[test]
+    fn task_vm_info_ledgers_partition_the_resident_set() {
+        let vm = task_vm_info().expect("TASK_VM_INFO is readable for this task");
+        // One syscall, so this identity is exact rather than sampled: the
+        // kernel splits every resident page into internal (live anon),
+        // external (file-backed) or reusable (freed anon still mapped). It is
+        // also the check that catches a wrong field offset in the
+        // hand-declared `TaskVmInfoRev0` layout.
+        assert_eq!(
+            vm.internal + vm.external + vm.reusable,
+            vm.resident_size,
+            "internal={} external={} reusable={} must partition resident_size={}",
+            vm.internal,
+            vm.external,
+            vm.reusable,
+            vm.resident_size
+        );
+        assert!(
+            vm.resident_size_peak >= vm.resident_size,
+            "the resident high-water mark {} cannot be below the current resident size {}",
+            vm.resident_size_peak,
+            vm.resident_size
+        );
+        assert!(
+            vm.page_size == 4096 || vm.page_size == 16384,
+            "page_size read as {}, which is not a macOS page size — the struct layout is wrong",
+            vm.page_size
+        );
+    }
+
+    #[test]
+    fn snapshot_reports_thread_count_and_the_resident_anon_file_split() {
+        let _guard = PROCESS_MEMORY_TEST_LOCK
+            .lock()
+            .expect("process memory test lock");
+        use std::sync::{Arc, Barrier};
+
+        // Nine participants: eight parked threads plus this one, so all eight
+        // are provably alive when the snapshot is taken.
+        let barrier = Arc::new(Barrier::new(9));
+        let parked: Vec<_> = (0..8)
+            .map(|_| {
+                let barrier = Arc::clone(&barrier);
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    barrier.wait();
+                })
+            })
+            .collect();
+        barrier.wait();
+
+        let snapshot = snapshot_with_source("unit_test_threads");
+
+        barrier.wait();
+        for handle in parked {
+            handle.join().expect("parked thread joins");
+        }
+
+        let threads = snapshot
+            .thread_count
+            .expect("PROC_PIDTASKINFO must report pti_threadnum");
+        assert!(
+            threads >= 9,
+            "eight parked threads plus the measuring thread were alive, so the task had at least nine: {threads}"
+        );
+
+        let rss = snapshot.rss_bytes.expect("resident size");
+        let os = snapshot
+            .os
+            .expect("TASK_VM_INFO must populate the os breakdown");
+        let anon = os.rss_anon_bytes.expect("internal ledger");
+        let file = os.rss_file_bytes.expect("external ledger");
+        assert!(
+            anon > 0 && file > 0,
+            "a running process has both anonymous and file-backed resident pages: anon={anon} file={file}"
+        );
+        // `rss_anon_bytes + rss_file_bytes` is the whole resident set, but it
+        // comes from a different syscall than `rss_bytes`, so a concurrent
+        // allocation in another test can skew the two samples apart; the exact
+        // identity is asserted from a single read in
+        // `task_vm_info_ledgers_partition_the_resident_set`.
+        let ledger_sum = anon + file;
+        assert!(
+            ledger_sum.abs_diff(rss) < rss / 2,
+            "rss_anon+rss_file={ledger_sum} must account for the resident size {rss}"
+        );
+        assert!(
+            os.swap_bytes.is_some(),
+            "the compressor ledger is part of the same read and is always available"
+        );
+    }
+
+    #[test]
+    fn main_stack_bytes_reports_a_page_aligned_stack_reservation() {
+        let main_stack =
+            main_thread_stack_bytes().expect("RLIMIT_STACK has a finite soft limit on macOS");
+        // macOS's default is 8 MiB minus a 16 KiB guard (8372224). A value
+        // outside one page .. 1 GiB would mean the read landed elsewhere.
+        assert!(
+            (4096..=1024 * 1024 * 1024).contains(&main_stack),
+            "implausible main-thread stack reservation: {main_stack}"
+        );
+        assert_eq!(
+            main_stack % 4096,
+            0,
+            "a stack mapping is page-aligned; {main_stack} is not"
+        );
+    }
+
+    #[test]
+    fn apparent_heap_retention_measures_resident_anon_minus_live_allocator_bytes() {
+        let _guard = PROCESS_MEMORY_TEST_LOCK
+            .lock()
+            .expect("process memory test lock");
+        let live_bytes = allocator_info()
+            .stats
+            .expect("the allocator reports stats")
+            .allocated_bytes
+            .expect("live allocator bytes are readable");
+        let anon = snapshot_with_source("unit_test_retention")
+            .os
+            .expect("os breakdown")
+            .rss_anon_bytes
+            .expect("resident anonymous bytes");
+        let apparent = apparent_heap_retention_bytes()
+            .expect("both halves of apparent retention are readable");
+
+        assert!(live_bytes > 0, "a running process has live heap bytes");
+        assert!(
+            anon > live_bytes,
+            "resident anonymous memory {anon} must exceed live heap bytes {live_bytes}"
+        );
+        assert!(
+            apparent > 0 && apparent < anon,
+            "apparent retention {apparent} is resident anon {anon} minus live bytes {live_bytes}"
+        );
+    }
+
+    #[test]
+    fn record_post_trim_retention_baseline_stores_a_measurement() {
+        use std::sync::atomic::Ordering;
+
+        let _guard = PROCESS_MEMORY_TEST_LOCK
+            .lock()
+            .expect("process memory test lock");
+        let total_physical = total_physical_memory_bytes().expect("hw.memsize is readable");
+        // Poison the baseline with a value no measurement can produce, so a
+        // reader that reports nothing leaves it in place and this fails.
+        POST_TRIM_APPARENT_RETENTION.store(u64::MAX, Ordering::Relaxed);
+        record_post_trim_retention_baseline();
+
+        let baseline = POST_TRIM_APPARENT_RETENTION.load(Ordering::Relaxed);
+        assert_ne!(
+            baseline,
+            u64::MAX,
+            "the baseline must be overwritten with a real measurement"
+        );
+        assert!(
+            baseline > 0 && baseline < total_physical,
+            "baseline {baseline} must be a plausible byte count below installed RAM {total_physical}"
+        );
+    }
+
+    #[test]
+    fn retention_growth_branch_releases_and_rebaselines() {
+        use std::sync::atomic::Ordering;
+
+        let _guard = PROCESS_MEMORY_TEST_LOCK
+            .lock()
+            .expect("process memory test lock");
+        let apparent = apparent_heap_retention_bytes().expect("apparent retention is measurable");
+        assert!(
+            apparent > 1,
+            "the growth branch needs measurable retention: {apparent}"
+        );
+
+        POST_TRIM_APPARENT_RETENTION.store(0, Ordering::Relaxed);
+        // A one-byte threshold separates the two branches: the no-OS-metric
+        // fallback compares the allocator's `retained_bytes`, which libmalloc
+        // does not report (so it reads as 0 and stays below the threshold),
+        // meaning only the growth branch can release here. `Duration::ZERO`
+        // disables the debounce without touching its shared clock.
+        let released = release_retained_heap_if_excessive(
+            "unit_test_retention_growth",
+            1,
+            std::time::Duration::ZERO,
+        );
+        assert!(
+            released,
+            "growth of {apparent} bytes above a zero baseline must trigger a release"
+        );
+        assert!(
+            POST_TRIM_APPARENT_RETENTION.load(Ordering::Relaxed) > 0,
+            "the release must re-baseline from a fresh measurement"
+        );
     }
 }

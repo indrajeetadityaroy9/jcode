@@ -241,10 +241,8 @@ impl MultiProvider {
             None
         };
 
-        let copilot_premium_zero = matches!(
-            std::env::var("JCODE_COPILOT_PREMIUM").ok().as_deref(),
-            Some("0")
-        );
+        let copilot_premium_zero =
+            matches!(std::env::var("JCODE_COPILOT_PREMIUM").as_deref(), Ok("0"));
         let availability = ProviderAvailability {
             openai: openai.is_some(),
             claude: claude.is_some() || anthropic.is_some(),

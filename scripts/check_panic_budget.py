@@ -10,7 +10,15 @@ Policy:
 - Existing files may not increase their count.
 - New production files may not introduce panic-prone usage.
 - Total count may not increase.
-- `--update` refreshes the baseline after intentional cleanup.
+- `--update [PATH ...]` records current counts; name paths to avoid laundering
+  unrelated drift, and pass `--allow-regression` to record something worse.
+- `--moved OLD=NEW[,NEW...]` re-keys an entry after a pure move or split and
+  refuses the move if the counts do not conserve.
+- `--prune` retires entries that no longer describe a measured file.
+- `--repair` re-derives the summary fields from `tracked_files`.
+
+A single line may opt out with a justified `// budget-ok: <reason>` comment,
+which keeps the justification in the code instead of an opaque count.
 """
 
 from __future__ import annotations
@@ -22,17 +30,42 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import budget_common as bc
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE_FILE = REPO_ROOT / "scripts" / "panic_budget.json"
 SCAN_ROOTS = (REPO_ROOT / "src", REPO_ROOT / "crates")
 PATTERN = re.compile(r"\.unwrap\(|\.expect\(|\b(?:panic!|todo!|unimplemented!)")
+
+#: What this detector must and must not count, proven on every run. A ratchet
+#: trusts its own measurement, so a pattern that stops matching reads as a
+#: triumphant improvement rather than a failure.
+MUST_COUNT = (
+    "let value = maybe.unwrap();",
+    'let value = maybe.expect("must exist");',
+    'panic!("unreachable state {state:?}");',
+    "todo!()",
+    "unimplemented!()",
+)
+MUST_IGNORE = (
+    "let value = maybe.unwrap_or_default();",
+    "let value = maybe.unwrap_or(3);",
+    "let value = maybe.unwrap_or_else(fallback);",
+    'let value = maybe.expect_none_is_not_a_thing;',
+    'let v = x.unwrap(); // budget-ok: index bound proven two lines above',
+)
+
+
+def counts_line(line: str) -> bool:
+    """Whether this line contributes to the budget."""
+    return bool(PATTERN.search(line)) and not bc.EXEMPTION_RE.search(line)
 CFG_TEST_RE = re.compile(r"^\s*#\s*\[\s*cfg\s*\(\s*(?:all\s*\(\s*)?test\s*[,)]")
 ITEM_START_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:mod|fn)\b")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--update", action="store_true", help="refresh the baseline")
+    bc.add_ledger_args(parser)
     return parser.parse_args()
 
 
@@ -108,13 +141,20 @@ def production_lines(path: Path) -> list[str]:
 def current_counts() -> dict[str, int]:
     counts: dict[str, int] = {}
     for path in production_rust_files():
-        count = sum(1 for line in production_lines(path) if PATTERN.search(line))
+        count = sum(
+            1
+            for line in production_lines(path)
+            # A justified `// budget-ok: <reason>` exemption is honoured, so an
+            # unavoidable panic path is explained in the code rather than
+            # absorbed into a number.
+            if counts_line(line)
+        )
         if count:
             counts[path.relative_to(REPO_ROOT).as_posix()] = count
     return counts
 
 
-def load_baseline() -> dict[str, Any]:
+def load_baseline(validate: bool = True) -> dict[str, Any]:
     if not BASELINE_FILE.exists():
         return {"version": 1, "total": 0, "tracked_files": {}}
     data = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
@@ -128,6 +168,10 @@ def load_baseline() -> dict[str, Any]:
         not isinstance(k, str) or not isinstance(v, int) or v <= 0 for k, v in tracked.items()
     ):
         raise SystemExit(f"error: invalid tracked_files in {BASELINE_FILE}")
+    if validate:
+        # Skipped for --repair, whose whole job is to fix an inconsistent
+        # ledger: validating first would make the remedy unreachable.
+        bc.validate_baseline(data, BASELINE_FILE)
     return data
 
 
@@ -145,16 +189,12 @@ def write_baseline(counts: dict[str, int]) -> None:
 
 def main() -> int:
     args = parse_args()
-    baseline = load_baseline()
+    bc.self_check("panic-prone", counts_line, MUST_COUNT, MUST_IGNORE)
+    baseline = load_baseline(validate=not args.repair)
     current = current_counts()
     current_total = sum(current.values())
 
-    if args.update:
-        write_baseline(current)
-        print(
-            "Updated panic-prone baseline: "
-            f"total={baseline['total']} -> {current_total}, files={len(baseline['tracked_files'])} -> {len(current)}"
-        )
+    if bc.run_ledger_edits(args, baseline, current, lambda data: bc.write_json(BASELINE_FILE, data)):
         return 0
 
     tracked: dict[str, int] = baseline["tracked_files"]

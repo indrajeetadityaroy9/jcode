@@ -11,6 +11,14 @@ Policy:
 - New oversized production files may not be introduced.
 - If oversized files shrink or disappear, the script reports the improvement.
 - `--update` refreshes the baseline after intentional cleanup.
+
+Ledger verbs:
+- `--update [PATH ...]` records current counts; name paths to avoid laundering
+  unrelated drift, and pass `--allow-regression` to record something worse.
+- `--moved OLD=NEW[,NEW...]` re-keys an entry after a pure move or split and
+  refuses the move if the counts do not conserve.
+- `--prune` retires entries that no longer describe a measured file.
+- `--repair` re-derives the summary fields from `tracked_files`.
 """
 
 from __future__ import annotations
@@ -21,19 +29,24 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import budget_common as bc
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE_FILE = REPO_ROOT / "scripts" / "code_size_budget.json"
 DEFAULT_THRESHOLD = 1200
 SCAN_ROOTS = (REPO_ROOT / "src", REPO_ROOT / "crates")
 
+#: What this classifier must and must not treat as in-scope, proven on every
+#: run. The "detector" here is the file-classification rule, and a rule that
+#: accidentally excluded everything would silently empty the ledger while
+#: reporting that every tracked file had improved.
+MUST_CLASSIFY = ('src/cli/acp.rs', 'crates/jcode-base/src/skill.rs', 'crates/jcode-tui/src/tui/ui_prepare.rs')
+MUST_SKIP = ('src/cli/acp_tests.rs', 'crates/jcode-base/src/skill_tests.rs', 'crates/jcode-tui/src/tui/app/tests/scroll_copy_02/part_01.rs', 'scripts/budget_common.py')
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--update",
-        action="store_true",
-        help="refresh the baseline to the current oversized-file set",
-    )
+    bc.add_ledger_args(parser)
     return parser.parse_args()
 
 
@@ -77,7 +90,7 @@ def current_oversized_files(threshold: int) -> dict[str, int]:
     return files
 
 
-def load_baseline() -> dict[str, Any]:
+def load_baseline(validate: bool = True) -> dict[str, Any]:
     if not BASELINE_FILE.exists():
         raise SystemExit(f"error: missing baseline file: {BASELINE_FILE}")
     data = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
@@ -92,6 +105,10 @@ def load_baseline() -> dict[str, Any]:
         for k, v in tracked.items()
     ):
         raise SystemExit(f"error: invalid tracked_files in {BASELINE_FILE}")
+    if validate:
+        # Skipped for --repair, whose whole job is to fix an inconsistent
+        # ledger: validating first would make the remedy unreachable.
+        bc.validate_baseline(data, BASELINE_FILE)
     return data
 
 
@@ -109,16 +126,17 @@ def write_baseline(threshold: int, tracked_files: dict[str, int]) -> None:
 
 def main() -> int:
     args = parse_args()
-    baseline = load_baseline()
+    bc.self_check(
+        "production-file",
+        lambda rel: is_production_rust_file(REPO_ROOT / rel),
+        MUST_CLASSIFY,
+        MUST_SKIP,
+    )
+    baseline = load_baseline(validate=not args.repair)
     threshold = baseline["threshold_loc"]
     current = current_oversized_files(threshold)
 
-    if args.update:
-        write_baseline(threshold, current)
-        print(
-            "Updated code-size baseline: "
-            f"tracked={len(baseline['tracked_files'])} -> {len(current)} oversized files"
-        )
+    if bc.run_ledger_edits(args, baseline, current, lambda data: bc.write_json(BASELINE_FILE, data)):
         return 0
 
     tracked: dict[str, int] = baseline["tracked_files"]

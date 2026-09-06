@@ -125,9 +125,9 @@ description that this RFC opened with no longer applies:
   memory
 - `jcode-app-core` — server, tool registry and implementations, agent turn loop,
   ambient/overnight/mission services
-- `jcode-tui` — terminal UI (`tui`) and offline replay (`video_export`)
+- `jcode-tui` — terminal UI (`tui`)
 
-**Foundation/runtime support (15)**
+**Foundation/runtime support (14)**
 
 - `jcode-agent-runtime` — soft-interrupt/interrupt-signal primitives for agent
   execution
@@ -152,7 +152,6 @@ description that this RFC opened with no longer applies:
   of ratatui so `jcode-base` can use them
 - `jcode-setup-hints` — startup platform hints (macOS terminal/launcher) plus
   `keymap/` conflict detection
-- `jcode-update-core` — update download/verify plus git-divergence reporting
 
 **Data-contract crates (13)**
 
@@ -314,7 +313,7 @@ What that implies for this RFC's direction:
 ```mermaid
 flowchart TD
   Bin["jcode bin (main.rs)"] --> Root["jcode lib (cli/)"]
-  Root --> TUI["jcode-tui\ntui + video_export"]
+  Root --> TUI["jcode-tui\ntui"]
   TUI --> AppCore["jcode-app-core\nserver + tool + agent"]
   AppCore --> Base["jcode-base\nprovider + auth + config + session + message + memory"]
 
@@ -1054,7 +1053,7 @@ Exit criteria:
 
 Focus:
 
-- the `tui` and `video_export` modules did move out of the root crate into
+- the `tui` module did move out of the root crate into
   `crates/jcode-tui`, which is what made the root package a shell
 - what did **not** happen is the contract separation this phase called for: the
   crate re-exports `jcode-app-core` wholesale (`crates/jcode-tui/src/lib.rs:23`),

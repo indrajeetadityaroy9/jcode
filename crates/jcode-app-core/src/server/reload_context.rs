@@ -67,7 +67,7 @@ impl ReloadContext {
             return Ok(None);
         }
         let ctx: Self = storage::read_json(&legacy)?;
-        let _ = std::fs::remove_file(&legacy);
+        consume_handoff_file(&legacy);
         Ok(Some(ctx))
     }
 
@@ -97,7 +97,7 @@ impl ReloadContext {
         let session_path = Self::path_for_session(session_id)?;
         if session_path.exists() {
             let ctx: Self = storage::read_json(&session_path)?;
-            let _ = std::fs::remove_file(&session_path);
+            consume_handoff_file(&session_path);
             return Ok(Some(ctx));
         }
 
@@ -108,7 +108,7 @@ impl ReloadContext {
 
         let ctx: Self = storage::read_json(&legacy)?;
         if ctx.session_id == session_id {
-            let _ = std::fs::remove_file(&legacy);
+            consume_handoff_file(&legacy);
             Ok(Some(ctx))
         } else {
             Ok(None)
@@ -116,10 +116,10 @@ impl ReloadContext {
     }
 
     fn task_info_suffix(&self) -> String {
-        self.task_context
-            .as_ref()
-            .map(|task| format!("\nTask context: {}", task))
-            .unwrap_or_default()
+        match &self.task_context {
+            Some(task) => format!("\nTask context: {}", task),
+            None => String::new(),
+        }
     }
 
     pub fn reconnect_notice_line(&self) -> String {
@@ -132,9 +132,10 @@ impl ReloadContext {
         restored_turns: Option<usize>,
     ) -> String {
         let task_info = self.task_info_suffix();
-        let turns_note = restored_turns
-            .map(|turns| format!(" Session restored with {} turns.", turns))
-            .unwrap_or_default();
+        let turns_note = match restored_turns {
+            Some(turns) => format!(" Session restored with {} turns.", turns),
+            None => String::new(),
+        };
         format!(
             "Reload succeeded ({} → {}).{}{}{} Continue immediately from where you left off. Do not ask the user what to do next. Do not summarize the reload.",
             self.version_before, self.version_after, task_info, background_task_note, turns_note
@@ -197,6 +198,26 @@ impl ReloadContext {
         crate::logging::info(&format!(
             "reload recovery flow={} session_id={} outcome={} detail={}",
             flow, session_id, outcome, detail
+        ));
+    }
+}
+
+/// Delete a consumed one-shot handoff file, logging a failure rather than
+/// discarding it.
+///
+/// The caller has already read the context out of the file, so a failed delete
+/// cannot lose data — but it does leave the file on disk, and the next `load`
+/// would hand the same stale "Reload succeeded" continuation to a session that
+/// never reloaded. Silently ignoring the error made that misfire invisible;
+/// there is still nothing useful to do about it here, so it is logged and the
+/// consume is reported as successful.
+fn consume_handoff_file(path: &std::path::Path) {
+    if let Err(err) = std::fs::remove_file(path) {
+        crate::logging::warn(&format!(
+            "reload context: consumed {} but could not remove it: {} \
+             (a later reload may replay this context)",
+            path.display(),
+            err
         ));
     }
 }

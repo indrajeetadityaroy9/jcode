@@ -174,7 +174,7 @@ async fn resolve_transcript_target_session(
         return Ok(session_id);
     }
 
-    if let Ok(Some(session_id)) = crate::dictation::last_focused_session()
+    if let Ok(Some(session_id)) = crate::storage::last_focused_session()
         && live_sessions.contains(&session_id)
     {
         return Ok(session_id);
@@ -350,9 +350,26 @@ pub(super) async fn handle_debug_client(
                 session_id: requested_session,
             } => {
                 if !debug_control_allowed() {
+                    // The gate is evaluated in *this* process, so exporting
+                    // JCODE_DEBUG_CONTROL next to the `jcode debug` client has
+                    // no effect: the daemon is already running with its own
+                    // environment. Lead with the file toggle, which this check
+                    // re-reads per request and is therefore the only route that
+                    // works during an incident without restarting the daemon.
                     let event = ServerEvent::Error {
                         id,
-                        message: "Debug control is disabled. Set JCODE_DEBUG_CONTROL=1 or enable display.debug_socket.".to_string(),
+                        message: format!(
+                            "Debug control is disabled on this server (pid {}). \
+                             Enable it without restarting: touch {}/debug_control. \
+                             Persistent alternatives, both requiring a server restart: \
+                             display.debug_socket = true in config.toml, or \
+                             JCODE_DEBUG_CONTROL=1 in the server's own environment \
+                             (not the client's).",
+                            std::process::id(),
+                            crate::storage::jcode_dir()
+                                .map(|dir| dir.display().to_string())
+                                .unwrap_or_else(|_| "~/.jcode".to_string()),
+                        ),
                         retry_after_secs: None,
                     };
                     let json = encode_event(&event);

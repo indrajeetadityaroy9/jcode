@@ -7,6 +7,7 @@ include!("tests/commands_accounts_02/part_01.rs");
 include!("tests/commands_accounts_02/part_02.rs");
 include!("tests/state_model_poke_01/part_01.rs");
 include!("tests/state_model_poke_01/part_02.rs");
+include!("tests/state_model_poke_01/part_03.rs");
 include!("tests/state_model_poke_02/part_01.rs");
 include!("tests/state_model_poke_02/part_02.rs");
 include!("tests/state_model_poke_03.rs");
@@ -34,6 +35,7 @@ include!("tests/scroll_copy_01/part_01.rs");
 include!("tests/scroll_copy_01/part_02.rs");
 include!("tests/scroll_copy_02/part_01.rs");
 include!("tests/scroll_copy_02/part_02.rs");
+include!("tests/scroll_copy_02/part_03.rs");
 include!("tests/scroll_copy_03.rs");
 include!("tests/input_copy_selection.rs");
 include!("tests/reasoning_region.rs");
@@ -1097,45 +1099,6 @@ fn endorsed_but_not_installed_skill_invocation_surfaces_install_hint() {
         "endorsed skill must not be reported as a typo: {}",
         last.content
     );
-}
-
-#[test]
-fn update_command_reloads_stale_remote_server_before_client_update_check() {
-    use tokio::io::AsyncBufReadExt;
-
-    let mut app = create_test_app();
-    app.is_remote = true;
-    app.remote_server_has_update = Some(true);
-
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let mut line = String::new();
-    let reloaded = rt.block_on(async {
-        let mut remote = crate::tui::backend::RemoteConnection::dummy();
-        let peer = remote
-            .take_dummy_peer()
-            .expect("dummy remote should retain peer stream");
-        let (reader, _writer) = peer.into_split();
-        let mut reader = tokio::io::BufReader::new(reader);
-
-        let reloaded =
-            super::remote::reload_stale_remote_server_before_update(&mut app, &mut remote)
-                .await
-                .expect("stale server reload request should send");
-        reader
-            .read_line(&mut line)
-            .await
-            .expect("reload request should be readable by peer");
-        reloaded
-    });
-
-    assert!(reloaded);
-    assert!(matches!(
-        serde_json::from_str::<crate::protocol::Request>(&line)
-            .expect("reload request should deserialize"),
-        crate::protocol::Request::Reload { id: 1, force: true }
-    ));
-    let content = app.display_messages().last().unwrap().content.clone();
-    assert!(content.contains("Reloading stale server"), "{content}");
 }
 
 #[test]

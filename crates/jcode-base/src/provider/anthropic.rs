@@ -78,10 +78,12 @@ pub fn apply_oauth_attribution_headers(
 pub use jcode_provider_core::ALL_CLAUDE_MODELS as AVAILABLE_MODELS;
 
 pub fn load_anthropic_api_key() -> Result<String> {
-    if std::env::var("JCODE_ANTHROPIC_AUTH")
-        .ok()
-        .is_some_and(|value| value.eq_ignore_ascii_case("none"))
-    {
+    // An unset variable is an ordinary state here, not a discarded error, so it
+    // is matched directly rather than laundered through `Option`.
+    if matches!(
+        std::env::var("JCODE_ANTHROPIC_AUTH").as_deref(),
+        Ok(value) if value.eq_ignore_ascii_case("none")
+    ) {
         return Ok(String::new());
     }
     if let Ok(env_name) = std::env::var("JCODE_ANTHROPIC_API_KEY_NAME") {

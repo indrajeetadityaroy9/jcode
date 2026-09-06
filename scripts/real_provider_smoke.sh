@@ -10,29 +10,19 @@ cargo_exec="$repo_root/scripts/cargo_exec.sh"
 echo "=== Real Provider Smoke ==="
 echo "Provider: ${provider}"
 
-if [[ "${JCODE_REAL_PROVIDER_TEST_API:-1}" == "1" ]]; then
-  if [[ "${provider}" == "claude" && "${JCODE_USE_DIRECT_API:-0}" != "1" ]]; then
-    echo ""
-    echo "Test 1: Claude CLI smoke (test_api)"
-    if [[ "${JCODE_REMOTE_CARGO:-0}" == "1" ]]; then
-      (cd "$repo_root" && "$cargo_exec" build --bin test_api)
-      (cd "$repo_root" && ./target/debug/test_api)
-    else
-      (cd "$repo_root" && cargo run --bin test_api)
-    fi
-  else
-    echo ""
-    echo "Test 1: Skipping test_api (provider=${provider}, JCODE_USE_DIRECT_API=${JCODE_USE_DIRECT_API:-0})"
-  fi
-fi
+# `test_api` was removed: it smoke-tested the deprecated legacy Claude CLI
+# provider, which itself only instantiates under `JCODE_USE_CLAUDE_CLI=1` and
+# logs a deprecation warning. Test 3 below covers the real provider path.
 
 echo ""
 echo "Test 2: Tool harness (network tools enabled)"
+# `jcode-harness` is behind `dev-bins` so a plain `cargo build` does not link a
+# second full copy of the dependency graph.
 if [[ "${JCODE_REMOTE_CARGO:-0}" == "1" ]]; then
-  (cd "$repo_root" && "$cargo_exec" build --bin jcode-harness)
+  (cd "$repo_root" && "$cargo_exec" build --features dev-bins --bin jcode-harness)
   (cd "$repo_root" && ./target/debug/jcode-harness -- --include-network)
 else
-  (cd "$repo_root" && cargo run --bin jcode-harness -- --include-network)
+  (cd "$repo_root" && cargo run --features dev-bins --bin jcode-harness -- --include-network)
 fi
 
 echo ""

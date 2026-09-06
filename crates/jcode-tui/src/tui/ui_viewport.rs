@@ -887,20 +887,17 @@ pub(super) fn draw_messages(
     // contrast compositing, selection highlighting), leaking raw
     // "IIMG:<hash>:..." junk into the transcript whenever the image itself
     // is not painted over it (cold cache after a reload, prewarm in flight,
-    // pinned mode). Video export is the one consumer that intentionally
-    // scans printable markers out of the buffer, so it keeps them.
-    if !crate::tui::mermaid::is_video_export_mode() {
-        let marker_start = prepared
-            .image_regions
-            .partition_point(|region| region.abs_line_idx < scroll);
-        for region in &prepared.image_regions[marker_start..] {
-            if region.abs_line_idx >= visible_end {
-                break;
-            }
-            let rel_idx = region.abs_line_idx - scroll;
-            if let Some(line) = visible_lines.get_mut(rel_idx) {
-                *line = Line::default();
-            }
+    // pinned mode).
+    let marker_start = prepared
+        .image_regions
+        .partition_point(|region| region.abs_line_idx < scroll);
+    for region in &prepared.image_regions[marker_start..] {
+        if region.abs_line_idx >= visible_end {
+            break;
+        }
+        let rel_idx = region.abs_line_idx - scroll;
+        if let Some(line) = visible_lines.get_mut(rel_idx) {
+            *line = Line::default();
         }
     }
 

@@ -67,18 +67,14 @@ impl App {
             &todos,
             self.last_assistant_text_for_notification().as_deref(),
         );
-        let sound = cfg.turn_complete_sound.trim();
-        let sound = (!sound.is_empty()).then_some(sound);
         if !send_originating_terminal_notification(
             &notification,
             self.active_client_session_id().unwrap_or("unknown"),
-            sound,
         ) {
             crate::notifications::send_desktop_notification_rich(
                 &notification.title,
                 notification.subtitle.as_deref(),
                 &notification.body,
-                sound,
             );
         }
     }
@@ -107,7 +103,6 @@ impl App {
 fn send_originating_terminal_notification(
     notification: &TurnNotification,
     session_id: &str,
-    sound: Option<&str>,
 ) -> bool {
     let term_program = std::env::var("TERM_PROGRAM").unwrap_or_default();
     let term = std::env::var("TERM").unwrap_or_default();
@@ -122,7 +117,6 @@ fn send_originating_terminal_notification(
             &notification.title,
             notification.subtitle.as_deref(),
             &notification.body,
-            sound,
         )
     {
         return true;

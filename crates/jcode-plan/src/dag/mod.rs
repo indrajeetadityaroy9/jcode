@@ -6,14 +6,18 @@
 //! verify (gate nodes) those tasks.
 //!
 //! The model here is deliberately decoupled from the server/runtime wiring so it
-//! can be exercised end-to-end by the deterministic simulator in [`crate::dag::sim`]
-//! before being attached to live swarm sessions.
+//! can be exercised end-to-end by the deterministic simulator in `sim` (a
+//! test-only module) before being attached to live swarm sessions.
 
 use serde::{Deserialize, Serialize};
 
 mod ops;
 mod schedule;
-pub mod sim;
+/// Deterministic DAG simulator. Test-only: it drives `dag::tests` end-to-end
+/// (34 call sites, including `sim::run`) and has no production consumer, so it
+/// used to be a `pub mod` costing release weight for nothing.
+#[cfg(test)]
+mod sim;
 
 #[cfg(test)]
 mod tests;

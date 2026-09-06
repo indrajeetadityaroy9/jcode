@@ -241,10 +241,7 @@ async fn resolve_coordinator_spawn_identity(
             };
             crate::logging::info(&format!(
                 "Swarm spawn: coordinator {} agent busy/unavailable, inheriting identity from persisted session (model={:?} provider_key={:?} route={:?})",
-                req_session_id,
-                identity.model,
-                identity.provider_key,
-                identity.route_api_method,
+                req_session_id, identity.model, identity.provider_key, identity.route_api_method,
             ));
             identity
         }

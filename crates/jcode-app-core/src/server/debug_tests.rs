@@ -185,7 +185,7 @@ mod transcript_routing_tests {
         let active_dir = jcode_dir.join("active_pids");
         std::fs::create_dir_all(&active_dir).expect("create active_pids");
         std::fs::write(active_dir.join("session_focus"), "12345").expect("write active pid");
-        crate::dictation::remember_last_focused_session("session_focus")
+        crate::storage::remember_last_focused_session("session_focus")
             .expect("remember last focused session");
 
         let client_connections = Arc::new(RwLock::new(HashMap::from([(
@@ -242,7 +242,7 @@ mod transcript_routing_tests {
         let active_dir = jcode_dir.join("active_pids");
         std::fs::create_dir_all(&active_dir).expect("create active_pids");
         std::fs::write(active_dir.join("session_stale"), "12345").expect("write active pid");
-        crate::dictation::remember_last_focused_session("session_stale")
+        crate::storage::remember_last_focused_session("session_stale")
             .expect("remember last focused session");
 
         let now = Instant::now();

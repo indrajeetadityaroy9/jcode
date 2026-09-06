@@ -11,9 +11,7 @@ async fn maybe_run_auth_test_smoke(
         // Cursor native agent transport is text-only (no tool calls over
         // agent.v1.AgentService/Run), so skip the tool smoke with an
         // explanation instead of hanging waiting for a tool call.
-        if matches!(kind, AuthTestSmokeKind::Tool)
-            && matches!(target, AuthTestTarget::Cursor)
-        {
+        if matches!(kind, AuthTestSmokeKind::Tool) && matches!(target, AuthTestTarget::Cursor) {
             report.push_step(
                 kind.step_name(),
                 true,
@@ -201,40 +199,6 @@ async fn run_post_login_validation_inner(
             choice.as_arg_value()
         )
     }
-}
-
-pub fn run_auth_test_coverage_command(
-    emit_json: bool,
-    output_path: Option<&str>,
-    coverage_path: Option<&str>,
-    gap_limit: usize,
-) -> Result<()> {
-    let coverage_path = coverage_path.map(std::path::Path::new);
-    let (coverage, path) = crate::live_tests::load_coverage(coverage_path)?;
-    let summary = crate::live_tests::strict_live_provider_model_coverage_summary(
-        &coverage,
-        path.display().to_string(),
-    );
-
-    if emit_json || output_path.is_some() {
-        let json = serde_json::to_string_pretty(&summary)?;
-        if let Some(path) = output_path {
-            std::fs::write(path, &json)
-                .with_context(|| format!("failed to write auth-test coverage report to {path}"))?;
-        }
-        if emit_json {
-            println!("{json}");
-        }
-    } else {
-        print!(
-            "{}",
-            crate::live_tests::format_strict_live_provider_model_coverage_summary(
-                &summary, gap_limit,
-            )
-        );
-    }
-
-    Ok(())
 }
 
 pub async fn run_auth_test_context_audit_command(

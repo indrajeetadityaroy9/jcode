@@ -344,11 +344,11 @@ fn macos_launcher_script(terminal: MacTerminalKind, exe_path: &str, app_dir: &Pa
     let shell_command = paused_jcode_shell_command(exe_path);
     let launch_command = launch_command_for_macos_terminal(terminal, &shell_command);
     let missing_message = escape_applescript_text(&format!(
-        "Jcode could not launch because the executable was not found.\n\nExpected path:\n{}\n\nTry reinstalling jcode or rerun:\njcode setup-launcher",
+        "Jcode could not launch because the executable was not found.\n\nExpected path:\n{}\n\nReinstall jcode, then start it once from a terminal to refresh this launcher.",
         exe_path
     ));
     let terminal_failure_message = escape_applescript_text(&format!(
-        "Jcode could not open {}.\n\nTry rerunning:\njcode setup-launcher\n\nLauncher log:\n~/.jcode/launcher/macos-launcher.log",
+        "Jcode could not open {}.\n\nStart jcode once from a terminal to refresh this launcher.\n\nLauncher log:\n~/.jcode/launcher/macos-launcher.log",
         terminal.label()
     ));
 

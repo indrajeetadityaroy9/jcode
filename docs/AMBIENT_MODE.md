@@ -344,7 +344,7 @@ development environment.
 - Budget for this cycle: stay under 50k tokens
 
 ## User Directives (from replies)     [only when replies are pending]
-{Telegram/Discord/Jade replies to previous cycle notifications,
+{Telegram/Discord replies to previous cycle notifications,
  marked as the top priority for this cycle}
 
 ## Instructions
@@ -699,7 +699,7 @@ debug socket) and when a channel reply arrives with no cycle running.
 |-------|--------|--------|
 | Main-socket client disconnects | `nudge()` — loop re-checks immediately | yes |
 | `jcode ambient trigger` / debug `ambient:trigger` | `trigger()` — force a cycle | yes |
-| Channel reply (Telegram/Discord/Jade) with no cycle running | Directive saved, then `trigger()` | yes |
+| Channel reply (Telegram/Discord) with no cycle running | Directive saved, then `trigger()` | yes |
 | Session crashed | High-priority wake | no |
 | Git push | Low-priority wake | no |
 | User idle > threshold | Low-priority wake | no |
@@ -978,12 +978,11 @@ Transports, all fire-and-forget and all off unless configured:
 | Desktop notification (macOS Notification Center / `notify-send`) | detailed | `safety.desktop_notifications` (default `true`) |
 | Telegram | detailed | `safety.telegram_enabled` + bot token + chat id |
 | Discord | detailed | `safety.discord_enabled` + bot token + channel id |
-| Jade cloud relay | detailed | `safety.jade_relay_enabled` + api base + token + session id |
 
 There is **no email transport.** SMTP/IMAP delivery was removed along with the
 `jcode-notify-email` crate; `SafetyConfig` has no `email_*` keys.
 
-Telegram, Discord and Jade are two-way when their `*_reply_enabled` flag is
+Telegram and Discord are two-way when their `*_reply_enabled` flag is
 set: the runner spawns a reply poller per channel, and a reply is injected into
 a running cycle as a soft interrupt, or — if no cycle is running — saved to
 `directives.json` and used to trigger one. Pending directives are rendered
@@ -1005,16 +1004,6 @@ discord_bot_token = ""
 discord_channel_id = ""
 discord_bot_user_id = ""               # used to filter the bot's own messages
 discord_reply_enabled = false
-
-jade_relay_enabled = false
-jade_relay_api_base = ""
-jade_relay_token = ""                  # prefer JCODE_JADE_RELAY_TOKEN
-jade_relay_token_id = ""
-jade_relay_user_id = ""                # defaults to the token id
-jade_relay_session_id = ""
-jade_relay_reply_enabled = false
-jade_relay_launch_enabled = false
-jade_relay_launch_working_dir = ""
 ```
 
 `[safety]` covers ambient notifications only. Interactive turn-completion
@@ -1220,7 +1209,7 @@ This is a distributed systems problem that will be addressed once ambient is sta
 - [ ] Budget bar — renderer exists, data is always `None`
 
 ### Channels
-- [x] ntfy.sh, desktop notifications, Telegram, Discord, Jade relay
+- [x] ntfy.sh, desktop notifications, Telegram, Discord
 - [x] Two-way replies → soft interrupt into a live cycle, or a stored directive
 - [n/a] Email — the SMTP/IMAP transport was removed from this fork
 

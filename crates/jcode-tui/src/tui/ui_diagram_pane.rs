@@ -954,13 +954,7 @@ pub(crate) fn draw_pinned_diagram(
             }
         });
 
-        if rendered > 0 && super::super::mermaid::is_video_export_mode() {
-            super::super::mermaid::write_video_export_marker(
-                diagram.hash,
-                inner,
-                frame.buffer_mut(),
-            );
-        } else if rendered == 0 {
+        if rendered == 0 {
             clear_area(frame, inner);
             let placeholder =
                 super::super::mermaid::diagram_placeholder_lines(diagram.width, diagram.height);

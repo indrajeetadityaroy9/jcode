@@ -6,9 +6,7 @@ const MAX_INTERACTIVE_SWARM_REPLAY_PANES: usize = 16;
 use std::io::{self, Write};
 use std::process::Command as ProcessCommand;
 
-use crate::{
-    id, logging, replay, server, session, setup_hints, startup_profile, tui, video_export,
-};
+use crate::{id, logging, replay, server, session, setup_hints, startup_profile, tui};
 
 use super::hot_exec::{execute_requested_action, has_requested_action};
 
@@ -193,10 +191,6 @@ fn apply_startup_hints(app: &mut tui::App, hints: setup_hints::StartupHints) {
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Replay command maps directly from CLI flags and transport options"
-)]
 pub async fn run_replay_command(
     session_id_or_path: &str,
     swarm: bool,
@@ -204,10 +198,6 @@ pub async fn run_replay_command(
     auto_edit: bool,
     speed: f64,
     timeline_path: Option<&str>,
-    video_output: Option<&str>,
-    cols: u16,
-    rows: u16,
-    fps: u32,
     centered_override: Option<bool>,
 ) -> Result<()> {
     if swarm {
@@ -224,51 +214,6 @@ pub async fn run_replay_command(
                 })
                 .collect();
             println!("{}", serde_json::to_string_pretty(&timelines)?);
-            return Ok(());
-        }
-
-        if let Some(output) = video_output {
-            let output_path = if output == "auto" {
-                let date = chrono::Local::now().format("%Y%m%d_%H%M%S");
-                let safe_name = session_id_or_path
-                    .chars()
-                    .map(|c| {
-                        if c.is_alphanumeric() || c == '-' || c == '_' {
-                            c
-                        } else {
-                            '_'
-                        }
-                    })
-                    .collect::<String>();
-                std::path::PathBuf::from(format!("jcode_swarm_replay_{}_{}.mp4", safe_name, date))
-            } else {
-                std::path::PathBuf::from(output)
-            };
-            let panes: Vec<_> = swarm_sessions
-                .into_iter()
-                .map(|pane| replay::PaneReplayInput {
-                    session: pane.session,
-                    timeline: pane.timeline,
-                })
-                .collect();
-            eprintln!(
-                "{}",
-                crate::output_style::terminal_text(&format!(
-                    "🐝 Exporting swarm replay from seed {} ({} panes)",
-                    session_id_or_path,
-                    panes.len()
-                ))
-            );
-            video_export::export_swarm_video(
-                &panes,
-                speed,
-                &output_path,
-                cols,
-                rows,
-                fps,
-                centered_override,
-            )
-            .await?;
             return Ok(());
         }
 
@@ -290,7 +235,7 @@ pub async fn run_replay_command(
         if replayable_panes.len() > MAX_INTERACTIVE_SWARM_REPLAY_PANES {
             replayable_panes.truncate(MAX_INTERACTIVE_SWARM_REPLAY_PANES);
             eprintln!(
-                "  Limiting interactive swarm replay to {} panes ({} discovered). Use --export/--video for the full set.",
+                "  Limiting interactive swarm replay to {} panes ({} discovered). Use --export for the full set.",
                 replayable_panes.len(),
                 total_panes,
             );
@@ -354,43 +299,6 @@ pub async fn run_replay_command(
 
     let session_name = session.short_name.as_deref().unwrap_or(&session.id);
     let icon = id::session_icon(session_name);
-
-    if let Some(output) = video_output {
-        let output_path = if output == "auto" {
-            let date = chrono::Local::now().format("%Y%m%d_%H%M%S");
-            let safe_name = session_name
-                .chars()
-                .map(|c| {
-                    if c.is_alphanumeric() || c == '-' || c == '_' {
-                        c
-                    } else {
-                        '_'
-                    }
-                })
-                .collect::<String>();
-            std::path::PathBuf::from(format!("jcode_replay_{}_{}.mp4", safe_name, date))
-        } else {
-            std::path::PathBuf::from(output)
-        };
-        eprintln!(
-            "{} Exporting session: {} ({} events)",
-            icon,
-            session_name,
-            timeline.len()
-        );
-        video_export::export_video(
-            &session,
-            &timeline,
-            speed,
-            &output_path,
-            cols,
-            rows,
-            fps,
-            centered_override,
-        )
-        .await?;
-        return Ok(());
-    }
 
     eprintln!(
         "{} Replaying session: {} ({} events, {:.1}x speed)",

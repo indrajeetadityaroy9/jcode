@@ -1,7 +1,7 @@
 use crate::agent::Agent;
+use crate::server::reload_context::ReloadContext;
 use crate::server::reload_recovery::ReloadRecoveryRole;
 use crate::server::{SwarmEvent, SwarmEventType, SwarmMember};
-use crate::server::reload_context::ReloadContext;
 use jcode_agent_runtime::InterruptSignal;
 use std::collections::HashMap;
 use std::process::Stdio;
@@ -99,19 +99,6 @@ pub(super) async fn await_reload_signal(
             signal.triggering_session.clone(),
         );
         super::acknowledge_reload_signal(&signal);
-
-        if std::env::var("JCODE_TEST_SESSION")
-            .map(|value| {
-                let trimmed = value.trim();
-                !trimmed.is_empty() && trimmed != "0" && !trimmed.eq_ignore_ascii_case("false")
-            })
-            .unwrap_or(false)
-        {
-            crate::logging::info(
-                "Server: JCODE_TEST_SESSION set, skipping process exec for reload test",
-            );
-            continue;
-        }
 
         persist_reload_recovery_intents(
             &signal.request_id,

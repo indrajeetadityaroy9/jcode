@@ -19,7 +19,6 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Run { .. }) => "jcode run".to_string(),
         Some(Command::Login { .. }) => "jcode login".to_string(),
         Some(Command::Repl) => "jcode repl".to_string(),
-        Some(Command::Update) => "jcode update".to_string(),
         Some(Command::Version { .. }) => "jcode version".to_string(),
         Some(Command::Usage { .. }) => "jcode usage".to_string(),
         Some(Command::Debug { .. }) => "jcode debug".to_string(),
@@ -27,13 +26,8 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Provider(_)) => "jcode provider".to_string(),
         Some(Command::Memory(_)) => "jcode memory".to_string(),
         Some(Command::Session(_)) => "jcode session".to_string(),
-        Some(Command::Ambient(subcommand)) => match subcommand {
-            AmbientCommand::RunVisible => "jcode ambient visible".to_string(),
-            _ => "jcode ambient".to_string(),
-        },
-        Some(Command::Cloud(_)) => "jcode cloud".to_string(),
+        Some(Command::Ambient(AmbientCommand::RunVisible)) => "jcode ambient visible".to_string(),
         Some(Command::Transcript { .. }) => "jcode transcript".to_string(),
-        Some(Command::Dictate { .. }) => "jcode dictate".to_string(),
         Some(Command::Replay { .. }) => "jcode replay".to_string(),
         Some(Command::Model(_)) => "jcode model".to_string(),
         Some(Command::ProviderTestCoverage { .. }) => "jcode provider-test-coverage".to_string(),
@@ -41,7 +35,6 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::AuthTest { .. }) => "jcode auth-test".to_string(),
         Some(Command::Restart { .. }) => "jcode restart".to_string(),
         Some(Command::Menubar { .. }) => "jcode menubar".to_string(),
-        Some(Command::SetupLauncher) => "jcode setup-launcher".to_string(),
         None => {
             if let Some(resume) = args.resume.as_deref().filter(|resume| !resume.is_empty()) {
                 compact_process_title("jcode:c:", Some(&session_name(resume)))

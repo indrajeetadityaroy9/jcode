@@ -73,7 +73,6 @@ const LEDGER: &[(&str, Disposition)] = &[
     ("Subscribe", Covered),
     ("SwitchAnthropicAccount", ClientInternal),
     ("SwitchOpenAiAccount", ClientInternal),
-    ("Transcript", ClientInternal),
     ("Transfer", ClientInternal),
     ("TriggerMemoryExtraction", ClientInternal),
 ];
@@ -163,6 +162,22 @@ fn every_reference_client_capability_is_triaged() {
     );
 }
 
+/// Gap entries in a ledger, with the reason each one carries.
+///
+/// Split out of `capability_report` so it can be tested against a synthetic
+/// ledger: nothing in the real `LEDGER` is a `Gap` today, so this arm would
+/// otherwise never execute, and a genuine gap added later could be silently
+/// dropped from the report with no test objecting.
+fn gaps_in<'a>(ledger: &'a [(&'a str, Disposition)]) -> Vec<(&'a str, &'a str)> {
+    ledger
+        .iter()
+        .filter_map(|(name, disposition)| match disposition {
+            Gap(reason) => Some((*name, *reason)),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Print the current gap list. Not a failure: gaps are a roadmap, not a bug.
 ///
 /// Run with `cargo test -p jcode-harness-api -- --nocapture capability_report`.
@@ -170,13 +185,7 @@ fn every_reference_client_capability_is_triaged() {
 fn capability_report() {
     let covered = LEDGER.iter().filter(|(_, d)| *d == Covered).count();
     let internal = LEDGER.iter().filter(|(_, d)| *d == ClientInternal).count();
-    let gaps: Vec<(&str, &str)> = LEDGER
-        .iter()
-        .filter_map(|(name, disposition)| match disposition {
-            Gap(reason) => Some((*name, *reason)),
-            _ => None,
-        })
-        .collect();
+    let gaps = gaps_in(LEDGER);
 
     println!("\nharness API capability coverage");
     println!("  covered by the API:      {covered}");
@@ -186,6 +195,35 @@ fn capability_report() {
         println!("    - {name}: {reason}");
     }
     println!();
+}
+
+/// A `Gap` entry must reach the report with its reason intact, and the other
+/// two dispositions must not.
+///
+/// The real ledger has no gaps right now, which is good news but means the
+/// roadmap output is untested in production data. This pins it on a synthetic
+/// ledger so the day someone classifies a capability as `Gap`, the report is
+/// already known to render it.
+#[test]
+fn the_capability_report_renders_gap_entries_with_their_reason() {
+    let ledger: &[(&str, Disposition)] = &[
+        ("AlreadyExposed", Covered),
+        ("TuiOnly", ClientInternal),
+        (
+            "Missing",
+            Gap("a client cannot resume a session without it"),
+        ),
+    ];
+
+    assert_eq!(
+        gaps_in(ledger),
+        vec![("Missing", "a client cannot resume a session without it")],
+        "only Gap entries belong in the roadmap, and the reason must survive"
+    );
+    assert!(
+        gaps_in(&[("AlreadyExposed", Covered)]).is_empty(),
+        "a gap-free ledger must report no gaps"
+    );
 }
 
 /// The SDK mirrors jcode's external credential locations by hand, so a new one

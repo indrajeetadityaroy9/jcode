@@ -115,7 +115,6 @@ Largest server-side modules, by `wc -l` of the current tree:
 | `crates/jcode-app-core/crates/jcode-app-core/src/server/client_session.rs` | 1675 | subscribe, resume, clear, reload | session + client boundary |
 | `crates/jcode-app-core/crates/jcode-app-core/src/server/provider_control.rs` | 1599 | provider/model switching per session | session |
 | `crates/jcode-app-core/crates/jcode-app-core/src/server/comm_session.rs` | 1399 | spawn/stop session flows | session + swarm boundary |
-| `crates/jcode-app-core/crates/jcode-app-core/src/server/jade_relay.rs` | 1396 | opt-in cloud relay listener | maintenance |
 | `crates/jcode-app-core/crates/jcode-app-core/src/server/debug_server_state.rs` | 1257 | debug snapshots across all stores | debug |
 | `crates/jcode-app-core/crates/jcode-app-core/src/server/client_actions.rs` | 1155 | session-local actions | session |
 | `crates/jcode-app-core/crates/jcode-app-core/src/server/util.rs` | 937 | shared helpers | — |

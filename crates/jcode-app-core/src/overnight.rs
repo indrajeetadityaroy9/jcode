@@ -1,3 +1,4 @@
+use crate::host_metrics::BYTES_PER_MB;
 use crate::provider::Provider;
 use crate::session::Session;
 use crate::storage;
@@ -5,7 +6,7 @@ use anyhow::{Context, Result};
 use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::{Value, json};
 #[cfg(unix)]
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -145,7 +146,7 @@ pub fn gather_resource_snapshot(working_dir: Option<&Path>) -> ResourceSnapshot 
                     Some(((total.saturating_sub(available)) as f32 / total as f32) * 100.0)
                 }
             });
-    let (load_one, cpu_count) = detect_load();
+    let (load_one, cpu_count) = crate::host_metrics::load_and_cpu_count();
     let (battery_percent, battery_status) = detect_battery();
     let disk_available_gb = working_dir.and_then(disk_available_gb);
 
@@ -164,32 +165,267 @@ pub fn gather_resource_snapshot(working_dir: Option<&Path>) -> ResourceSnapshot 
     }
 }
 
-/// Memory and swap totals for the overnight resource card.
+/// Memory and swap for the overnight resource card, as whole megabytes:
+/// `(total, available, swap_total, swap_free)`.
 ///
-/// Unpopulated on macOS: the only reader this fork ever had was `/proc/meminfo`,
-/// so every field is `None` and the card renders without them. A macOS reader
-/// would go through `sysctlbyname("hw.memsize")` + `host_statistics64`.
+/// Physical RAM and reclaimable memory come from
+/// [`crate::host_metrics::memory_mb`] — the shared reader over
+/// `sysctlbyname("hw.memsize")` and `host_statistics64(HOST_VM_INFO64)`, which
+/// documents which page classes count as available and why — so this card and
+/// the TUI's host-pressure classification cannot disagree about the same
+/// number.
+///
+/// Swap stays here because it is this card's alone: `sysctlbyname`
+/// (`vm.swapusage` → `xsw_usage`), whose `xsu_total` and `xsu_avail` are bytes
+/// of dynamically sized swap.
+///
+/// A reader that fails contributes `None` for its own fields; nothing is
+/// guessed and a failed read never reports 0.
 fn detect_memory() -> (Option<u64>, Option<u64>, Option<u64>, Option<u64>) {
-    (None, None, None, None)
+    let (total_mb, available_mb) = crate::host_metrics::memory_mb();
+    let swap = swap_usage();
+    (
+        total_mb,
+        available_mb,
+        swap.map(|usage| usage.xsu_total / BYTES_PER_MB),
+        swap.map(|usage| usage.xsu_avail / BYTES_PER_MB),
+    )
 }
 
-/// Load average and CPU count.
-///
-/// `cpu_count` is real; `load_one` is `None` on macOS because its only reader
-/// was `/proc/loadavg`. `libc::getloadavg` would populate it.
-fn detect_load() -> (Option<f64>, Option<usize>) {
-    let cpus = std::thread::available_parallelism()
-        .ok()
-        .map(|value| value.get());
-    (None, cpus)
+/// Swap totals. macOS sizes swap dynamically, so this is not a constant.
+fn swap_usage() -> Option<libc::xsw_usage> {
+    // Safety: `xsw_usage` is a `#[repr(C)]` struct of integers, for which an
+    // all-zero bit pattern is a valid value.
+    let mut usage: libc::xsw_usage = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::xsw_usage>();
+    // Safety: `vm.swapusage` is a NUL-terminated literal and the output buffer
+    // is a live `xsw_usage` whose exact size is passed in `len`, so
+    // `sysctlbyname` cannot write past it and retains neither pointer.
+    let rc = unsafe {
+        libc::sysctlbyname(
+            c"vm.swapusage".as_ptr(),
+            &mut usage as *mut libc::xsw_usage as *mut libc::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc != 0 || len != std::mem::size_of::<libc::xsw_usage>() {
+        return None;
+    }
+    Some(usage)
 }
 
-/// Battery percentage and charging status.
+// IOKit's power-source API plus the CoreFoundation entry points needed to read
+// the dictionaries it returns. Both frameworks ship with the OS, so this costs
+// a link attribute rather than a Cargo dependency. It is preferred over
+// scraping `pmset -g batt` because it returns typed values instead of a
+// human-readable line whose wording is not contractual, and because it needs no
+// subprocess. `CFTypeID` is CoreFoundation's `unsigned long`.
+type CFTypeRef = *const libc::c_void;
+type CFTypeID = usize;
+type CFIndex = isize;
+const KCF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
+const KCF_NUMBER_SINT64_TYPE: CFIndex = 4;
+
+#[link(name = "IOKit", kind = "framework")]
+unsafe extern "C" {
+    /// Copy rule: the returned blob is owned by the caller.
+    fn IOPSCopyPowerSourcesInfo() -> CFTypeRef;
+    /// Copy rule: the returned array is owned by the caller.
+    fn IOPSCopyPowerSourcesList(blob: CFTypeRef) -> CFTypeRef;
+    /// Get rule: the returned dictionary is owned by `blob`.
+    fn IOPSGetPowerSourceDescription(blob: CFTypeRef, source: CFTypeRef) -> CFTypeRef;
+}
+
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    fn CFRelease(cf: CFTypeRef);
+    fn CFGetTypeID(cf: CFTypeRef) -> CFTypeID;
+    fn CFArrayGetCount(array: CFTypeRef) -> CFIndex;
+    fn CFArrayGetValueAtIndex(array: CFTypeRef, index: CFIndex) -> CFTypeRef;
+    fn CFDictionaryGetValue(dict: CFTypeRef, key: CFTypeRef) -> CFTypeRef;
+    fn CFStringCreateWithCString(
+        allocator: CFTypeRef,
+        cstr: *const libc::c_char,
+        encoding: u32,
+    ) -> CFTypeRef;
+    fn CFStringGetCString(
+        string: CFTypeRef,
+        buffer: *mut libc::c_char,
+        size: CFIndex,
+        encoding: u32,
+    ) -> u8;
+    fn CFStringGetTypeID() -> CFTypeID;
+    fn CFNumberGetTypeID() -> CFTypeID;
+    fn CFNumberGetValue(number: CFTypeRef, kind: CFIndex, value: *mut libc::c_void) -> u8;
+    fn CFBooleanGetTypeID() -> CFTypeID;
+    fn CFBooleanGetValue(boolean: CFTypeRef) -> u8;
+}
+
+/// Battery percentage and charging status from IOKit's power sources.
 ///
-/// Unpopulated on macOS: the only reader was `/sys/class/power_supply`. IOKit
-/// (`IOPSCopyPowerSourcesInfo`) would populate it.
+/// `(None, None)` on a machine with no internal battery — every Mac desktop —
+/// and on any failed read; a plausible-looking percentage is never invented.
+/// The status vocabulary is `Charging` / `Discharging` / `Full` /
+/// `Not charging`, matching what `jcode-overnight-core` already renders and
+/// asserts.
 fn detect_battery() -> (Option<u8>, Option<String>) {
+    // Safety: no arguments; returns either null or a +1 CoreFoundation object
+    // that this function releases.
+    let blob = unsafe { IOPSCopyPowerSourcesInfo() };
+    if blob.is_null() {
+        return (None, None);
+    }
+    // Safety: `blob` is the live non-null snapshot just copied; the returned
+    // array is +1 and released below.
+    let sources = unsafe { IOPSCopyPowerSourcesList(blob) };
+    let result = if sources.is_null() {
+        (None, None)
+    } else {
+        let found = read_internal_battery(blob, sources);
+        // Safety: balances the +1 from `IOPSCopyPowerSourcesList`. No borrowed
+        // element of the array outlives this call — `read_internal_battery`
+        // returns owned `u8`/`String` values.
+        unsafe { CFRelease(sources) };
+        found
+    };
+    // Safety: balances the +1 from `IOPSCopyPowerSourcesInfo`, released after
+    // the descriptions it owns are done being read.
+    unsafe { CFRelease(blob) };
+    result
+}
+
+/// Scan the power-source list for the internal battery and read its capacity
+/// and charge state. Keys are the literal strings behind IOKit's
+/// `kIOPS*Key` macros in `<IOKit/ps/IOPSKeys.h>`.
+fn read_internal_battery(blob: CFTypeRef, sources: CFTypeRef) -> (Option<u8>, Option<String>) {
+    // Safety: `sources` is a live CFArray from `IOPSCopyPowerSourcesList`.
+    let count = unsafe { CFArrayGetCount(sources) };
+    for index in 0..count {
+        // Safety: `index` is within `0..count` for the live array `sources`.
+        let source = unsafe { CFArrayGetValueAtIndex(sources, index) };
+        if source.is_null() {
+            continue;
+        }
+        // Safety: `blob` and `source` are both live; the description is owned
+        // by `blob` (Get rule) and must not be released here.
+        let description = unsafe { IOPSGetPowerSourceDescription(blob, source) };
+        if description.is_null() {
+            continue;
+        }
+        if cf_dict_string(description, c"Type").as_deref() != Some("InternalBattery") {
+            continue;
+        }
+        let percent = match (
+            cf_dict_i64(description, c"Current Capacity"),
+            cf_dict_i64(description, c"Max Capacity"),
+        ) {
+            (Some(current), Some(max)) if max > 0 => {
+                Some((current.clamp(0, max) * 100 / max) as u8)
+            }
+            _ => None,
+        };
+        let charging = cf_dict_bool(description, c"Is Charging");
+        let charged = cf_dict_bool(description, c"Is Charged");
+        let state = cf_dict_string(description, c"Power Source State");
+        let status = match (charging, charged, state.as_deref()) {
+            (Some(true), _, _) => Some("Charging"),
+            (_, Some(true), _) => Some("Full"),
+            (_, _, Some("Battery Power")) => Some("Discharging"),
+            (Some(false), _, Some("AC Power")) => Some("Not charging"),
+            _ => None,
+        };
+        return (percent, status.map(str::to_string));
+    }
     (None, None)
+}
+
+/// Look up `key` in a CoreFoundation dictionary. The result is borrowed from
+/// `dict` (Get rule), so callers must not release it.
+fn cf_dict_value(dict: CFTypeRef, key: &CStr) -> Option<CFTypeRef> {
+    // Safety: `key` is NUL-terminated ASCII, which is valid UTF-8;
+    // `CFStringCreateWithCString` copies it and returns a +1 string.
+    let cf_key = unsafe {
+        CFStringCreateWithCString(std::ptr::null(), key.as_ptr(), KCF_STRING_ENCODING_UTF8)
+    };
+    if cf_key.is_null() {
+        return None;
+    }
+    // Safety: `dict` is a live CFDictionary from IOKit and `cf_key` a live
+    // CFString.
+    let value = unsafe { CFDictionaryGetValue(dict, cf_key) };
+    // Safety: balances the +1 from `CFStringCreateWithCString`. The looked-up
+    // value is retained by `dict`, not by the key, so it stays valid.
+    unsafe { CFRelease(cf_key) };
+    if value.is_null() { None } else { Some(value) }
+}
+
+/// Read a CFString entry as a `String`, or `None` if absent or another type.
+fn cf_dict_string(dict: CFTypeRef, key: &CStr) -> Option<String> {
+    let value = cf_dict_value(dict, key)?;
+    // Safety: `value` is a live CoreFoundation object; `CFGetTypeID` only reads
+    // its type. The comparison is what makes the cast-free reads below sound.
+    if unsafe { CFGetTypeID(value) } != unsafe { CFStringGetTypeID() } {
+        return None;
+    }
+    // Power-source values are short identifiers such as "InternalBattery" and
+    // "Battery Power"; 128 bytes is ample and a longer value fails the read
+    // rather than silently truncating.
+    let mut buffer = [0 as libc::c_char; 128];
+    // Safety: `value` is a live CFString and `buffer` is a live array whose
+    // exact length is passed, so CoreFoundation cannot write past it.
+    let copied = unsafe {
+        CFStringGetCString(
+            value,
+            buffer.as_mut_ptr(),
+            buffer.len() as CFIndex,
+            KCF_STRING_ENCODING_UTF8,
+        )
+    };
+    if copied == 0 {
+        return None;
+    }
+    // Safety: on success `CFStringGetCString` NUL-terminates within `buffer`,
+    // which outlives this borrow.
+    let text = unsafe { CStr::from_ptr(buffer.as_ptr()) };
+    match text.to_str() {
+        Ok(text) => Some(text.to_string()),
+        Err(_) => None,
+    }
+}
+
+/// Read a CFNumber entry as an `i64`, or `None` if absent or another type.
+fn cf_dict_i64(dict: CFTypeRef, key: &CStr) -> Option<i64> {
+    let value = cf_dict_value(dict, key)?;
+    // Safety: `value` is a live CoreFoundation object; `CFGetTypeID` only reads
+    // its type.
+    if unsafe { CFGetTypeID(value) } != unsafe { CFNumberGetTypeID() } {
+        return None;
+    }
+    let mut number: i64 = 0;
+    // Safety: `value` is a live CFNumber and the out-pointer is a live `i64`,
+    // which is the width `KCF_NUMBER_SINT64_TYPE` writes.
+    let read = unsafe {
+        CFNumberGetValue(
+            value,
+            KCF_NUMBER_SINT64_TYPE,
+            &mut number as *mut i64 as *mut libc::c_void,
+        )
+    };
+    if read == 0 { None } else { Some(number) }
+}
+
+/// Read a CFBoolean entry, or `None` if absent or another type.
+fn cf_dict_bool(dict: CFTypeRef, key: &CStr) -> Option<bool> {
+    let value = cf_dict_value(dict, key)?;
+    // Safety: `value` is a live CoreFoundation object; `CFGetTypeID` only reads
+    // its type.
+    if unsafe { CFGetTypeID(value) } != unsafe { CFBooleanGetTypeID() } {
+        return None;
+    }
+    // Safety: `value` was just confirmed to be a CFBoolean.
+    Some(unsafe { CFBooleanGetValue(value) } != 0)
 }
 
 fn disk_available_gb(path: &Path) -> Option<f64> {
@@ -789,5 +1025,148 @@ mod tests {
         assert!(html.contains("Fix deterministic bug"));
         assert!(html.contains("Reproducible failure"));
         assert!(html.contains("cargo test deterministic_bug"));
+    }
+
+    /// Run a system tool and return its stdout, or `None` when it is missing.
+    fn system_tool(program: &str, args: &[&str]) -> Option<String> {
+        match std::process::Command::new(program).args(args).output() {
+            Ok(output) if output.status.success() => {
+                Some(String::from_utf8_lossy(&output.stdout).to_string())
+            }
+            _ => None,
+        }
+    }
+
+    /// Independent oracle for `available_memory_bytes`, in MB. `vm_stat` prints
+    /// `free_count - speculative_count` as "Pages free", so speculative pages
+    /// are added back to recover the kernel's `free_count`.
+    fn vm_stat_available_mb() -> Option<u64> {
+        let output = system_tool("vm_stat", &[])?;
+        // Header: "Mach Virtual Memory Statistics: (page size of 16384 bytes)"
+        let page_size: u64 = match output
+            .lines()
+            .next()?
+            .split_whitespace()
+            .rev()
+            .nth(1)?
+            .parse()
+        {
+            Ok(size) => size,
+            Err(_) => return None,
+        };
+        let pages = |label: &str| -> Option<u64> {
+            output.lines().find_map(|line| {
+                let rest = line.strip_prefix(label)?;
+                match rest.trim().trim_end_matches('.').parse::<u64>() {
+                    Ok(value) => Some(value),
+                    Err(_) => None,
+                }
+            })
+        };
+        let total_pages = pages("Pages free:")?
+            + pages("Pages speculative:")?
+            + pages("Pages inactive:")?
+            + pages("Pages purgeable:")?;
+        Some(total_pages * page_size / BYTES_PER_MB)
+    }
+
+    #[test]
+    fn memory_total_matches_hw_memsize() {
+        let (total_mb, _, _, _) = detect_memory();
+        let total_mb = total_mb.expect("hw.memsize is readable on macOS");
+        let raw = system_tool("sysctl", &["-n", "hw.memsize"]).expect("sysctl hw.memsize");
+        let expected_bytes: u64 = raw.trim().parse().expect("hw.memsize is an integer");
+        assert_eq!(total_mb, expected_bytes / BYTES_PER_MB);
+        assert!(total_mb > 1024, "physical RAM under 1 GiB: {total_mb} MB");
+    }
+
+    #[test]
+    fn memory_available_reports_reclaimable_pages_not_free_pages() {
+        let (total_mb, available_mb, _, _) = detect_memory();
+        let total_mb = total_mb.expect("hw.memsize is readable on macOS");
+        let available_mb = available_mb.expect("host_statistics64 is readable on macOS");
+        assert!(
+            available_mb > 0 && available_mb <= total_mb,
+            "available {available_mb} MB is outside 1..={total_mb} MB"
+        );
+        let expected_mb = vm_stat_available_mb().expect("vm_stat oracle");
+        let drift = available_mb.abs_diff(expected_mb);
+        assert!(
+            drift <= 1024,
+            "available {available_mb} MB disagrees with vm_stat's \
+             free+speculative+inactive+purgeable {expected_mb} MB by {drift} MB"
+        );
+    }
+
+    #[test]
+    fn swap_matches_vm_swapusage() {
+        let (_, _, swap_total_mb, swap_free_mb) = detect_memory();
+        let swap_total_mb = swap_total_mb.expect("vm.swapusage is readable on macOS");
+        let swap_free_mb = swap_free_mb.expect("vm.swapusage is readable on macOS");
+        assert!(
+            swap_free_mb <= swap_total_mb,
+            "free swap {swap_free_mb} MB exceeds total {swap_total_mb} MB"
+        );
+        // "total = 8192.00M  used = 7839.75M  free = 352.25M  (encrypted)"
+        let raw = system_tool("sysctl", &["-n", "vm.swapusage"]).expect("sysctl vm.swapusage");
+        let tokens: Vec<&str> = raw.split_whitespace().collect();
+        let field = |name: &str| -> f64 {
+            let index = tokens
+                .iter()
+                .position(|token| *token == name)
+                .expect("swapusage field");
+            tokens[index + 2]
+                .trim_end_matches('M')
+                .parse()
+                .expect("swapusage megabytes")
+        };
+        let cli_total = field("total");
+        assert!(
+            (swap_total_mb as f64 - cli_total).abs() <= 512.0,
+            "swap total {swap_total_mb} MB disagrees with vm.swapusage {cli_total} M"
+        );
+        let cli_free = field("free");
+        assert!(
+            (swap_free_mb as f64 - cli_free).abs() <= 1024.0,
+            "swap free {swap_free_mb} MB disagrees with vm.swapusage {cli_free} M"
+        );
+    }
+
+    #[test]
+    fn battery_matches_pmset_or_is_absent() {
+        let (percent, status) = detect_battery();
+        let pmset = system_tool("pmset", &["-g", "batt"]).expect("pmset ships with macOS");
+        if !pmset.contains("InternalBattery") {
+            assert_eq!(
+                percent, None,
+                "no internal power source, but a percentage was reported"
+            );
+            assert_eq!(
+                status, None,
+                "no internal power source, but a status was reported"
+            );
+            return;
+        }
+        let percent = percent.expect("a machine with an internal battery reports a percentage");
+        assert!(percent <= 100, "impossible percentage {percent}");
+        let cli: u8 = pmset
+            .split_whitespace()
+            .find_map(|token| match token.strip_suffix("%;")?.parse() {
+                Ok(value) => Some(value),
+                Err(_) => None,
+            })
+            .expect("pmset reports a percentage");
+        assert!(
+            percent.abs_diff(cli) <= 3,
+            "IOKit reports {percent}% but pmset reports {cli}%"
+        );
+        let status = status.expect("a real battery carries a status");
+        assert!(
+            matches!(
+                status.as_str(),
+                "Charging" | "Discharging" | "Full" | "Not charging"
+            ),
+            "unexpected battery status {status}"
+        );
     }
 }

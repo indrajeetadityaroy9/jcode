@@ -38,7 +38,6 @@ pub(crate) use redraw_schedule::{
     redraw_interval_with_policy,
 };
 mod remote_diff;
-pub mod screenshot;
 pub(crate) mod session_facts;
 pub mod session_picker;
 mod stream_buffer;
@@ -399,8 +398,6 @@ pub trait TuiState {
     fn has_pending_mouse_scroll_animation(&self) -> bool {
         false
     }
-    /// Optional configured keybinding label for external dictation.
-    fn dictation_key_label(&self) -> Option<String>;
     /// Time since app started (for startup animations)
     fn animation_elapsed(&self) -> f32;
     /// Time remaining until rate limit resets (if rate limited)

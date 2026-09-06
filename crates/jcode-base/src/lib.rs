@@ -28,7 +28,6 @@ pub mod compaction;
 pub mod config;
 pub mod console;
 pub mod copilot_usage;
-pub mod dictation;
 #[cfg(feature = "embeddings")]
 pub mod embedding;
 pub mod embedding_backend;
@@ -36,9 +35,9 @@ pub mod embedding_backend;
 pub mod embedding_stub;
 pub mod env;
 pub mod generated_image;
-pub mod github;
 pub mod goal;
 pub mod hooks;
+pub mod host_metrics;
 pub mod id;
 pub mod import;
 pub mod live_tests;

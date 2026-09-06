@@ -272,53 +272,6 @@ impl ReasoningDisplayMode {
     }
 }
 
-/// Update channel: how aggressively to receive updates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum UpdateChannel {
-    /// Only update from tagged GitHub Releases (default).
-    #[default]
-    Stable,
-    /// Update from latest commit on main branch (bleeding edge).
-    Main,
-}
-
-impl UpdateChannel {
-    /// Parse a channel name, returning `None` for unknown values.
-    pub fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "stable" | "release" => Some(Self::Stable),
-            "main" | "nightly" | "edge" => Some(Self::Main),
-            _ => None,
-        }
-    }
-}
-
-/// Config deserialization is deliberately lenient: an unknown or removed
-/// channel name (e.g. a stale `update_channel = "manual"` left in
-/// config.toml) falls back to the default channel instead of failing the
-/// entire config parse. A strict enum here once made the freshly exec'd
-/// server die during the reload handoff, leaving the handoff marker stuck
-/// in `starting` and clients re-requesting the reload forever (issue #349).
-impl<'de> Deserialize<'de> for UpdateChannel {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        Ok(Self::parse(&value).unwrap_or_default())
-    }
-}
-
-impl std::fmt::Display for UpdateChannel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Stable => write!(f, "stable"),
-            Self::Main => write!(f, "main"),
-        }
-    }
-}
-
 /// Cross-provider failover behavior when the same input would be resent elsewhere.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -1044,9 +997,6 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FeatureConfig {
-    /// Check for and install jcode updates during startup (default: true).
-    /// Set this to false for the persistent equivalent of `--no-update`.
-    pub check_updates: bool,
     /// Enable memory retrieval/extraction features (default: true)
     pub memory: bool,
     /// Enable swarm coordination features (default: true)
@@ -1069,14 +1019,11 @@ pub struct FeatureConfig {
     /// that something in the harness silently invalidated the prefix cache
     /// (default: true).
     pub kv_cache_miss_notices: bool,
-    /// Update channel: "stable" (releases only) or "main" (latest commits)
-    pub update_channel: UpdateChannel,
 }
 
 impl Default for FeatureConfig {
     fn default() -> Self {
         Self {
-            check_updates: false,
             memory: true,
             swarm: true,
             mermaid: true,
@@ -1084,7 +1031,6 @@ impl Default for FeatureConfig {
             message_timestamps: true,
             persist_memory_injections: false,
             kv_cache_miss_notices: true,
-            update_channel: UpdateChannel::default(),
         }
     }
 }
@@ -1282,10 +1228,6 @@ pub struct NotificationsConfig {
     /// Only notify while the terminal window is unfocused (default: true).
     /// Requires a terminal that reports focus events (most modern terminals).
     pub turn_complete_only_when_unfocused: bool,
-    /// macOS Notification Center sound name played on turn completion
-    /// (e.g. "Glass", "Ping", "Hero"). Empty string disables the sound.
-    /// Ignored on non-macOS platforms. Default: "Glass".
-    pub turn_complete_sound: String,
 }
 
 impl Default for NotificationsConfig {
@@ -1295,7 +1237,6 @@ impl Default for NotificationsConfig {
             turn_complete_min_secs: 120,
             turn_complete_todo_min_secs: 30,
             turn_complete_only_when_unfocused: true,
-            turn_complete_sound: "Glass".to_string(),
         }
     }
 }
@@ -1328,24 +1269,6 @@ pub struct SafetyConfig {
     pub discord_bot_user_id: Option<String>,
     /// Enable Discord reply → agent directive feature (default: false)
     pub discord_reply_enabled: bool,
-    /// Enable the Jade cloud relay channel (remote control via cloud mailbox, default: false)
-    pub jade_relay_enabled: bool,
-    /// Jade relay API base URL (e.g. https://...lambda-url.us-east-1.on.aws/)
-    pub jade_relay_api_base: Option<String>,
-    /// Jade relay bearer token (prefer JCODE_JADE_RELAY_TOKEN env var)
-    pub jade_relay_token: Option<String>,
-    /// Jade relay token id header (x-jade-token-id), used for fast token lookup
-    pub jade_relay_token_id: Option<String>,
-    /// Jade relay user id (channel scope; defaults to the token's user when omitted)
-    pub jade_relay_user_id: Option<String>,
-    /// Jade relay session id to bind this laptop's listener to (the channel = user_id/session_id)
-    pub jade_relay_session_id: Option<String>,
-    /// Enable Jade relay prompt → agent directive feature (default: false)
-    pub jade_relay_reply_enabled: bool,
-    /// Enable Jade relay device launch commands that open headed local sessions (default: false)
-    pub jade_relay_launch_enabled: bool,
-    /// Default working directory for remotely launched headed sessions
-    pub jade_relay_launch_working_dir: Option<String>,
 }
 
 impl Default for SafetyConfig {
@@ -1363,15 +1286,6 @@ impl Default for SafetyConfig {
             discord_channel_id: None,
             discord_bot_user_id: None,
             discord_reply_enabled: false,
-            jade_relay_enabled: false,
-            jade_relay_api_base: None,
-            jade_relay_token: None,
-            jade_relay_token_id: None,
-            jade_relay_user_id: None,
-            jade_relay_session_id: None,
-            jade_relay_reply_enabled: false,
-            jade_relay_launch_enabled: false,
-            jade_relay_launch_working_dir: None,
         }
     }
 }

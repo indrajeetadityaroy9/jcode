@@ -309,7 +309,17 @@ impl AntigravityProvider {
             None => {
                 let project_id = antigravity_auth::fetch_project_id(&tokens.access_token).await?;
                 tokens.project_id = Some(project_id.clone());
-                let _ = antigravity_auth::save_tokens(&tokens);
+                // Caching is what keeps project-id discovery to once per
+                // credential file; a failed write costs two extra
+                // `loadCodeAssist` POSTs on every subsequent turn, so it is
+                // reported rather than discarded. The turn itself still
+                // proceeds on the id just fetched.
+                if let Err(err) = antigravity_auth::save_tokens(&tokens) {
+                    jcode_base::logging::warn(&format!(
+                        "Antigravity discovered project id but could not cache it: {err} \
+                         (every turn will re-discover it until this write succeeds)"
+                    ));
+                }
                 project_id
             }
         };
@@ -523,14 +533,14 @@ impl Provider for AntigravityProvider {
                         match retried {
                             Ok(response) => response,
                             Err(retry_err) => {
-                                let _ = tx.send(Err(retry_err)).await;
+                                let _ = tx.send(Err(retry_err)).await;  // budget-ok: SendError only means the consumer dropped the stream
                                 return;
                             }
                         }
                     } else if !jcode_provider_gemini::is_missing_thought_signature_error(
                         &err.to_string(),
                     ) {
-                        let _ = tx.send(Err(err)).await;
+                        let _ = tx.send(Err(err)).await;  // budget-ok: SendError only means the consumer dropped the stream
                         return;
                     } else {
                         jcode_base::logging::warn(
@@ -552,7 +562,7 @@ impl Provider for AntigravityProvider {
                         {
                             Ok(response) => response,
                             Err(retry_err) => {
-                                let _ = tx.send(Err(retry_err)).await;
+                                let _ = tx.send(Err(retry_err)).await;  // budget-ok: SendError only means the consumer dropped the stream
                                 return;
                             }
                         }
@@ -585,7 +595,7 @@ impl Provider for AntigravityProvider {
                 {
                     Ok(retried) => response = retried,
                     Err(err) => {
-                        let _ = tx.send(Err(err)).await;
+                        let _ = tx.send(Err(err)).await;  // budget-ok: SendError only means the consumer dropped the stream
                         return;
                     }
                 }
@@ -611,7 +621,7 @@ impl Provider for AntigravityProvider {
                 {
                     Ok(retried) => retried,
                     Err(err) => {
-                        let _ = tx.send(Err(err)).await;
+                        let _ = tx.send(Err(err)).await;  // budget-ok: SendError only means the consumer dropped the stream
                         return;
                     }
                 };
@@ -679,7 +689,7 @@ impl Provider for AntigravityProvider {
                         .cloned();
                     if let Some(text) = part.text.filter(|text| !text.is_empty()) {
                         produced_output = true;
-                        let _ = tx.send(Ok(StreamEvent::TextDelta(text))).await;
+                        let _ = tx.send(Ok(StreamEvent::TextDelta(text))).await;  // budget-ok: SendError only means the consumer dropped the stream
                     }
                     if let Some(function_call) = part.function_call {
                         produced_output = true;
@@ -700,9 +710,9 @@ impl Provider for AntigravityProvider {
                                 function_call.args.to_string(),
                             )))
                             .await;
-                        let _ = tx.send(Ok(StreamEvent::ToolUseEnd)).await;
+                        let _ = tx.send(Ok(StreamEvent::ToolUseEnd)).await;  // budget-ok: SendError only means the consumer dropped the stream
                         if let Some(signature) = signature {
-                            let _ = tx.send(Ok(StreamEvent::ToolUseSignature(signature))).await;
+                            let _ = tx.send(Ok(StreamEvent::ToolUseSignature(signature))).await;  // budget-ok: SendError only means the consumer dropped the stream
                         }
                     } else if let Some(signature) = part_signature {
                         // Standalone signature part; remember it for the next

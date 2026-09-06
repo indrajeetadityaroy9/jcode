@@ -1,9 +1,9 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::{Command as ProcessCommand, ExitStatus};
 
+use crate::build;
 use crate::bus::{Bus, BusEvent, ClientMaintenanceAction, SessionUpdateStatus};
-use crate::{build, update};
 
 pub fn hot_rebuild(session_id: &str) -> Result<()> {
     let cwd = std::env::current_dir()?;
@@ -21,7 +21,7 @@ pub fn hot_rebuild(session_id: &str) -> Result<()> {
         anyhow::bail!("Binary not found at {:?}", exe);
     }
 
-    update::print_centered(&format!("Restarting with session {}...", session_id));
+    print_centered(&format!("Restarting with session {}...", session_id));
     exec_rebuilt_session(&exe, session_id, &cwd)
 }
 
@@ -31,7 +31,7 @@ pub fn spawn_background_session_rebuild(session_id: String) {
 
 fn pull_latest_changes_for_rebuild(repo_dir: &Path) {
     eprintln!("Pulling latest changes...");
-    if let Err(e) = update::run_git_pull_ff_only(repo_dir, true) {
+    if let Err(e) = run_git_pull_ff_only(repo_dir, true) {
         eprintln!("Warning: {}. Continuing with current version.", e);
     }
 }
@@ -152,7 +152,7 @@ impl BackgroundRebuildPublisher {
 
 fn background_pull_latest_changes(publisher: &BackgroundRebuildPublisher, repo_dir: &Path) {
     publisher.status("Pulling latest changes in the background...");
-    if let Err(error) = update::run_git_pull_ff_only(repo_dir, true) {
+    if let Err(error) = run_git_pull_ff_only(repo_dir, true) {
         publisher.status(format!(
             "Git pull skipped: {}. Continuing with the current checkout.",
             error
@@ -234,4 +234,197 @@ fn rebuild_version_label(repo_dir: &Path) -> String {
             }
         })
         .unwrap_or_else(|_| "local source build".to_string())
+}
+
+/// Summary emitted when `git pull` cannot reconcile the local and upstream
+/// histories on its own (diverged branches, non-fast-forward, unrelated
+/// histories).
+const GIT_PULL_DIVERGED_SUMMARY: &str =
+    "Local and upstream have diverged, so the update could not fast-forward.";
+
+/// Longest single-line rebuild summary we hand to the UI.
+const REBUILD_ERROR_SUMMARY_MAX_CHARS: usize = 72;
+
+pub fn run_git_pull_ff_only(repo_dir: &Path, quiet: bool) -> Result<()> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.arg("pull").arg("--ff-only");
+    if quiet {
+        cmd.arg("-q");
+    }
+    let output = cmd
+        .current_dir(repo_dir)
+        .output()
+        .context("Failed to run git pull")?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        anyhow::bail!("{}", summarize_git_pull_failure(&output.stderr));
+    }
+}
+
+fn summarize_git_pull_failure(stderr: &[u8]) -> String {
+    let stderr = String::from_utf8_lossy(stderr);
+    let text = stderr.trim();
+    if text.is_empty() {
+        return "git pull failed".to_string();
+    }
+
+    if git_pull_failure_is_divergence(text) {
+        return GIT_PULL_DIVERGED_SUMMARY.to_string();
+    }
+
+    if text.contains("There is no tracking information for the current branch") {
+        return "git pull failed: current branch has no upstream tracking branch".to_string();
+    }
+
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with("hint:"))
+        .unwrap_or("git pull failed");
+    let line = line.strip_prefix("fatal: ").unwrap_or(line);
+    if line.eq_ignore_ascii_case("git pull failed") {
+        "git pull failed".to_string()
+    } else {
+        format!("git pull failed: {}", line)
+    }
+}
+
+/// Whether `git pull` stderr indicates the local and upstream branches have
+/// diverged (and therefore need a manual merge/rebase, not a fast-forward).
+fn git_pull_failure_is_divergence(stderr: &str) -> bool {
+    stderr.contains("Need to specify how to reconcile divergent branches")
+        || stderr.contains("Not possible to fast-forward")
+        || stderr.contains("refusing to merge unrelated histories")
+        || stderr.contains("have diverged")
+}
+
+/// Condense a rebuild-pipeline error into a single short line fit for a status
+/// notice or a one-line card.
+///
+/// Rebuild errors reach the UI from several layers (git, cargo, the test run,
+/// the local install), so raw text is often multi-line and long enough to wrap
+/// several times. Users only need the first clause; the full text stays in the
+/// log.
+pub fn summarize_rebuild_error(error: &str) -> String {
+    let first_line = error
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("unknown error");
+
+    // Keep one clause: drop any trailing context sentence and punctuation.
+    let clause = first_line
+        .split_once(". ")
+        .map(|(head, _)| head)
+        .unwrap_or(first_line)
+        .trim_end_matches(['.', ':'])
+        .trim();
+    let clause = if clause.is_empty() {
+        first_line
+    } else {
+        clause
+    };
+
+    if clause.chars().count() <= REBUILD_ERROR_SUMMARY_MAX_CHARS {
+        return clause.to_string();
+    }
+    let truncated: String = clause
+        .chars()
+        .take(REBUILD_ERROR_SUMMARY_MAX_CHARS - 1)
+        .collect();
+    format!("{}…", truncated.trim_end())
+}
+
+fn print_centered(msg: &str) {
+    let msg = crate::output_style::terminal_text(msg);
+    let width = crossterm::terminal::size()
+        .map(|(w, _)| w as usize)
+        .unwrap_or(80);
+    for line in msg.lines() {
+        let visible_len = unicode_display_width(line);
+        if visible_len >= width {
+            println!("{}", line);
+        } else {
+            let pad = (width - visible_len) / 2;
+            println!("{:>pad$}{}", "", line, pad = pad);
+        }
+    }
+}
+
+fn unicode_display_width(s: &str) -> usize {
+    use unicode_width::UnicodeWidthChar;
+    let mut w = 0;
+    let mut in_escape = false;
+    for c in s.chars() {
+        if in_escape {
+            if c == 'm' {
+                in_escape = false;
+            }
+            continue;
+        }
+        if c == '\x1b' {
+            in_escape = true;
+            continue;
+        }
+        w += UnicodeWidthChar::width(c).unwrap_or(0);
+    }
+    w
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn git_pull_failure_summaries_are_stable() {
+        assert_eq!(
+            summarize_git_pull_failure(
+                b"fatal: Need to specify how to reconcile divergent branches\n"
+            ),
+            GIT_PULL_DIVERGED_SUMMARY
+        );
+        assert_eq!(
+            summarize_git_pull_failure(b"hint: ignore me\nfatal: no upstream\n"),
+            "git pull failed: no upstream"
+        );
+        assert_eq!(summarize_git_pull_failure(b"   \n"), "git pull failed");
+    }
+
+    /// Every UI surface renders these on one line, so the summary must stay
+    /// short and never contain a newline.
+    #[test]
+    fn summarize_rebuild_error_is_always_one_short_line() {
+        let inputs = [
+            "Tests failed — staying on the current binary. Fix the failing tests and try /rebuild again.",
+            "Rebuild failed while starting cargo build: No such file or directory (os error 2)\n  caused by: cargo",
+            "a very long single clause with no recognizable cause that just keeps going and going well past any sensible terminal width",
+            "",
+        ];
+        for input in inputs {
+            let summary = summarize_rebuild_error(input);
+            assert!(!summary.contains('\n'), "multi-line summary for {input:?}");
+            assert!(!summary.is_empty(), "empty summary for {input:?}");
+            assert!(
+                summary.chars().count() <= REBUILD_ERROR_SUMMARY_MAX_CHARS,
+                "summary too long ({}) for {input:?}: {summary}",
+                summary.chars().count()
+            );
+        }
+    }
+
+    #[test]
+    fn summarize_rebuild_error_keeps_the_first_clause() {
+        assert_eq!(
+            summarize_rebuild_error(
+                "Tests failed — staying on the current binary. Fix the failing tests and try /rebuild again."
+            ),
+            "Tests failed — staying on the current binary"
+        );
+        assert_eq!(
+            summarize_rebuild_error("Build failed — staying on the current binary."),
+            "Build failed — staying on the current binary"
+        );
+    }
 }

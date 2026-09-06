@@ -29,7 +29,6 @@ members = [
     "crates/jcode-fuzzy",
     "crates/jcode-harness-api",
     "crates/jcode-harness-api-server",
-    "crates/jcode-sdk",
     "crates/jcode-memory-types",
     "crates/jcode-message-types",
     "crates/jcode-overnight-core",
@@ -79,7 +78,6 @@ members = [
     "crates/jcode-tui-style",
     "crates/jcode-tui-tool-display",
     "crates/jcode-tui-usage-overlay",
-    "crates/jcode-update-core",
     "crates/jcode-terminal-launch",
     "crates/jcode-terminal-image",
     "crates/jcode-tui-workspace",
@@ -95,12 +93,12 @@ name = "jcode"
 path = "src/main.rs"
 
 [[bin]]
-name = "test_api"
-path = "src/bin/test_api.rs"
-
-[[bin]]
+# Deterministic tool-registry smoke runner, invoked by
+# scripts/real_provider_smoke.sh. Gated so a plain `cargo build` does not link a
+# second full copy of the dependency graph for a dev tool.
 name = "jcode-harness"
 path = "src/bin/harness.rs"
+required-features = ["dev-bins"]
 
 [[bin]]
 name = "session_memory_bench"
@@ -172,8 +170,8 @@ crossterm = { version = "0.29", features = ["event-stream"] }
 # PDF parsing (behind feature flag)
 jcode-build-meta = { path = "crates/jcode-build-meta" }
 # Tiny leaf helpers (console/env/fs/id) used directly by the cli layer.
-# Presentation layer: the terminal UI (`tui`) + offline replay (`video_export`),
-# compiled as a separate rustc unit. It re-exports the application core
+# Presentation layer: the terminal UI (`tui`), compiled as a separate rustc
+# unit. It re-exports the application core
 # (`jcode-app-core`, which re-exports `jcode-base`), so the root crate (cli +
 # bin) re-exports everything via `pub use jcode_tui::*`. default-features=false
 # so the root feature set fully controls the downstream features (see

@@ -46,7 +46,6 @@ pub struct MacosNotificationEnvelope {
     pub title: String,
     pub subtitle: Option<String>,
     pub body: String,
-    pub sound: Option<String>,
     pub origin: MacosNotificationOrigin,
 }
 
@@ -319,15 +318,10 @@ pub fn macos_notification_inbox_dir() -> Option<std::path::PathBuf> {
 /// Queue a turn notification for the bundled LSUIElement broker and wake it.
 /// Returns false when the helper is unavailable so the caller can use its
 /// terminal-native or `osascript` fallback.
-pub fn send_macos_turn_notification(
-    title: &str,
-    subtitle: Option<&str>,
-    body: &str,
-    sound: Option<&str>,
-) -> bool {
+pub fn send_macos_turn_notification(title: &str, subtitle: Option<&str>, body: &str) -> bool {
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (title, subtitle, body, sound);
+        let _ = (title, subtitle, body);
         false
     }
 
@@ -353,9 +347,6 @@ pub fn send_macos_turn_notification(
                 .filter(|value| !value.trim().is_empty())
                 .map(str::to_string),
             body: body.to_string(),
-            sound: sound
-                .filter(|value| !value.trim().is_empty())
-                .map(str::to_string),
             origin: MacosNotificationOrigin::detect(),
         };
         let queued_path = match enqueue_macos_notification(&envelope) {
@@ -534,20 +525,14 @@ pub fn activate_macos_notification_origin(origin: &MacosNotificationOrigin) {
 /// detached and never waited on; failures are ignored (a missing notifier is
 /// not an error).
 pub fn send_desktop_notification(title: &str, body: &str) {
-    send_desktop_notification_rich(title, None, body, None);
+    send_desktop_notification_rich(title, None, body);
 }
 
-/// Send a local desktop notification with optional macOS subtitle and sound.
+/// Send a local desktop notification with an optional macOS subtitle.
 ///
 /// `subtitle` renders as a second bold line on macOS (ignored elsewhere).
-/// `sound` is a Notification Center sound name such as "Glass" or "Ping"
-/// (macOS only). Both are best-effort; a missing notifier is not an error.
-pub fn send_desktop_notification_rich(
-    title: &str,
-    subtitle: Option<&str>,
-    body: &str,
-    sound: Option<&str>,
-) {
+/// It is best-effort; a missing notifier is not an error.
+pub fn send_desktop_notification_rich(title: &str, subtitle: Option<&str>, body: &str) {
     fn applescript_escape(s: &str) -> String {
         let mut out = String::with_capacity(s.len());
         for ch in s.chars() {
@@ -568,9 +553,6 @@ pub fn send_desktop_notification_rich(
     );
     if let Some(subtitle) = subtitle.filter(|s| !s.trim().is_empty()) {
         script.push_str(&format!(" subtitle \"{}\"", applescript_escape(subtitle)));
-    }
-    if let Some(sound) = sound.filter(|s| !s.trim().is_empty()) {
-        script.push_str(&format!(" sound name \"{}\"", applescript_escape(sound)));
     }
     let _ = std::process::Command::new("osascript")
         .arg("-e")
@@ -815,7 +797,6 @@ mod tests {
             title: "jcode · done".to_string(),
             subtitle: Some("2/2 todos".to_string()),
             body: "Finished broker".to_string(),
-            sound: Some("Glass".to_string()),
             origin: MacosNotificationOrigin {
                 terminal: MacosTerminalKind::Iterm2,
                 bundle_id: Some("com.googlecode.iterm2".to_string()),

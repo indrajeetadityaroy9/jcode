@@ -95,7 +95,6 @@ pub(super) struct RegistryInputs<'a> {
     pub centered: &'a CenteredToggleKeys,
     pub toggles: &'a ToggleKeys,
     pub workspace: &'a WorkspaceNavigationKeys,
-    pub dictation: &'a OptionalBinding,
     pub new_terminal: &'a OptionalBinding,
     pub open_resume: &'a OptionalBinding,
     pub fallback_switch: &'a OptionalBinding,
@@ -161,11 +160,6 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
         "focus the swarm panel",
     );
     push(
-        inputs.dictation.binding.clone(),
-        "dictation",
-        "start or stop dictation",
-    );
-    push(
         inputs.new_terminal.binding.clone(),
         "new_terminal",
         "open a fresh session in a new terminal",
@@ -175,7 +169,7 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
         "open_resume",
         "open the session picker",
     );
-    // Context-armed accept key (fallback offer / update merge). Quiet: it only
+    // Context-armed accept key (post-error fallback offer). Quiet: it only
     // acts when an offer is on screen, which already explains itself.
     // Pushed directly (not via `push`), so re-create the closure afterwards to
     // keep the borrow checker happy about the interleaved direct `out` access.
@@ -183,7 +177,7 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
         out.push(KnownHotkey::quiet(
             binding,
             "fallback_switch",
-            "accept the on-screen fallback/merge offer",
+            "accept the on-screen fallback offer",
         ));
     }
     let mut push = |binding: Option<KeyBinding>, action: &'static str, desc: &'static str| {
@@ -715,7 +709,6 @@ impl App {
             centered: &self.centered_toggle_keys,
             toggles: &self.toggle_keys,
             workspace: &self.workspace_navigation_keys,
-            dictation: &self.dictation_key,
             new_terminal: &self.new_terminal_key,
             open_resume: &self.open_resume_key,
             fallback_switch: &self.fallback_switch_key,
@@ -876,7 +869,6 @@ mod tests {
             up: vec![alt('k')],
             right: vec![alt('l')],
         };
-        let dictation = OptionalBinding::default();
         // Bind the optional chords in the fixture so coverage tests can verify
         // they flow through build_registry when configured.
         let new_terminal = OptionalBinding {
@@ -898,7 +890,6 @@ mod tests {
             centered: &centered,
             toggles: &toggles,
             workspace: &workspace,
-            dictation: &dictation,
             new_terminal: &new_terminal,
             open_resume: &open_resume,
             fallback_switch: &fallback_switch,

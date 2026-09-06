@@ -992,10 +992,6 @@ impl TuiState for BenchState {
         false
     }
 
-    fn dictation_key_label(&self) -> Option<String> {
-        None
-    }
-
     fn animation_elapsed(&self) -> f32 {
         let elapsed = self.started_at.elapsed().as_secs_f32();
         if elapsed > 2.0 { 2.0 } else { elapsed }

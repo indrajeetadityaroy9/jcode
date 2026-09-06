@@ -41,7 +41,7 @@ If you want to run only a few tasks at a time but keep a coherent artifact set, 
 Example:
 
 ```bash
-python scripts/run_terminal_bench_campaign.py \
+python3 scripts/run_terminal_bench_campaign.py \
   --campaign-dir ~/tb2-jcode-campaign \
   --task regex-log \
   --task largest-eigenval \

@@ -13,11 +13,11 @@ fn env_truthy(key: &str) -> bool {
 }
 
 fn qr_rendering_enabled() -> bool {
-    env_truthy("JCODE_SHOW_LOGIN_QR") || env_truthy("JCODE_LOGIN_QR")
+    env_truthy("JCODE_SHOW_LOGIN_QR")
 }
 
 fn tui_qr_rendering_enabled() -> bool {
-    env_truthy("JCODE_SHOW_TUI_LOGIN_QR") || env_truthy("JCODE_TUI_LOGIN_QR")
+    env_truthy("JCODE_SHOW_TUI_LOGIN_QR")
 }
 
 pub fn render_unicode_qr(data: &str) -> Result<String, QrError> {

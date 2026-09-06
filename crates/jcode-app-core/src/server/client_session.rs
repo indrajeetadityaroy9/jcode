@@ -986,8 +986,7 @@ pub(super) async fn handle_reload(
     }
 
     let hash = jcode_build_meta::git_hash().to_string();
-    let signal_request_id =
-        crate::server::send_reload_signal(hash, triggering_session.clone());
+    let signal_request_id = crate::server::send_reload_signal(hash, triggering_session.clone());
 
     crate::logging::info(&format!(
         "handle_reload: queued reload signal {} from remote client request {} (triggering_session={:?}, reload_notified_sessions={}, reload_notified_clients={})",

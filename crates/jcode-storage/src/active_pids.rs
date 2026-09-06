@@ -3,8 +3,9 @@
 //! This is pure filesystem state keyed by session ID, used to discover which
 //! sessions are currently running (and to map a PID back to its session). It
 //! lives in the storage crate because it only needs [`jcode_dir`] and is a
-//! low-level concern shared by session management, dictation, and crash
-//! recovery, none of which should pull the full `session` module into scope.
+//! low-level concern shared by session management, transcript targeting, and
+//! crash recovery, none of which should pull the full `session` module into
+//! scope.
 
 use crate::jcode_dir;
 use std::path::PathBuf;

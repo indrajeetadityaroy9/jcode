@@ -1,0 +1,25 @@
+{
+  "allowed": {
+    "./crates/jcode-base/src/auth/mod.rs::integration": "public only so another crate can test it: src/cli/provider_init_tests.rs:434 calls auth::integration::auth_provider_integration, and cross-crate test visibility rules out #[cfg(test)]",
+    "crates/jcode-build-support/examples/write_dev_sidecar.rs": "human-invoked: writes a dev sidecar by hand when debugging build metadata",
+    "crates/jcode-fuzzy/examples/bench_realistic.rs": "human-invoked fuzzy-match benchmark; run by hand with cargo run --example",
+    "crates/jcode-tui-anim/examples/bench_anim.rs": "human-invoked animation benchmark; measures frame cost by hand",
+    "crates/jcode-tui-mermaid/examples/plan_graph_probe.rs": "human-invoked mermaid plan-graph probe; prints fit metrics for visual checks",
+    "crates/jcode-tui-render/examples/swarm_gallery_preview.rs": "human-invoked swarm gallery preview; renders sample panes for visual review",
+    "crates/jcode-tui-style/examples/light_bench.rs": "human-invoked light-theme palette bench; used when tuning colors by hand",
+    "scripts/test_analyze_runtime_memory_log.py": "unit tests for scripts/analyze_runtime_memory_log.py; run by hand (python3 <path>)",
+    "scripts/test_budget_common.py": "unit tests for scripts/budget_common.py; run by hand (python3 <path>)",
+    "scripts/test_caching_detailed.py": "live prompt-cache probe; needs real provider credentials, so human-invoked only",
+    "scripts/test_ci_suites.py": "checks the CI suite split; human-invoked, and this fork has no CI to call it",
+    "scripts/test_dag_live.py": "live swarm DAG exercise; spawns real sessions, so never automated",
+    "scripts/test_dev_cargo_jobs.sh": "checks dev_cargo.sh job math; human-invoked when that script changes",
+    "scripts/test_install_release_metadata.sh": "validates install_release.sh metadata; human-invoked before an install",
+    "scripts/test_memory.py": "live memory-graph exercise; needs a running daemon and a provider",
+    "scripts/test_oauth_usage.py": "live OAuth usage probe; needs real credentials",
+    "scripts/test_reload.py": "live daemon reload exercise; restarts a real daemon",
+    "scripts/test_soft_interrupt.py": "live soft-interrupt exercise; needs a streaming turn to interrupt",
+    "scripts/test_swarm.py": "live swarm exercise; spawns real subagent sessions",
+    "scripts/test_swarm_debug.py": "live swarm debug-socket exercise; needs debug control enabled"
+  },
+  "version": 1
+}

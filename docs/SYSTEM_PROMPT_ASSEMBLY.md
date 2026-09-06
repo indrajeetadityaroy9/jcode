@@ -125,8 +125,8 @@ after the most recent fresh user prompt, and passes only the static half as `sys
 So a provider that never overrides `complete_split` still gets a stable cacheable prefix.
 
 Only Anthropic overrides it (`crates/jcode-provider-anthropic-runtime/src/lib.rs:1552`); the
-base `MultiProvider`/`jcode` router forward it (`crates/jcode-base/src/provider/mod.rs:1696`,
-`crates/jcode-base/src/provider/jcode.rs:97`, dispatched through `crates/jcode-base/src/provider/dispatch.rs:168`).
+base `MultiProvider` router forwards it (`crates/jcode-base/src/provider/mod.rs:1696`,
+dispatched through `crates/jcode-base/src/provider/dispatch.rs:168`).
 
 ## 6. What Anthropic prepends
 

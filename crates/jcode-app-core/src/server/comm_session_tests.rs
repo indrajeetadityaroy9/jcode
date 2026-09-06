@@ -336,9 +336,7 @@ fn prepare_visible_spawn_session_cleans_session_when_launch_errors() {
         None,
         None,
         Some("Do the thing."),
-        |_session_id, _cwd: &std::path::Path, _provider_key| {
-            Err(anyhow::anyhow!("launch failed"))
-        },
+        |_session_id, _cwd: &std::path::Path, _provider_key| Err(anyhow::anyhow!("launch failed")),
     )
     .expect_err("visible spawn preparation should surface launch error");
 

@@ -842,7 +842,7 @@ fn test_registered_command_suggestions_include_aliases_and_hide_secret_commands(
     assert_eq!(commands.iter().filter(|cmd| **cmd == "/cancel").count(), 1);
     assert!(commands.contains(&"/models"));
     assert!(commands.contains(&"/sessions"));
-    assert!(commands.contains(&"/dictation"));
+    assert!(commands.contains(&"/commands"));
     assert!(commands.contains(&"/plan"));
     assert!(!commands.contains(&"/z"));
     assert!(!commands.contains(&"/zz"));

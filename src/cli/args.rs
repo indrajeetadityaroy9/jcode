@@ -37,13 +37,10 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) remote_working_dir: Option<String>,
 
-    /// Skip the automatic update check
+    /// Accepted for compatibility: jcode's own re-exec argv still passes this flag.
+    /// The startup update check it used to suppress no longer exists, so it is a no-op.
     #[arg(long, global = true)]
     pub(crate) no_update: bool,
-
-    /// Auto-update when new version is available (default: true for release builds)
-    #[arg(long, global = true, default_value = "true")]
-    pub(crate) auto_update: bool,
 
     /// Log tool inputs/outputs and token usage to stderr
     #[arg(long, global = true)]
@@ -64,10 +61,6 @@ pub(crate) struct Args {
     /// Custom socket path for server/client communication
     #[arg(long, global = true)]
     pub(crate) socket: Option<String>,
-
-    /// Enable debug socket (broadcasts all TUI state changes)
-    #[arg(long, global = true)]
-    pub(crate) debug_socket: bool,
 
     /// Model to use (e.g., claude-opus-4-6, gpt-5.5)
     #[arg(short, long, global = true)]
@@ -207,9 +200,6 @@ pub(crate) enum Command {
     /// Run in simple REPL mode (no TUI)
     Repl,
 
-    /// Update jcode to the latest version
-    Update,
-
     /// Show build/version information in human or JSON form
     Version {
         /// Emit JSON instead of plain text
@@ -263,13 +253,9 @@ pub(crate) enum Command {
     #[command(subcommand)]
     Session(SessionCommand),
 
-    /// Ambient mode management
-    #[command(subcommand)]
+    /// Internal: run an ambient cycle in a visible TUI, spawned by the ambient runner
+    #[command(subcommand, hide = true)]
     Ambient(AmbientCommand),
-
-    /// Optional Jcode Cloud/Jade integration commands
-    #[command(subcommand)]
-    Cloud(CloudCommand),
 
     /// Inject externally transcribed text into the active Jcode TUI
     Transcript {
@@ -284,12 +270,6 @@ pub(crate) enum Command {
         #[arg(short = 'S', long)]
         session: Option<String>,
     },
-
-    /// Run configured dictation and send the transcript to the last-focused jcode client
-    Dictate,
-
-    /// Install a launcher so jcode appears in your app launcher
-    SetupLauncher,
 
     /// Replay a saved session in the TUI
     Replay {
@@ -315,22 +295,6 @@ pub(crate) enum Command {
         /// Auto-edit timeline: compress tool call wait times and gaps between prompts
         #[arg(long)]
         auto_edit: bool,
-
-        /// Export as video file (auto-generates name if no path given)
-        #[arg(long, default_missing_value = "auto", num_args = 0..=1)]
-        video: Option<String>,
-
-        /// Video width in columns (default: 120)
-        #[arg(long, default_value = "120")]
-        cols: u16,
-
-        /// Video height in rows (default: 40)
-        #[arg(long, default_value = "40")]
-        rows: u16,
-
-        /// Video frames per second (default: 60)
-        #[arg(long, default_value = "60")]
-        fps: u32,
 
         /// Force centered layout (overrides config)
         #[arg(long, conflicts_with = "no_centered")]
@@ -413,21 +377,9 @@ pub(crate) enum Command {
         #[arg(long)]
         output: Option<String>,
 
-        /// Show strict live provider/model E2E coverage instead of running auth tests
-        #[arg(long, conflicts_with_all = ["login", "all_configured", "no_smoke", "no_tool_smoke", "prompt"])]
-        coverage: bool,
-
         /// Fetch live model catalogs and verify context-window resolution for each model with metadata
-        #[arg(long, conflicts_with_all = ["login", "no_smoke", "no_tool_smoke", "prompt", "coverage"])]
+        #[arg(long, conflicts_with_all = ["login", "no_smoke", "no_tool_smoke", "prompt"])]
         context_audit: bool,
-
-        /// Read coverage from this JSON file instead of the default live-test coverage ledger
-        #[arg(long, requires = "coverage")]
-        coverage_file: Option<String>,
-
-        /// Maximum uncovered provider/model gaps to show in the text coverage report
-        #[arg(long, requires = "coverage", default_value_t = 50)]
-        coverage_limit: usize,
     },
 
     /// Save or restore the current set of open jcode windows across a system reboot
@@ -448,11 +400,12 @@ pub(crate) enum Command {
         json: bool,
     },
 
-    /// Serve the stable harness API on a Unix socket, for SDK clients.
+    /// Serve the stable harness API on a Unix socket, for external clients.
     ///
-    /// The Rust client is `crates/jcode-sdk`. The upstream TypeScript SDK was
-    /// removed from this fork, but the socket protocol is unchanged, so any
-    /// client speaking it still works.
+    /// This fork ships no client of its own - the TypeScript SDK came from
+    /// upstream and the Rust `jcode-sdk` crate was removed once its only
+    /// consumer (the desktop app) was purged. The socket protocol is
+    /// unchanged, so any client speaking it still works.
     #[cfg(unix)]
     #[command(name = "api-bridge", alias = "api")]
     ApiBridge {
@@ -525,227 +478,6 @@ pub(crate) enum ServerCommand {
         #[arg(long)]
         json: bool,
     },
-}
-
-#[derive(Subcommand, Debug)]
-pub(crate) enum CloudCommand {
-    /// Upload, list, verify, and view cloud-synced sessions
-    Sessions {
-        #[command(subcommand)]
-        action: CloudSessionsCommand,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-pub(crate) enum CloudSessionsCommand {
-    /// Configure Jade API defaults for cloud sessions on this machine
-    Configure {
-        /// Jade Session API base URL
-        #[arg(long)]
-        api_base: Option<String>,
-
-        /// Jade Session API bearer token. Prefer --api-token-env to avoid shell history.
-        #[arg(long, conflicts_with = "api_token_env")]
-        api_token: Option<String>,
-
-        /// Read the Jade Session API bearer token from this environment variable
-        #[arg(long, conflicts_with = "api_token")]
-        api_token_env: Option<String>,
-
-        /// Optional Jade token id, e.g. dev-admin
-        #[arg(long)]
-        api_token_id: Option<String>,
-
-        /// Default Jade user id for commands that do not pass --user-id
-        #[arg(long)]
-        user_id: Option<String>,
-
-        /// Default private Jade session helper path
-        #[arg(long)]
-        helper: Option<String>,
-
-        /// Remove the saved cloud sessions config
-        #[arg(long)]
-        clear: bool,
-    },
-
-    /// Show saved Jade API defaults for cloud sessions without printing secrets
-    Status {
-        /// Emit JSON instead of human-readable text
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// Upload a specific local session JSON file to Jade cloud storage
-    Upload {
-        /// Path to a local Jcode session JSON file
-        session_file: String,
-
-        /// Upload without Jade's redaction pass
-        #[arg(long)]
-        raw: bool,
-
-        #[command(flatten)]
-        jade: JadeCloudOptions,
-    },
-
-    /// Upload the newest local Jcode session to Jade cloud storage
-    UploadLatest {
-        /// Directory containing local Jcode session JSON files
-        #[arg(long, default_value = "~/.jcode/sessions")]
-        sessions_dir: String,
-
-        /// Upload without Jade's redaction pass
-        #[arg(long)]
-        raw: bool,
-
-        #[command(flatten)]
-        jade: JadeCloudOptions,
-    },
-
-    /// Sync new or changed local sessions to Jade cloud storage (idempotent; safe to schedule)
-    Sync {
-        /// Directory containing local Jcode session JSON files (default: ~/.jcode/sessions)
-        #[arg(long)]
-        sessions_dir: Option<String>,
-
-        /// Only consider sessions modified within this many days (ignored with --all)
-        #[arg(long)]
-        since_days: Option<u64>,
-
-        /// Sync all matching sessions regardless of age
-        #[arg(long)]
-        all: bool,
-
-        /// Maximum number of sessions to upload in this run
-        #[arg(long, default_value_t = 50)]
-        max: usize,
-
-        /// Skip this run if the last sync ran fewer than this many minutes ago (for cron/timers)
-        #[arg(long)]
-        min_interval_mins: Option<u64>,
-
-        /// Upload without Jade's redaction pass
-        #[arg(long)]
-        raw: bool,
-
-        /// Show what would be uploaded without uploading or recording state
-        #[arg(long)]
-        dry_run: bool,
-
-        /// Re-upload sessions even if local sync state says they are unchanged
-        #[arg(long)]
-        force: bool,
-
-        /// Emit JSON instead of human-readable text
-        #[arg(long)]
-        json: bool,
-
-        #[command(flatten)]
-        jade: JadeCloudOptions,
-    },
-
-    /// List cloud-uploaded sessions from the Jade index
-    List {
-        /// Maximum number of sessions to show
-        #[arg(long, default_value_t = 25)]
-        limit: usize,
-
-        /// Emit JSON instead of human-readable text
-        #[arg(long)]
-        json: bool,
-
-        #[command(flatten)]
-        jade: JadeCloudOptions,
-    },
-
-    /// Verify that cloud metadata and the S3 session blob both exist
-    Verify {
-        /// Session ID to verify
-        session_id: String,
-
-        #[command(flatten)]
-        jade: JadeCloudOptions,
-    },
-
-    /// Render a local HTML dashboard of cloud-uploaded sessions from the Jade index
-    Dashboard {
-        /// Maximum number of sessions to include
-        #[arg(long, default_value_t = 100)]
-        limit: usize,
-
-        /// Write the dashboard HTML to this path (default: a temp file)
-        #[arg(long)]
-        output: Option<String>,
-
-        /// Open the generated dashboard in the default browser
-        #[arg(long)]
-        open: bool,
-
-        /// Also download each session and link rows to a local per-session viewer
-        #[arg(long)]
-        with_view: bool,
-
-        #[command(flatten)]
-        jade: JadeCloudOptions,
-    },
-
-    /// Download and view a cloud-uploaded session
-    View {
-        /// Session ID to view
-        session_id: String,
-
-        /// Output format
-        #[arg(long, default_value = "summary")]
-        format: CloudSessionViewFormat,
-
-        /// Write HTML output to this path when --format html is used
-        #[arg(long)]
-        output: Option<String>,
-
-        /// Open the generated HTML file when --format html is used
-        #[arg(long)]
-        open: bool,
-
-        #[command(flatten)]
-        jade: JadeCloudOptions,
-    },
-}
-
-#[derive(Parser, Debug, Clone)]
-pub(crate) struct JadeCloudOptions {
-    /// Jade user id to pass to the dev helper
-    #[arg(long, default_value = "dev")]
-    pub(crate) user_id: String,
-
-    /// AWS CLI profile used by the private dev Jade helper. If omitted, the helper decides.
-    #[arg(long)]
-    pub(crate) profile: Option<String>,
-
-    /// AWS region used by the private dev Jade helper. If omitted, the helper decides.
-    #[arg(long)]
-    pub(crate) region: Option<String>,
-
-    /// Path to the private Jade session helper. Defaults to $JCODE_JADE_SESSIONS_HELPER or ~/jade/scripts/jade_sessions.py.
-    #[arg(long)]
-    pub(crate) helper: Option<String>,
-}
-
-#[derive(ValueEnum, Debug, Clone, Copy)]
-pub(crate) enum CloudSessionViewFormat {
-    Summary,
-    Json,
-    Html,
-}
-
-impl CloudSessionViewFormat {
-    pub(crate) fn as_arg(self) -> &'static str {
-        match self {
-            Self::Summary => "summary",
-            Self::Json => "json",
-            Self::Html => "html",
-        }
-    }
 }
 
 #[derive(Subcommand, Debug)]
@@ -908,14 +640,6 @@ pub(crate) enum AuthCommand {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum AmbientCommand {
-    /// Show ambient mode status
-    Status,
-    /// Show recent ambient activity log
-    Log,
-    /// Manually trigger an ambient cycle
-    Trigger,
-    /// Stop ambient mode
-    Stop,
     /// Run an ambient cycle in a visible TUI (internal, spawned by the ambient runner)
     #[command(hide = true)]
     RunVisible,

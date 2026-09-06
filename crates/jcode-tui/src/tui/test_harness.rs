@@ -8,14 +8,8 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::sync::{OnceLock, RwLock};
 use std::time::Duration;
-
-fn lock_unpoisoned<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
 
 fn read_unpoisoned<T>(lock: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
     lock.read()
@@ -148,9 +142,6 @@ pub fn now_ms() -> u64 {
 // Event Recording & Replay
 // ============================================================================
 
-/// Global event recorder.
-static EVENT_RECORDER: OnceLock<Mutex<EventRecorder>> = OnceLock::new();
-
 /// Types of events that can be recorded/replayed.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", content = "data")]
@@ -187,97 +178,6 @@ pub struct RecordedEvent {
     pub event: TestEvent,
 }
 
-/// Event recorder for capturing test sequences.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EventRecorder {
-    events: Vec<RecordedEvent>,
-    start_time: Option<u64>,
-    is_recording: bool,
-}
-
-impl EventRecorder {
-    pub fn new() -> Self {
-        Self {
-            events: Vec::new(),
-            start_time: None,
-            is_recording: false,
-        }
-    }
-
-    /// Start recording events.
-    pub fn start(&mut self) {
-        self.events.clear();
-        self.start_time = Some(now_ms());
-        self.is_recording = true;
-    }
-
-    /// Stop recording events.
-    pub fn stop(&mut self) {
-        self.is_recording = false;
-    }
-
-    /// Record an event.
-    pub fn record(&mut self, event: TestEvent) {
-        if !self.is_recording {
-            return;
-        }
-        let start = self.start_time.unwrap_or_else(now_ms);
-        let offset_ms = now_ms().saturating_sub(start);
-        self.events.push(RecordedEvent { offset_ms, event });
-    }
-
-    /// Get all recorded events.
-    pub fn events(&self) -> &[RecordedEvent] {
-        &self.events
-    }
-
-    /// Export events to JSON.
-    pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(&self.events).unwrap_or_else(|_| "[]".to_string())
-    }
-
-    /// Import events from JSON.
-    pub fn from_json(json: &str) -> Result<Vec<RecordedEvent>, serde_json::Error> {
-        serde_json::from_str(json)
-    }
-
-    /// Check if recording.
-    pub fn is_recording(&self) -> bool {
-        self.is_recording
-    }
-}
-
-impl Default for EventRecorder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Get or initialize the global event recorder.
-pub fn get_event_recorder() -> &'static Mutex<EventRecorder> {
-    EVENT_RECORDER.get_or_init(|| Mutex::new(EventRecorder::new()))
-}
-
-/// Start global event recording.
-pub fn start_recording() {
-    lock_unpoisoned(get_event_recorder()).start();
-}
-
-/// Stop global event recording.
-pub fn stop_recording() {
-    lock_unpoisoned(get_event_recorder()).stop();
-}
-
-/// Record an event globally.
-pub fn record_event(event: TestEvent) {
-    lock_unpoisoned(get_event_recorder()).record(event);
-}
-
-/// Get recorded events as JSON.
-pub fn get_recorded_events_json() -> String {
-    lock_unpoisoned(get_event_recorder()).to_json()
-}
-
 /// Event player for replaying recorded sequences.
 #[derive(Debug)]
 pub struct EventPlayer {
@@ -296,7 +196,7 @@ impl EventPlayer {
 
     /// Load events from JSON.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        let events = EventRecorder::from_json(json)?;
+        let events: Vec<RecordedEvent> = serde_json::from_str(json)?;
         Ok(Self::new(events))
     }
 
@@ -865,25 +765,6 @@ mod tests {
         assert_eq!(now_ms(), 1000);
 
         disable_test_clock();
-    }
-
-    #[test]
-    fn test_event_recording() {
-        let mut recorder = EventRecorder::new();
-        recorder.start();
-
-        recorder.record(TestEvent::Key {
-            code: "a".to_string(),
-            modifiers: vec![],
-        });
-        recorder.record(TestEvent::Key {
-            code: "b".to_string(),
-            modifiers: vec!["ctrl".to_string()],
-        });
-
-        recorder.stop();
-
-        assert_eq!(recorder.events().len(), 2);
     }
 
     #[test]

@@ -657,13 +657,13 @@ fn test_reload_requests_exit_when_newer_binary() {
 }
 
 #[test]
-fn test_background_update_ready_reloads_immediately_when_idle() {
+fn test_background_rebuild_ready_reloads_immediately_when_idle() {
     let mut app = create_test_app();
     let session_id = app.session.id.clone();
 
     app.handle_session_update_status(SessionUpdateStatus::ReadyToReload {
         session_id: session_id.clone(),
-        action: ClientMaintenanceAction::Update,
+        action: ClientMaintenanceAction::Rebuild,
         version: "v1.2.3".to_string(),
     });
 
@@ -672,14 +672,14 @@ fn test_background_update_ready_reloads_immediately_when_idle() {
 }
 
 #[test]
-fn test_background_update_ready_waits_for_turn_to_finish() {
+fn test_background_rebuild_ready_waits_for_turn_to_finish() {
     let mut app = create_test_app();
     let session_id = app.session.id.clone();
     app.is_processing = true;
 
     app.handle_session_update_status(SessionUpdateStatus::ReadyToReload {
         session_id: session_id.clone(),
-        action: ClientMaintenanceAction::Update,
+        action: ClientMaintenanceAction::Rebuild,
         version: "v1.2.3".to_string(),
     });
 
@@ -688,7 +688,7 @@ fn test_background_update_ready_waits_for_turn_to_finish() {
         app.pending_background_client_reload
             .as_ref()
             .map(|(id, action)| (id.as_str(), *action)),
-        Some((session_id.as_str(), ClientMaintenanceAction::Update))
+        Some((session_id.as_str(), ClientMaintenanceAction::Rebuild))
     );
     assert!(!app.should_quit);
 
@@ -700,14 +700,14 @@ fn test_background_update_ready_waits_for_turn_to_finish() {
 }
 
 #[test]
-fn test_background_update_ready_waits_for_typing_to_go_idle() {
+fn test_background_rebuild_ready_waits_for_typing_to_go_idle() {
     let mut app = create_test_app();
     let session_id = app.session.id.clone();
     app.note_client_interaction();
 
     app.handle_session_update_status(SessionUpdateStatus::ReadyToReload {
         session_id: session_id.clone(),
-        action: ClientMaintenanceAction::Update,
+        action: ClientMaintenanceAction::Rebuild,
         version: "v1.2.3".to_string(),
     });
 
@@ -747,207 +747,38 @@ fn test_background_rebuild_status_uses_compact_rebuild_card() {
     );
     assert!(message.content.contains("Pipeline:"));
 }
-
 #[test]
-fn test_startup_update_checking_stays_quiet_until_update_work_starts() {
+fn test_background_rebuild_error_card_and_notice_are_one_short_line() {
     let mut app = create_test_app();
+    let session_id = app.session.id.clone();
 
-    app.handle_update_status(UpdateStatus::Checking);
-
-    assert!(
-        app.display_messages()
-            .iter()
-            .all(|message| message.title.as_deref() != Some("Update")),
-        "startup update checks should not show a card unless an update exists"
-    );
-    assert_eq!(app.status_notice(), None);
-
-    app.handle_update_status(UpdateStatus::Downloading {
-        version: "v1.2.3".to_string(),
-        downloaded: 512 * 1024,
-        total: Some(1024 * 1024),
-    });
-
-    let update_cards = app
-        .display_messages()
-        .iter()
-        .filter(|message| message.title.as_deref() == Some("Update"))
-        .count();
-    assert_eq!(
-        update_cards, 0,
-        "background progress should stay out of the transcript"
-    );
-    let notice = app.status_notice().expect("expected download notice");
-    assert!(notice.starts_with("↑ v1.2.3 · Downloading update..."));
-    assert!(
-        notice.contains("50%"),
-        "notice should show progress: {notice}"
-    );
-
-    app.handle_update_status(UpdateStatus::Installed {
-        version: "v1.2.3".to_string(),
+    app.handle_session_update_status(SessionUpdateStatus::Error {
+        session_id,
+        action: ClientMaintenanceAction::Rebuild,
+        message:
+            "Rebuild failed while starting cargo build: offline. The full error is in the log."
+                .to_string(),
     });
 
     let message = app
         .display_messages()
         .last()
-        .expect("expected update display message");
-    assert!(message.content.contains("Status: updated to v1.2.3"));
-    assert!(message.content.contains("Restarting now."));
-    assert_eq!(
-        app.status_notice(),
-        Some("Updated to v1.2.3; restarting...".to_string())
-    );
-}
-
-/// The user-facing complaint behind the progress work: update output used to
-/// churn the transcript and clobber the input line. A streaming download must
-/// stay in the compact status area, never grow the message list, and never
-/// touch the input buffer.
-#[test]
-fn test_startup_update_progress_stream_does_not_churn_transcript_or_input() {
-    let mut app = create_test_app();
-    app.set_input_for_test("draft the user was typing".to_string());
-    let baseline_messages = app.display_messages().len();
-
-    for downloaded in [0u64, 256, 512, 768, 1024].map(|kib| kib * 1024) {
-        app.handle_update_status(UpdateStatus::Downloading {
-            version: "v1.2.3".to_string(),
-            downloaded,
-            total: Some(1024 * 1024),
-        });
-    }
-
-    assert_eq!(
-        app.display_messages().len(),
-        baseline_messages,
-        "streamed progress must not append transcript cards"
-    );
-    assert!(
-        app.status_notice()
-            .is_some_and(|notice| notice.contains("100%")),
-        "compact status shows latest progress"
-    );
-    assert_eq!(
-        app.input(),
-        "draft the user was typing",
-        "update progress must never clobber the input line"
-    );
-}
-
-#[test]
-fn test_startup_update_up_to_date_removes_transient_card() {
-    let mut app = create_test_app();
-
-    app.handle_update_status(UpdateStatus::Checking);
-    assert!(
-        app.display_messages()
-            .iter()
-            .all(|message| message.title.as_deref() != Some("Update"))
-    );
-
-    app.handle_update_status(UpdateStatus::UpToDate);
-
-    assert!(
-        app.display_messages()
-            .iter()
-            .all(|message| message.title.as_deref() != Some("Update")),
-        "no-update startup checks should not leave a persistent update card"
-    );
-    assert!(app.background_client_action.is_none());
-    assert!(app.pending_background_client_reload.is_none());
-}
-
-#[test]
-fn test_startup_update_diverged_offers_merge_without_failure_card() {
-    let mut app = create_test_app();
-
-    app.handle_update_status(UpdateStatus::Checking);
-    app.handle_update_status(UpdateStatus::Error(
-        crate::update::GIT_PULL_DIVERGED_SUMMARY.to_string(),
-    ));
-
-    let message = app
-        .display_messages()
-        .last()
-        .expect("expected update display message");
-    assert_eq!(message.title.as_deref(), Some("Update"));
-    // The diverged card must NOT use the generic failure framing.
-    assert!(
-        !message.content.contains("Status: failed"),
-        "unexpected failure header: {}",
-        message.content
-    );
-    assert!(
-        !message
-            .content
-            .contains("Continuing with the current version."),
-        "unexpected continue footer: {}",
-        message.content
-    );
-    // It should explain the divergence and offer the merge-agent hotkey.
-    assert!(
-        message.content.contains("diverged"),
-        "missing divergence explanation: {}",
-        message.content
-    );
-    assert!(
-        message.content.to_lowercase().contains("agent"),
-        "missing merge-agent hint: {}",
-        message.content
-    );
-    assert!(
-        !message.content.contains('\n'),
-        "divergence notice should be authored as one line: {}",
-        message.content
-    );
-    assert!(app.pending_merge_offer.is_some());
-    assert!(app.background_client_action.is_none());
-}
-
-#[test]
-fn test_startup_update_diverged_offer_clears_on_submit() {
-    let mut app = create_test_app();
-    app.handle_update_status(UpdateStatus::Error(format!(
-        "Update failed: {}",
-        crate::update::GIT_PULL_DIVERGED_SUMMARY
-    )));
-    assert!(
-        app.pending_merge_offer.is_some(),
-        "prefixed divergence summary should still arm the offer"
-    );
-
-    app.input = "do something else".to_string();
-    app.cursor_pos = app.input.len();
-    app.submit_input();
-    assert!(
-        app.pending_merge_offer.is_none(),
-        "a fresh submission should drop the stale merge offer"
-    );
-}
-
-#[test]
-fn test_startup_update_error_replaces_checking_card() {
-    let mut app = create_test_app();
-
-    app.handle_update_status(UpdateStatus::Checking);
-    app.handle_update_status(UpdateStatus::Error("Check failed: offline".to_string()));
-
-    let message = app
-        .display_messages()
-        .last()
-        .expect("expected update display message");
-    assert_eq!(message.title.as_deref(), Some("Update"));
+        .expect("expected rebuild display message");
+    assert_eq!(message.title.as_deref(), Some("Rebuild"));
     // The failure card and notice are one short line each; the verbose error
     // stays in the log.
-    assert_eq!(message.content, "Status: failed (offline)");
     assert!(
-        !message.content.contains('\n'),
-        "failure card should be one line: {}",
+        message
+            .content
+            .starts_with("Status: failed (Rebuild failed while starting cargo build: offline)"),
+        "failure card should carry the one-line reason: {}",
         message.content
     );
     let notice = app.status_notice().expect("expected failure notice");
-    assert_eq!(notice, "Update failed: offline");
+    assert_eq!(
+        notice,
+        "Rebuild failed: Rebuild failed while starting cargo build: offline"
+    );
     assert!(
         !notice.contains('\n'),
         "notice should be one line: {notice}"

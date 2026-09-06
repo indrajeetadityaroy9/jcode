@@ -873,7 +873,7 @@ pub fn inline_fit_readiness(
     target_rows: u16,
     draw_border: bool,
 ) -> InlineFitReadiness {
-    if VIDEO_EXPORT_MODE.load(Ordering::Relaxed) {
+    if IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed) {
         return InlineFitReadiness::Unsupported;
     }
     let picker = match PICKER.get().and_then(|p| p.as_ref()) {
@@ -1172,7 +1172,7 @@ pub fn render_image_widget_fit_stable(
     centered: bool,
     draw_border: bool,
 ) -> bool {
-    if VIDEO_EXPORT_MODE.load(Ordering::Relaxed) {
+    if IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed) {
         return true;
     }
 
@@ -1316,7 +1316,7 @@ pub fn render_image_widget_viewport_precise(
     zoom_percent: u16,
     draw_border: bool,
 ) -> u16 {
-    if VIDEO_EXPORT_MODE.load(Ordering::Relaxed) {
+    if IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed) {
         return area.height;
     }
 

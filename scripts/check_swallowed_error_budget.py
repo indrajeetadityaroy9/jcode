@@ -13,7 +13,14 @@ Policy:
 - Existing files may not increase their count.
 - New production files may not introduce these patterns.
 - Total count may not increase.
-- `--update` refreshes the baseline after intentional cleanup.
+- A single line may opt out with a justified `// budget-ok: <reason>` comment,
+  which keeps the reason next to the code instead of absorbing it into an
+  opaque number. An unexplained `// budget-ok` is not honoured.
+- Shapes that discard no error are excluded outright (`NOT_AN_ERROR`), and the
+  detector proves itself against `MUST_COUNT`/`MUST_IGNORE` on every run.
+- `--update [PATH ...]` records current counts; naming paths avoids laundering
+  unrelated drift. `--moved OLD=NEW` re-keys after a pure move, `--prune`
+  retires dead entries, `--repair` re-derives the summary fields.
 """
 
 from __future__ import annotations
@@ -25,6 +32,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import budget_common as bc
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BASELINE_FILE = REPO_ROOT / "scripts" / "swallowed_error_budget.json"
 SCAN_ROOTS = (REPO_ROOT / "src", REPO_ROOT / "crates")
@@ -33,13 +42,66 @@ PATTERNS = {
     "dot_ok": re.compile(r"\.ok\(\)"),
     "unwrap_or_default": re.compile(r"\.unwrap_or_default\(\)"),
 }
+
+#: Shapes that match a pattern above but discard no error at all, so counting
+#: them only dilutes the signal. Each is here because this session's audits
+#: judged every instance benign, and each is provably not an error path:
+#:
+#: - `env::var(..).ok()`: `VarError` is only NotPresent/NotUnicode, so an unset
+#:   variable is an ordinary state and the `Option` is the intended shape.
+#: - `<option-producing call>.unwrap_or_default()`: the receiver returns
+#:   `Option`, not `Result` - `strip_prefix` guarded by `starts_with` accounted
+#:   for 14 of the 19 hits in one TUI file alone.
+#:
+#: Deliberately NOT excluded: `let _ = tx.send(..)`. Its `SendError` only fires
+#: once the receiver is gone, but events silently dropped because a consumer
+#: died early is a real defect class, so those stay countable and are opted out
+#: individually with `// budget-ok:` where a reviewer can see the reason.
+NOT_AN_ERROR = (
+    re.compile(r"(?:std::)?env::var(?:_os)?\s*\([^)]*\)\s*\.ok\(\)"),
+    # Option-only receivers. `map`, `and_then`, `as_ref` and `as_deref` are
+    # deliberately absent: they exist on `Result` too, so
+    # `fs::read_to_string(p).map(..).unwrap_or_default()` is a real discarded
+    # error and the first draft of this list wrongly excluded it. MUST_COUNT
+    # pins that case.
+    re.compile(
+        r"\.(?:strip_prefix|strip_suffix|get|get_mut|first|last|next|next_back|find"
+        r"|pop|front|back)\s*\([^;]*\)\s*\.unwrap_or_default\(\)"
+    ),
+)
+
+#: What this detector must and must not count, proven on every run.
+MUST_COUNT = (
+    "let _ = std::fs::write(&path, body);",
+    "let value = serde_json::from_str(text).ok();",
+    "let items: Vec<Item> = serde_json::from_str(raw).unwrap_or_default();",
+    "let _ = tx.send(ServerEvent::Pong { id }).await;",
+    # `Result::map` then `unwrap_or_default` discards the io error.
+    "let n = std::fs::read_to_string(&p).map(|s| s.len()).unwrap_or_default();",
+)
+MUST_IGNORE = (
+    'let path = std::env::var("HOME").ok();',
+    'let rest = trimmed.strip_prefix("/model").unwrap_or_default();',
+    "let _ = tx.send(event); // budget-ok: receiver dropped means nobody is listening",
+    "let value = compute(input);",
+)
+
+
+def counts_line(line: str) -> bool:
+    """Whether this line contributes to the budget."""
+    if bc.EXEMPTION_RE.search(line):
+        return False
+    if any(pattern.search(line) for pattern in NOT_AN_ERROR):
+        return False
+    return any(pattern.search(line) for pattern in PATTERNS.values())
+
 CFG_TEST_RE = re.compile(r"^\s*#\s*\[\s*cfg\s*\(\s*(?:all\s*\(\s*)?test\s*[,)]")
 ITEM_START_RE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:mod|fn)\b")
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--update", action="store_true", help="refresh the baseline")
+    bc.add_ledger_args(parser)
     return parser.parse_args()
 
 
@@ -115,6 +177,11 @@ def current_counts() -> dict[str, dict[str, int]]:
     for path in production_rust_files():
         file_counts = zero_counts()
         for line in production_lines(path):
+            # `counts_line` owns the decision - exemptions and provably
+            # non-error shapes are filtered there - so the per-pattern
+            # attribution below only runs on lines that actually count.
+            if not counts_line(line):
+                continue
             for name, pattern in PATTERNS.items():
                 if pattern.search(line):
                     file_counts[name] += 1
@@ -139,7 +206,7 @@ def grand_total(counts: dict[str, dict[str, int]]) -> int:
     return sum(file_total(file_counts) for file_counts in counts.values())
 
 
-def load_baseline() -> dict[str, Any]:
+def load_baseline(validate: bool = True) -> dict[str, Any]:
     if not BASELINE_FILE.exists():
         return {"version": 1, "total": 0, "totals_by_pattern": zero_counts(), "tracked_files": {}}
     data = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
@@ -159,6 +226,12 @@ def load_baseline() -> dict[str, Any]:
             raise SystemExit(f"error: invalid tracked_files entry in {BASELINE_FILE}")
         if any(not isinstance(v, int) or v < 0 for v in file_counts.values()):
             raise SystemExit(f"error: invalid count in tracked_files entry for {path}")
+    # Type checks alone let a ledger through whose summary contradicted its own
+    # rows, and every regression is measured against that summary.
+    if validate:
+        # Skipped for --repair, whose whole job is to fix an inconsistent
+        # ledger: validating first would make the remedy unreachable.
+        bc.validate_baseline(data, BASELINE_FILE)
     return data
 
 
@@ -181,18 +254,13 @@ def write_baseline(counts: dict[str, dict[str, int]]) -> None:
 
 def main() -> int:
     args = parse_args()
-    baseline = load_baseline()
+    bc.self_check("swallowed-error", counts_line, MUST_COUNT, MUST_IGNORE)
+    baseline = load_baseline(validate=not args.repair)
     current = current_counts()
     current_total = grand_total(current)
     current_pattern_totals = total_counts(current)
 
-    if args.update:
-        write_baseline(current)
-        print(
-            "Updated swallowed-error baseline: "
-            f"total={baseline['total']} -> {current_total}, "
-            f"files={len(baseline['tracked_files'])} -> {len(current)}"
-        )
+    if bc.run_ledger_edits(args, baseline, current, lambda data: bc.write_json(BASELINE_FILE, data)):
         return 0
 
     tracked: dict[str, dict[str, int]] = baseline["tracked_files"]
