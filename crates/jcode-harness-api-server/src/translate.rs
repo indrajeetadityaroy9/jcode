@@ -1317,9 +1317,6 @@ impl BridgeState {
                 &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
                 "gemini.env",
             )),
-            "jcode" | "subscription" | "jcode-subscription" => {
-                Some(("jcode", &["JCODE_API_KEY"], "jcode-subscription.env"))
-            }
             _ => None,
         }
     }

@@ -121,8 +121,8 @@ impl SetupHintsState {
     ///
     /// The atomic writer keeps the previous version at `.bak`. If the primary
     /// file is missing or unreadable (deleted, interrupted swap), fall back to
-    /// it instead of silently resetting state like `launch_count`, which
-    /// downstream heuristics (e.g. first-run onboarding) rely on.
+    /// it instead of silently resetting state like `launch_count`, which the
+    /// hint cadence relies on.
     fn load_from(path: &std::path::Path) -> Self {
         if let Ok(state) = storage::read_json(path) {
             return state;

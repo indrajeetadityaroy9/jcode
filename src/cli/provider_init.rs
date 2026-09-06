@@ -23,7 +23,6 @@ use crate::external_auth::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum ProviderChoice {
-    Jcode,
     Claude,
     #[value(alias = "claude-api", alias = "anthropic-key", alias = "claude-key")]
     AnthropicApi,
@@ -133,7 +132,6 @@ impl ProviderChoice {
     #[allow(deprecated)]
     pub fn as_arg_value(&self) -> &'static str {
         match self {
-            Self::Jcode => "jcode",
             Self::Claude => "claude",
             Self::AnthropicApi => "anthropic-api",
             Self::ClaudeSubprocess => "claude-subprocess",
@@ -186,10 +184,6 @@ impl ProviderChoice {
 
 #[allow(deprecated)]
 const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescriptor)] = &[
-    (
-        ProviderChoice::Jcode,
-        crate::provider_catalog::JCODE_LOGIN_PROVIDER,
-    ),
     (
         ProviderChoice::Claude,
         crate::provider_catalog::CLAUDE_LOGIN_PROVIDER,
@@ -1198,20 +1192,6 @@ fn explicit_credential_mode(choice: &ProviderChoice) -> Option<provider::Credent
     }
 }
 
-fn disable_subscription_runtime_mode() {
-    crate::subscription_catalog::clear_runtime_env();
-}
-
-fn disable_subscription_runtime_mode_preserving_active_provider_profile() {
-    if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_some()
-        || std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_some()
-    {
-        crate::env::remove_var(crate::subscription_catalog::JCODE_SUBSCRIPTION_ACTIVE_ENV);
-    } else {
-        disable_subscription_runtime_mode();
-    }
-}
-
 pub fn apply_login_provider_profile_env(provider: LoginProviderDescriptor) {
     // #712: the arms below clear an explicitly selected named profile, which
     // made auth-test probe (and false-negative) the generic compatible slot.
@@ -1252,30 +1232,17 @@ pub async fn login_and_bootstrap_provider(
     eprintln!();
 
     let runtime: Arc<dyn provider::Provider> = match provider.target {
-        LoginProviderTarget::AutoImport => {
-            disable_subscription_runtime_mode();
-            Arc::new(provider::MultiProvider::new())
-        }
-        LoginProviderTarget::Jcode => Arc::new(provider::jcode::JcodeProvider::new()),
-        LoginProviderTarget::Claude | LoginProviderTarget::ClaudeApiKey => {
-            disable_subscription_runtime_mode();
-            Arc::new(provider::MultiProvider::new())
-        }
-        LoginProviderTarget::OpenAi => {
-            disable_subscription_runtime_mode();
-            Arc::new(provider::MultiProvider::with_preference(true))
-        }
+        LoginProviderTarget::AutoImport
+        | LoginProviderTarget::Claude
+        | LoginProviderTarget::ClaudeApiKey
+        | LoginProviderTarget::Copilot
+        | LoginProviderTarget::OpenRouter => Arc::new(provider::MultiProvider::new()),
+        LoginProviderTarget::OpenAi => Arc::new(provider::MultiProvider::with_preference(true)),
         LoginProviderTarget::OpenAiApiKey => {
-            disable_subscription_runtime_mode();
             select_initial_model_provider("openai");
             Arc::new(provider::MultiProvider::with_preference(true))
         }
-        LoginProviderTarget::OpenRouter => {
-            disable_subscription_runtime_mode();
-            Arc::new(provider::MultiProvider::new())
-        }
         LoginProviderTarget::Azure => {
-            disable_subscription_runtime_mode();
             let model = crate::provider::activation::apply_azure_openai_runtime()?;
             let multi = provider::MultiProvider::new();
             if let Some(model) = model {
@@ -1284,7 +1251,6 @@ pub async fn login_and_bootstrap_provider(
             Arc::new(multi)
         }
         LoginProviderTarget::OpenAiCompatible(profile) => {
-            disable_subscription_runtime_mode();
             apply_openai_compatible_profile_env(Some(profile));
             let multi = provider::MultiProvider::new();
             let resolved = resolve_openai_compatible_profile(profile);
@@ -1297,23 +1263,16 @@ pub async fn login_and_bootstrap_provider(
             Arc::new(multi)
         }
         LoginProviderTarget::Cursor => {
-            disable_subscription_runtime_mode();
             clear_initial_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
             Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
         }
-        LoginProviderTarget::Copilot => {
-            disable_subscription_runtime_mode();
-            Arc::new(provider::MultiProvider::new())
-        }
         LoginProviderTarget::Gemini => {
-            disable_subscription_runtime_mode();
             clear_initial_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
             Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new())
         }
         LoginProviderTarget::Antigravity => {
-            disable_subscription_runtime_mode();
             clear_initial_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new())
@@ -1400,26 +1359,19 @@ async fn init_provider_with_options(
     };
 
     let provider: Arc<dyn provider::Provider> = match choice {
-        ProviderChoice::Jcode => {
-            init_notice("Using Jcode subscription provider");
-            Arc::new(provider::jcode::JcodeProvider::new())
-        }
         ProviderChoice::Claude => {
-            disable_subscription_runtime_mode();
             ensure_claude_auth_allowed_for_explicit_choice()?;
             init_notice("Using Claude as the initial provider (use /model to switch)");
             select_initial_model_provider("claude");
             Arc::new(provider::MultiProvider::with_preference_fast(false))
         }
         ProviderChoice::AnthropicApi => {
-            disable_subscription_runtime_mode();
             ensure_external_api_key_auth_allowed_for_explicit_choice("ANTHROPIC_API_KEY")?;
             init_notice("Using Anthropic API key as the initial provider (use /model to switch)");
             select_initial_model_provider("claude");
             Arc::new(provider::MultiProvider::with_preference_fast(false))
         }
         ProviderChoice::ClaudeSubprocess => {
-            disable_subscription_runtime_mode();
             ensure_claude_auth_allowed_for_explicit_choice()?;
             crate::logging::warn(
                 "Using --provider claude-subprocess is deprecated and will be removed. Prefer `--provider claude`.",
@@ -1432,21 +1384,18 @@ async fn init_provider_with_options(
             Arc::new(provider::MultiProvider::with_preference_fast(false))
         }
         ProviderChoice::Openai => {
-            disable_subscription_runtime_mode();
             ensure_openai_auth_allowed_for_explicit_choice()?;
             init_notice("Using OpenAI as the initial provider (use /model to switch)");
             select_initial_model_provider("openai");
             Arc::new(provider::MultiProvider::with_preference_fast(true))
         }
         ProviderChoice::OpenaiApi => {
-            disable_subscription_runtime_mode();
             ensure_external_api_key_auth_allowed_for_explicit_choice("OPENAI_API_KEY")?;
             init_notice("Using OpenAI API key as the initial provider (use /model to switch)");
             select_initial_model_provider("openai");
             Arc::new(provider::MultiProvider::with_preference_fast(true))
         }
         ProviderChoice::Cursor => {
-            disable_subscription_runtime_mode();
             ensure_cursor_auth_allowed_for_explicit_choice()?;
             init_notice("Using Cursor native HTTPS provider (experimental)");
             clear_initial_model_provider();
@@ -1454,14 +1403,12 @@ async fn init_provider_with_options(
             Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
         }
         ProviderChoice::Copilot => {
-            disable_subscription_runtime_mode();
             ensure_copilot_auth_allowed_for_explicit_choice()?;
             init_notice("Using GitHub Copilot API as the initial provider (use /model to switch)");
             select_initial_model_provider("copilot");
             Arc::new(provider::MultiProvider::new_fast())
         }
         ProviderChoice::Gemini => {
-            disable_subscription_runtime_mode();
             ensure_gemini_auth_allowed_for_explicit_choice()?;
             if auth::gemini::has_api_key() {
                 init_notice(
@@ -1475,14 +1422,12 @@ async fn init_provider_with_options(
             Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new())
         }
         ProviderChoice::Openrouter => {
-            disable_subscription_runtime_mode();
             ensure_external_api_key_auth_allowed_for_explicit_choice("OPENROUTER_API_KEY")?;
             init_notice("Using OpenRouter as the initial provider (use /model to switch)");
             select_initial_model_provider("openrouter");
             Arc::new(provider::MultiProvider::new_fast())
         }
         ProviderChoice::Azure => {
-            disable_subscription_runtime_mode();
             let model = crate::provider::activation::apply_azure_openai_runtime()?;
             init_notice("Using Azure OpenAI as the initial provider (use /model to switch)");
             let multi = provider::MultiProvider::new_fast();
@@ -1525,7 +1470,6 @@ async fn init_provider_with_options(
         | ProviderChoice::AlibabaCodingPlan
         | ProviderChoice::GeminiApi
         | ProviderChoice::OpenaiCompatible => {
-            disable_subscription_runtime_mode();
             let profile = profile_for_choice(choice)
                 .ok_or_else(|| anyhow::anyhow!("missing provider profile for choice"))?;
             if std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_none() {
@@ -1573,7 +1517,6 @@ async fn init_provider_with_options(
             }
         }
         ProviderChoice::Antigravity => {
-            disable_subscription_runtime_mode();
             ensure_antigravity_auth_allowed_for_explicit_choice()?;
             init_notice("Using Antigravity provider (experimental)");
             clear_initial_model_provider();
@@ -1581,7 +1524,6 @@ async fn init_provider_with_options(
             Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new())
         }
         ProviderChoice::Auto => {
-            disable_subscription_runtime_mode_preserving_active_provider_profile();
             clear_initial_model_provider();
             let auto_detect_start = std::time::Instant::now();
             let mut availability = detect_auto_provider_flags().await;
@@ -1729,7 +1671,7 @@ async fn init_provider_with_options(
                 // genuinely headless callers still fail loudly.
                 if std::env::var_os("JCODE_DEFERRED_AUTH_BOOTSTRAP").is_some() {
                     crate::logging::info(
-                        "No credentials configured; booting deferred-auth MultiProvider for in-TUI onboarding login",
+                        "No credentials configured; booting deferred-auth MultiProvider for in-TUI login",
                     );
                     let multi = provider::MultiProvider::from_auth_status(availability.auth_status);
                     crate::env::set_var("JCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());

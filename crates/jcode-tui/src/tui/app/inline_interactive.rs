@@ -638,49 +638,6 @@ impl App {
     /// auth method: an older session may have baked an OAuth-only fallback
     /// route into the cache, which would otherwise permanently hide the
     /// API-key route for that model.
-    fn append_jcode_subscription_routes_static(
-        remote_available_entries: &[String],
-        routes: &mut Vec<crate::provider::ModelRoute>,
-        require_credentials: bool,
-        require_remote_advertisement: bool,
-    ) {
-        if require_credentials && !crate::subscription_catalog::has_credentials() {
-            return;
-        }
-
-        let tier = crate::subscription_catalog::effective_tier();
-        let existing = routes
-            .iter()
-            .filter(|route| {
-                route
-                    .api_method
-                    .eq_ignore_ascii_case(crate::subscription_catalog::JCODE_ROUTE_API_METHOD)
-            })
-            .filter_map(|route| crate::subscription_catalog::canonical_model_id(&route.model))
-            .collect::<HashSet<_>>();
-        for model in crate::subscription_catalog::curated_models()
-            .iter()
-            .filter(|model| {
-                tier.allows(model.min_tier)
-                    && !existing.contains(model.id)
-                    && (!require_remote_advertisement
-                        || remote_available_entries.iter().any(|available| {
-                            crate::subscription_catalog::canonical_model_id(available)
-                                == Some(model.id)
-                        }))
-            })
-        {
-            routes.push(crate::provider::ModelRoute {
-                model: model.id.to_string(),
-                provider: crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-                api_method: crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
-                available: true,
-                detail: crate::subscription_catalog::routing_policy_detail(model),
-                cheapness: None,
-            });
-        }
-    }
-
     fn extend_remote_routes_for_uncovered_models(
         &self,
         routes: &mut Vec<crate::provider::ModelRoute>,
@@ -703,45 +660,6 @@ impl App {
         routes: &mut Vec<crate::provider::ModelRoute>,
     ) {
         if remote_available_entries.is_empty() {
-            return;
-        }
-        // Jcode subscription routes are a complete, server-managed catalog.
-        // Do not mix in locally configured Anthropic/OpenAI credentials merely
-        // because a curated model also belongs to one of those upstreams.
-        let provider_is_jcode_subscription = remote_provider_name.is_some_and(|name| {
-            name.eq_ignore_ascii_case(crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME)
-        });
-        if provider_is_jcode_subscription {
-            routes.clear();
-            Self::append_jcode_subscription_routes_static(
-                remote_available_entries,
-                routes,
-                false,
-                false,
-            );
-            return;
-        }
-        let poisoned_by_jcode_subscription = !routes.is_empty()
-            && routes.iter().all(|route| {
-                route
-                    .api_method
-                    .eq_ignore_ascii_case(crate::subscription_catalog::JCODE_ROUTE_API_METHOD)
-            });
-        if poisoned_by_jcode_subscription {
-            // Version 1 could turn a mixed provider catalog into all-Jcode rows
-            // after seeing just one managed subscription route. Rebuild ordinary
-            // routes from the names catalog, then append only the current tier's
-            // actual subscription entitlements.
-            *routes = crate::provider::remote_model_routes_fallback(
-                remote_provider_name,
-                remote_available_entries,
-            );
-            Self::append_jcode_subscription_routes_static(
-                remote_available_entries,
-                routes,
-                false,
-                true,
-            );
             return;
         }
         let mut methods_by_model: std::collections::HashMap<&str, HashSet<&str>> =
@@ -795,18 +713,6 @@ impl App {
                 }
             }
         }
-        // Detailed provider hydration describes ordinary configured routes. A
-        // signed-in Jcode subscriber still needs the managed route for each
-        // entitled curated model alongside those Anthropic/OpenAI/etc. rows.
-        // The curated client catalog is versioned with the backend and is the
-        // authority for managed subscription entitlements. Do not hide newly
-        // launched subscription models behind a stale remote names snapshot.
-        Self::append_jcode_subscription_routes_static(
-            remote_available_entries,
-            routes,
-            true,
-            false,
-        );
     }
 
     fn hydrate_remote_model_catalog_snapshot(
@@ -2386,7 +2292,6 @@ impl App {
                     }
                     "Active sessions loaded"
                 }
-                SessionPickerMode::Onboarding => return false,
             };
             self.set_status_notice(notice);
             return true;
@@ -2418,9 +2323,6 @@ impl App {
                 self.set_status_notice("Active sessions loaded");
                 true
             }
-            // Onboarding constructs its action-only picker synchronously, so it
-            // never flows through this async path.
-            SessionPickerMode::Onboarding => false,
         }
     }
 
@@ -2881,52 +2783,7 @@ impl App {
             OverlayAction::Continue => {}
             OverlayAction::Close => {
                 self.session_picker_overlay = None;
-                if self.session_picker_mode == SessionPickerMode::Onboarding {
-                    // Escaping the onboarding choice starts a clean new session.
-                    self.session_picker_mode = SessionPickerMode::Resume;
-                    self.onboarding_show_suggestions();
-                } else {
-                    self.session_picker_mode = SessionPickerMode::Resume;
-                }
-            }
-            OverlayAction::Selected(result)
-                if matches!(self.session_picker_mode, SessionPickerMode::Onboarding) =>
-            {
-                let ids = match result {
-                    PickerResult::Selected(ids)
-                    | PickerResult::SelectedInNewTerminal(ids)
-                    | PickerResult::SelectedInCurrentTerminal(ids) => ids,
-                    PickerResult::TakeOverClaude(target) => {
-                        if self.handle_live_claude_takeover(&target) {
-                            self.onboarding_finish();
-                        }
-                        return Ok(());
-                    }
-                    PickerResult::RestoreCrashedGroup(_) => Vec::new(),
-                    PickerResult::StartNewSession => {
-                        // User explicitly chose to start fresh; close the picker
-                        // and show the onboarding suggestion cards.
-                        self.session_picker_overlay = None;
-                        self.session_picker_mode = SessionPickerMode::Resume;
-                        self.onboarding_show_suggestions();
-                        return Ok(());
-                    }
-                    PickerResult::ReviewRecentProject => {
-                        self.session_picker_overlay = None;
-                        self.session_picker_mode = SessionPickerMode::Resume;
-                        self.onboarding_start_recent_project_review();
-                        return Ok(());
-                    }
-                };
-                self.session_picker_overlay = None;
                 self.session_picker_mode = SessionPickerMode::Resume;
-                if ids.is_empty() {
-                    self.onboarding_show_suggestions();
-                } else {
-                    // Single-select: resume only the first chosen transcript.
-                    self.handle_session_picker_current_terminal_selection(&ids[..1]);
-                    self.onboarding_finish();
-                }
             }
             OverlayAction::Selected(PickerResult::Selected(ids))
             | OverlayAction::Selected(PickerResult::SelectedInNewTerminal(ids)) => {
@@ -2950,19 +2807,6 @@ impl App {
             }
             OverlayAction::Selected(PickerResult::RestoreCrashedGroup(session_ids)) => {
                 self.handle_batch_crash_restore(&session_ids);
-            }
-            OverlayAction::Selected(PickerResult::StartNewSession) => {
-                // Only the onboarding picker emits this, and that case is
-                // handled by the onboarding arm above. Outside onboarding,
-                // treat it as a no-op close.
-                self.session_picker_overlay = None;
-                self.session_picker_mode = SessionPickerMode::Resume;
-            }
-            OverlayAction::Selected(PickerResult::ReviewRecentProject) => {
-                // Only the onboarding picker emits this. Outside onboarding,
-                // close defensively without launching a proactive turn.
-                self.session_picker_overlay = None;
-                self.session_picker_mode = SessionPickerMode::Resume;
             }
         }
         Ok(())
@@ -3575,8 +3419,6 @@ impl App {
                         } else {
                             format!("{} · {}", notice, route_detail)
                         });
-                        // First-run onboarding: a model choice advances the flow.
-                        self.onboarding_after_model_select();
                     }
                 }
             }

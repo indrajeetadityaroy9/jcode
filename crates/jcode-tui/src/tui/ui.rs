@@ -70,8 +70,6 @@ mod memory_estimates;
 mod memory_ui;
 #[path = "ui_messages.rs"]
 mod messages;
-#[path = "ui_onboarding.rs"]
-mod onboarding;
 mod output_style;
 #[path = "ui_overlays.rs"]
 mod overlays;
@@ -1508,19 +1506,6 @@ fn clear_test_render_state_locked() {
     TEST_PROMPT_VIEWPORT_STATE.with(|state| {
         *state.borrow_mut() = PromptViewportState::default();
     });
-}
-
-/// Test-only: render just the onboarding welcome screen into `area`, using the
-/// exact same code path the live UI uses. Lets onboarding golden/snapshot tests
-/// capture the rendered copy without reaching into the private `onboarding`
-/// submodule.
-#[cfg(test)]
-pub(crate) fn draw_onboarding_welcome_for_tests(
-    frame: &mut ratatui::Frame,
-    app: &dyn crate::tui::TuiState,
-    area: ratatui::layout::Rect,
-) {
-    onboarding::draw_onboarding_welcome(frame, app, area);
 }
 
 #[derive(Clone)]
@@ -2965,32 +2950,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         prepared
     };
 
-    let onboarding_welcome = app.onboarding_welcome_active();
-
-    // The guided onboarding phases (login import, OpenAI prompt, continue prompt)
-    // are entirely key-driven and own the whole chat column: they render their own
-    // a prominent donut and the welcome body. Suppress the
-    // normal chat chrome (status line, input box, notification, idle hint) so the
-    // screen stays focused and the donut gets the full height. The resting
-    // Suggestions screen keeps the input box so the user can type to start.
-    let onboarding_takes_over = onboarding_welcome
-        && !matches!(
-            app.onboarding_welcome_kind(),
-            crate::tui::OnboardingWelcomeKind::Suggestions
-        );
-    if onboarding_takes_over {
-        onboarding::draw_onboarding_welcome(frame, app, chat_area);
-        finalize_frame_metrics(
-            app,
-            total_start,
-            prep_start.elapsed(),
-            total_start.elapsed(),
-            None,
-        );
-        return;
-    }
-
-    let show_donut = !onboarding_welcome && super::idle_donut_active(app);
+    let show_donut = super::idle_donut_active(app);
     let donut_height: u16 = idle_donut_reserved_height(show_donut, input_height);
     let notification_height: u16 = if app.has_notification() { 1 } else { 0 };
     // Elastic overscroll status line revealed when the user scrolls past the
@@ -3241,15 +3201,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     }
     record_layout_snapshot(messages_area, diagram_area, diff_pane_area, Some(chunks[7]));
 
-    let margins = if onboarding_welcome {
-        onboarding::draw_onboarding_welcome(frame, app, messages_area);
-        info_widget::Margins {
-            right_widths: Vec::new(),
-            left_widths: Vec::new(),
-            centered: app.centered_mode(),
-            ..Default::default()
-        }
-    } else if swarm_page_active {
+    let margins = if swarm_page_active {
         let members = app.inline_swarm_members();
         let spinner_frame =
             (app.animation_elapsed() * jcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS) as usize;

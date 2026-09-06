@@ -98,9 +98,7 @@ impl MultiProvider {
             LoginProviderTarget::Copilot => Some("copilot"),
             LoginProviderTarget::Gemini => Some("gemini"),
             LoginProviderTarget::Antigravity => Some("antigravity"),
-            LoginProviderTarget::AutoImport
-            | LoginProviderTarget::Jcode
-            | LoginProviderTarget::Azure => None,
+            LoginProviderTarget::AutoImport | LoginProviderTarget::Azure => None,
         }
     }
 
@@ -163,7 +161,6 @@ impl MultiProvider {
         };
 
         let provider_key = match &api_method_kind {
-            ModelRouteApiMethod::JcodeSubscription => Some("jcode".to_string()),
             ModelRouteApiMethod::AnthropicApiKey
                 if provider_display == "Anthropic"
                     && crate::provider::provider_for_model(bare_name) == Some("claude") =>
@@ -305,7 +302,6 @@ impl MultiProvider {
     fn session_provider_key_from_provider_name(provider_name: &str) -> Option<String> {
         let normalized = provider_name.trim().to_ascii_lowercase();
         let key = match normalized.as_str() {
-            "jcode" => "jcode",
             "anthropic" | "claude" | "claude cli" => "claude",
             "openai" => "openai",
             "github copilot" | "copilot" => "copilot",
@@ -456,7 +452,6 @@ impl MultiProvider {
             .filter(|api_method| !api_method.is_empty())
         {
             match ModelRouteApiMethod::parse(api_method) {
-                ModelRouteApiMethod::JcodeSubscription => return model.to_string(),
                 ModelRouteApiMethod::ClaudeOAuth => return format!("claude-oauth:{model}"),
                 ModelRouteApiMethod::AnthropicApiKey => return format!("claude-api:{model}"),
                 ModelRouteApiMethod::OpenAIOAuth => return format!("openai-oauth:{model}"),
@@ -891,5 +886,9 @@ mod tests {
             Some(ActiveProvider::OpenRouter)
         );
         assert!(MultiProvider::resolve_config_provider_selection("unknown", &cfg).is_none());
+        // A `default_provider = "jcode"` left over from the removed
+        // first-party subscription must degrade like any other unknown
+        // provider name instead of resolving or panicking.
+        assert!(MultiProvider::resolve_config_provider_selection("jcode", &cfg).is_none());
     }
 }

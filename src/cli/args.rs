@@ -25,7 +25,7 @@ pub(crate) enum ProviderAuthArg {
 #[command(version = jcode_build_meta::version())]
 #[command(about = "J-Code: A coding agent using Claude Max or ChatGPT Pro subscriptions")]
 pub(crate) struct Args {
-    /// Initial provider to use (jcode, claude, openai, openai-api, openrouter, azure, opencode, opencode-go, zai, 302ai, baseten, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, or auto-detect). Interactive sessions can switch providers with /model.
+    /// Initial provider to use (claude, openai, openai-api, openrouter, azure, opencode, opencode-go, zai, 302ai, baseten, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, or auto-detect). Interactive sessions can switch providers with /model.
     #[arg(short, long, default_value = "auto", global = true)]
     pub(crate) provider: ProviderChoice,
 
@@ -60,12 +60,6 @@ pub(crate) struct Args {
     /// Internal: launched as a freshly spawned window, so skip heavy local resume bootstrap.
     #[arg(long, global = true, hide = true)]
     pub(crate) fresh_spawn: bool,
-
-    /// Start the onboarding simulator on launch (same as `/onboarding-sim`).
-    /// Steps through every first-run onboarding screen with synthetic data;
-    /// never touches real auth state.
-    #[arg(long = "onboarding-sim")]
-    pub(crate) onboarding_sim: bool,
 
     /// Custom socket path for server/client communication
     #[arg(long, global = true)]
@@ -208,12 +202,6 @@ pub(crate) enum Command {
         /// Environment variable name to store/use for an OpenAI-compatible API key.
         #[arg(long)]
         api_key_env: Option<String>,
-    },
-
-    /// Log in to and manage your Jcode account
-    Account {
-        #[command(subcommand)]
-        action: AccountCommand,
     },
 
     /// Run in simple REPL mode (no TUI)
@@ -477,26 +465,6 @@ pub(crate) enum Command {
         #[arg(long = "api-socket")]
         api_socket: Option<String>,
     },
-}
-
-#[derive(Subcommand, Debug)]
-pub(crate) enum AccountCommand {
-    /// Open browser-based device authorization and wait for plan activation
-    Login {
-        /// Do not open a browser automatically; print the public approval URL instead
-        #[arg(long, alias = "headless")]
-        no_browser: bool,
-    },
-    /// Show canonical account, plan, and usage status from /v1/me
-    Status {
-        /// Emit JSON instead of human-readable output
-        #[arg(long)]
-        json: bool,
-    },
-    /// Open the public Jcode account management page
-    Manage,
-    /// Revoke the current key when reachable, then securely clear local state
-    Logout,
 }
 
 #[derive(Subcommand, Debug)]

@@ -217,56 +217,6 @@ pub fn provider_model_to_select_after_auth(
     matching_routes.first().map(|route| route.model.clone())
 }
 
-/// Pick the strongest available route across every authenticated provider.
-///
-/// This is intentionally separate from [`provider_model_to_select_after_auth`],
-/// which keeps normal re-authentication scoped to the provider that changed.
-/// First-run onboarding can use this global selector after importing multiple
-/// accounts. Returning the complete route preserves OAuth/API-key/profile
-/// identity when the caller applies the selection.
-pub fn globally_preferred_default_route(routes: &[ModelRoute]) -> Option<ModelRoute> {
-    routes
-        .iter()
-        .enumerate()
-        .filter(|(_, route)| route.available)
-        .min_by_key(|(catalog_index, route)| {
-            (globally_preferred_model_rank(&route.model), *catalog_index)
-        })
-        .map(|(_, route)| route.clone())
-}
-
-fn globally_preferred_model_rank(model: &str) -> (u8, usize) {
-    let normalized = normalize_model_for_preference(model);
-    let openai_default = normalize_model_for_preference(jcode_provider_core::DEFAULT_OPENAI_MODEL);
-    let claude_default = normalize_model_for_preference(jcode_provider_core::DEFAULT_CLAUDE_MODEL);
-
-    if normalized == openai_default {
-        return (0, 0);
-    }
-    // Some catalogs expose the clean release id instead of jcode's Sol route.
-    if normalized == "gpt-5.6" {
-        return (1, 0);
-    }
-    if normalized == claude_default {
-        return (2, 0);
-    }
-    if let Some(position) = crate::provider::ALL_CLAUDE_MODELS
-        .iter()
-        .position(|candidate| normalize_model_for_preference(candidate) == normalized)
-    {
-        return (3, position);
-    }
-    if let Some(position) = crate::provider::ALL_OPENAI_MODELS
-        .iter()
-        .position(|candidate| normalize_model_for_preference(candidate) == normalized)
-    {
-        return (4, position);
-    }
-
-    // Unknown provider families retain catalog order as the final fallback.
-    (5, usize::MAX)
-}
-
 /// Curated flagship-first order for Gemini (Code Assist OAuth + Gemini API).
 /// `pro` is Gemini's flagship tier and `flash`/`lite` are the cheaper tiers, so
 /// (unlike Claude/OpenAI) `pro` must NOT be treated as a non-flagship marker for
@@ -705,14 +655,6 @@ fn route_matches_activation(route: &ModelRoute, activation: &AuthActivationResul
                 crate::provider::ModelRouteApiMethod::CodeAssistOAuth
             );
         }
-        "jcode" => {
-            // Jcode subscription routes deliberately keep their managed public
-            // identity even though the runtime reuses OpenRouter transport code.
-            return matches!(
-                api_method,
-                crate::provider::ModelRouteApiMethod::JcodeSubscription
-            );
-        }
         "azure-openai" => {
             // Azure OpenAI reuses the OpenRouter transport (configured via Azure
             // env), so its routes carry the `openrouter` api_method while keeping
@@ -762,42 +704,6 @@ pub fn normalized_auth_provider_id(provider_hint: Option<&str>) -> Option<&'stat
     }
 }
 
-/// Pick the preferred first-run provider when the machine already has working
-/// OpenAI and/or Anthropic credentials. Keep this aligned with
-/// `jcode_provider_core::auto_default_provider`: Claude wins when both families
-/// are available, and OAuth wins over an API key within the same family.
-///
-/// Returning the auth-specific provider id (`openai` vs `openai-api`, `claude`
-/// vs `claude-api`) matters because post-login activation uses it to select the
-/// matching route and its strongest available model.
-pub fn preferred_frontier_auth_provider(status: &crate::auth::AuthStatus) -> Option<&'static str> {
-    use crate::auth::AuthState;
-
-    if status.anthropic.state == AuthState::Available {
-        if status.anthropic.has_oauth && status.anthropic.oauth_state == AuthState::Available {
-            return Some("claude");
-        }
-        if status.anthropic.has_api_key {
-            return Some("claude-api");
-        }
-        return Some("claude");
-    }
-
-    if status.openai == AuthState::Available {
-        if status.openai_has_oauth && status.openai_oauth_state == AuthState::Available {
-            return Some("openai");
-        }
-        if status.openai_has_api_key {
-            return Some("openai-api");
-        }
-        // Preserve compatibility with older/partial status snapshots that only
-        // populated the aggregate state.
-        return Some("openai");
-    }
-
-    None
-}
-
 fn normalized_login_provider_id(provider_id: &str) -> Option<&'static str> {
     match provider_id.trim().to_ascii_lowercase().as_str() {
         "claude" | "anthropic" => Some("claude"),
@@ -807,7 +713,6 @@ fn normalized_login_provider_id(provider_id: &str) -> Option<&'static str> {
             Some("openai-api")
         }
         "openrouter" => Some("openrouter"),
-        "jcode" | "subscription" | "jcode-subscription" => Some("jcode"),
         "cursor" => Some("cursor"),
         "copilot" => Some("copilot"),
         "gemini" => Some("gemini"),
@@ -859,16 +764,6 @@ fn api_key_env_bindings_for_provider(provider_id: &str) -> Vec<(String, String)>
             "OPENROUTER_API_KEY".to_string(),
             "openrouter.env".to_string(),
         )],
-        "jcode" => vec![
-            (
-                crate::subscription_catalog::JCODE_API_KEY_ENV.to_string(),
-                crate::subscription_catalog::JCODE_ENV_FILE.to_string(),
-            ),
-            (
-                crate::subscription_catalog::JCODE_API_BASE_ENV.to_string(),
-                crate::subscription_catalog::JCODE_ENV_FILE.to_string(),
-            ),
-        ],
         "cursor" => vec![("CURSOR_API_KEY".to_string(), "cursor.env".to_string())],
         "gemini" => super::gemini::GEMINI_API_KEY_ENV_VARS
             .iter()
@@ -1048,7 +943,6 @@ fn direct_provider_activation(provider_id: &str) -> Option<ProviderActivation> {
         "openai" => (RuntimeProviderId::OpenAi, ActiveProvider::OpenAI),
         "openai-api" => (RuntimeProviderId::OpenAiApiKey, ActiveProvider::OpenAI),
         "openrouter" => (RuntimeProviderId::OpenRouter, ActiveProvider::OpenRouter),
-        "jcode" => (RuntimeProviderId::Jcode, ActiveProvider::OpenRouter),
         "cursor" => (RuntimeProviderId::Cursor, ActiveProvider::Cursor),
         "copilot" => (RuntimeProviderId::Copilot, ActiveProvider::Copilot),
         "gemini" => (RuntimeProviderId::Gemini, ActiveProvider::Gemini),
@@ -1077,7 +971,6 @@ pub fn model_switch_request_for_provider_id(
         Some("openai") => format!("openai-oauth:{}", model),
         Some("openai-api") => format!("openai-api:{}", model),
         Some("openrouter") => format!("openrouter:{}", model),
-        Some("jcode") => model.to_string(),
         Some("cursor") => format!("cursor:{}", model),
         Some("copilot") => format!("copilot:{}", model),
         Some("gemini") => format!("gemini:{}", model),
@@ -1286,7 +1179,6 @@ mod tests {
             ("openai", "openai", "OpenAI"),
             ("openai-key", "openai-api", "OpenAI API"),
             ("openrouter", "openrouter", "OpenRouter"),
-            ("subscription", "jcode", "Jcode Subscription"),
             ("cursor", "cursor", "Cursor"),
             ("copilot", "copilot", "GitHub Copilot"),
             ("gemini", "gemini", "Google Gemini"),
@@ -1337,7 +1229,6 @@ mod tests {
             ("openai", "openai", "openai"),
             ("openai-api", "openai-api", "openai"),
             ("openrouter", "openrouter", "openrouter"),
-            ("jcode", "jcode", "openrouter"),
             ("cursor", "cursor", "cursor"),
             ("copilot", "copilot", "copilot"),
             ("gemini", "gemini", "gemini"),
@@ -1377,9 +1268,6 @@ mod tests {
         let mut covered = Vec::new();
         for provider in crate::provider_catalog::login_providers() {
             let Some((normalized, runtime, active, switch_prefix)) = (match provider.target {
-                crate::provider_catalog::LoginProviderTarget::Jcode => {
-                    Some(("jcode", "jcode", "openrouter", ""))
-                }
                 crate::provider_catalog::LoginProviderTarget::Claude => {
                     Some(("claude", "claude", "claude", "claude-oauth"))
                 }
@@ -1460,14 +1348,9 @@ mod tests {
                 std::env::var("JCODE_INITIAL_PROVIDER_EXPLICIT").as_deref(),
                 Ok("1")
             );
-            let expected_switch = if switch_prefix.is_empty() {
-                "shared-model".to_string()
-            } else {
-                format!("{switch_prefix}:shared-model")
-            };
             assert_eq!(
                 activation.model_switch_request("ignored-runtime", "shared-model"),
-                expected_switch,
+                format!("{switch_prefix}:shared-model"),
                 "{} direct auth model switch must preserve its canonical route identity",
                 provider.id
             );
@@ -1479,7 +1362,6 @@ mod tests {
             "openai",
             "openai-api",
             "openrouter",
-            "jcode",
             "cursor",
             "copilot",
             "gemini",
@@ -1513,7 +1395,6 @@ mod tests {
             ("openai", "openai-oauth:shared-model"),
             ("openai-api", "openai-api:shared-model"),
             ("openrouter", "openrouter:shared-model"),
-            ("jcode", "shared-model"),
             ("azure-openai", "openrouter:shared-model"),
             ("cursor", "cursor:shared-model"),
             ("copilot", "copilot:shared-model"),
@@ -1527,44 +1408,6 @@ mod tests {
                 "{provider} auth switch request must route explicitly so duplicate model IDs cannot select the wrong provider"
             );
         }
-    }
-
-    #[test]
-    fn jcode_auth_lifecycle_matches_only_managed_subscription_routes() {
-        let activation = AuthActivationResult {
-            provider_id: Some("jcode".to_string()),
-            provider_label: Some("Jcode Subscription".to_string()),
-            activated_model: Some("gpt-5.5".to_string()),
-            expected_runtime: Some("jcode-subscription".to_string()),
-            expected_catalog_namespace: Some("jcode-subscription".to_string()),
-        };
-        let routes = vec![
-            route("gpt-5.5", "OpenRouter", "openrouter", true),
-            route(
-                "gpt-5.5",
-                "Jcode Subscription",
-                crate::subscription_catalog::JCODE_ROUTE_API_METHOD,
-                true,
-            ),
-        ];
-
-        let report = validate_catalog_invariants(&activation, Some("gpt-5.5"), &routes);
-        assert!(
-            report.ok(),
-            "canonical Jcode route should match: {report:?}"
-        );
-        assert_eq!(report.selectable_provider_routes, 1);
-        assert_eq!(
-            report.route_sample,
-            vec![format!(
-                "`gpt-5.5` via {}",
-                crate::subscription_catalog::JCODE_ROUTE_API_METHOD
-            )]
-        );
-        assert_eq!(
-            activation.model_switch_request("Jcode Subscription", "gpt-5.5"),
-            "gpt-5.5"
-        );
     }
 
     #[test]
@@ -1781,59 +1624,6 @@ mod tests {
             provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
             Some("gpt-5.6-sol")
         );
-    }
-
-    #[test]
-    fn global_default_route_prefers_gpt_5_6_over_fable_and_preserves_route() {
-        let routes = vec![
-            route("gpt-5.5", "OpenAI", "openai-api-key", true),
-            route("claude-fable-5", "Anthropic", "anthropic-api-key", true),
-            route("gpt-5.6-sol", "OpenAI", "openai-oauth", true),
-        ];
-
-        let selected = globally_preferred_default_route(&routes).expect("strongest route");
-        assert_eq!(selected.model, "gpt-5.6-sol");
-        assert_eq!(selected.provider, "OpenAI");
-        assert_eq!(selected.api_method, "openai-oauth");
-    }
-
-    #[test]
-    fn global_default_route_uses_clean_gpt_5_6_then_fable_before_weaker_models() {
-        let clean_release = vec![
-            route("claude-fable-5", "Anthropic", "claude-oauth", true),
-            route("gpt-5.6", "OpenAI", "openai-api-key", true),
-        ];
-        assert_eq!(
-            globally_preferred_default_route(&clean_release)
-                .as_ref()
-                .map(|route| route.model.as_str()),
-            Some("gpt-5.6")
-        );
-
-        let unavailable_gpt = vec![
-            route("gpt-5.6-sol", "OpenAI", "openai-api-key", false),
-            route("gpt-5.5", "OpenAI", "openai-api-key", true),
-            route("claude-fable-5", "Anthropic", "claude-oauth", true),
-        ];
-        assert_eq!(
-            globally_preferred_default_route(&unavailable_gpt)
-                .as_ref()
-                .map(|route| route.model.as_str()),
-            Some("claude-fable-5")
-        );
-    }
-
-    #[test]
-    fn global_default_route_ignores_unavailable_routes_and_preserves_unknown_order() {
-        let routes = vec![
-            route("provider-a-frontier", "Provider A", "provider-a", true),
-            route("gpt-5.6-sol", "OpenAI", "openai-api-key", false),
-            route("provider-b-frontier", "Provider B", "provider-b", true),
-        ];
-
-        let selected = globally_preferred_default_route(&routes).expect("fallback route");
-        assert_eq!(selected.model, "provider-a-frontier");
-        assert_eq!(selected.api_method, "provider-a");
     }
 
     #[test]
@@ -2341,68 +2131,6 @@ mod tests {
             provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
             Some("claude-opus-4-8"),
             "copilot tie-break should prefer the Claude flagship family first"
-        );
-    }
-
-    #[test]
-    fn onboarding_frontier_provider_preference_matrix() {
-        use crate::auth::{AuthState, AuthStatus, ProviderAuth};
-
-        let none = AuthStatus::default();
-        assert_eq!(preferred_frontier_auth_provider(&none), None);
-
-        let openai_api = AuthStatus {
-            openai: AuthState::Available,
-            openai_has_api_key: true,
-            ..AuthStatus::default()
-        };
-        assert_eq!(
-            preferred_frontier_auth_provider(&openai_api),
-            Some("openai-api")
-        );
-
-        let anthropic_api = AuthStatus {
-            anthropic: ProviderAuth {
-                state: AuthState::Available,
-                has_api_key: true,
-                ..ProviderAuth::default()
-            },
-            ..AuthStatus::default()
-        };
-        assert_eq!(
-            preferred_frontier_auth_provider(&anthropic_api),
-            Some("claude-api")
-        );
-
-        let both_oauth = AuthStatus {
-            openai: AuthState::Available,
-            openai_has_oauth: true,
-            openai_oauth_state: AuthState::Available,
-            anthropic: ProviderAuth {
-                state: AuthState::Available,
-                has_oauth: true,
-                oauth_state: AuthState::Available,
-                ..ProviderAuth::default()
-            },
-            ..AuthStatus::default()
-        };
-        assert_eq!(
-            preferred_frontier_auth_provider(&both_oauth),
-            Some("claude"),
-            "Claude is the quality-first default when both frontier providers work"
-        );
-
-        let openai_api_and_oauth = AuthStatus {
-            openai: AuthState::Available,
-            openai_has_oauth: true,
-            openai_oauth_state: AuthState::Available,
-            openai_has_api_key: true,
-            ..AuthStatus::default()
-        };
-        assert_eq!(
-            preferred_frontier_auth_provider(&openai_api_and_oauth),
-            Some("openai"),
-            "OAuth is preferred over an API key within one provider family"
         );
     }
 }

@@ -273,22 +273,6 @@ async fn handle_remote_key_internal(
     let mut modifiers = modifiers;
     ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers, app.diagram_available());
 
-    // Alt+5 always resets the simulator before modal routing, including in
-    // remote/client mode.
-    if app.handle_onboarding_sim_reset_shortcut(code, modifiers) {
-        return Ok(());
-    }
-
-    // The onboarding simulator owns all key handling while active (and Cmd+5
-    // toggles it). Handle it first so no real onboarding action can leak through.
-    if app.handle_onboarding_sim_key(code, modifiers) {
-        return Ok(());
-    }
-
-    if app.handle_onboarding_continue_prompt_key(code) {
-        return Ok(());
-    }
-
     if app.prompt_history_search.is_some() {
         app.handle_prompt_history_search_key(code, modifiers);
         return Ok(());

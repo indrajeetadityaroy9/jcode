@@ -125,3 +125,74 @@ Notes:
 - Other tool-specific importers exist for Claude Code, Codex, Gemini CLI,
   GitHub Copilot, and Cursor (see `auth/claude.rs`, `auth/codex.rs`,
   `auth/gemini.rs`, `auth/copilot.rs`, `auth/cursor.rs`).
+
+## Credential lifecycle: `CredState`
+
+Rescued from `docs/ONBOARDING_STATE_GRAPH.md`, which was deleted with the
+onboarding subsystem (`docs/FORK_WORKFLOW.md` §1, *Onboarding* row). The code it
+describes is live; this was its only documentation.
+
+```
+        ┌──────────────── refresh ok ────────────────┐
+        v                                            │
+   Absent ──login──> Present ──verify ok──> Verified ─┴─ expiry ─> Stale
+      ^                                       │                    │
+      │                                  server 401             refresh
+      │                                       v                    │
+      └──── re-login ─────────────── Rejected(fingerprint) <────────┘   [TERMINAL]
+```
+
+`CredState` (`crates/jcode-base/src/auth/refresh_state.rs:20-32`) is exactly
+`Absent | Present | Verified | Stale | Rejected`. Classified failure detail
+lives in `AuthFailureReason` (`auth/login_diagnostics.rs`), not in the
+credential enum, and `Rejected` is the only terminal state.
+
+- `Rejected` is **terminal for that credential fingerprint**: no background
+  sweep, catalog refresh, or retry may attempt it again, and only a new
+  fingerprint (a real re-login) clears it. `record_permanent_rejection`
+  (`refresh_state.rs:200-214`) stores `rejected_refresh_fingerprint`;
+  `ensure_refresh_allowed` (`refresh_state.rs:105`) is the guard every caller
+  takes first.
+- The fingerprint is a `DefaultHasher` digest of the trimmed token
+  (`refresh_state.rs:190-196`). It never stores the token, but it is **not** a
+  cryptographic hash, and `DefaultHasher` output is not guaranteed stable across
+  Rust releases even though the value is persisted to
+  `auth-refresh-state.json` — a toolchain bump can therefore forget one
+  rejection.
+
+## Environment probing: `EnvFacts` and `preferred_auth_method`
+
+Auth method selection is a lookup over probed facts rather than a retry loop
+over English error strings.
+
+```rust
+// crates/jcode-base/src/auth/env_facts.rs:67-86
+pub struct EnvFacts {
+    pub tty: Tri,             // interactive stdin/stdout
+    pub browser: Tri,         // a launcher exists
+    pub loopback_bind: Tri,   // can we bind a loopback socket for the callback
+    pub config_writable: Tri, // config dir exists (or can be created) and is writable
+    pub container: Tri,       // container/SSH/remote shell -> redirects land elsewhere
+    pub proxy: Tri,           // HTTP(S) proxy configured; changes failure modes
+}
+```
+
+`Tri = Yes | No | Unknown` (`env_facts.rs:27-32`), probed by syscall/env lookup
+only and memoized per boot at its one call site (`auth::browser_unusable_here`,
+`auth/mod.rs:126-133`). `network` and `clock_skew_ok` are deliberately absent:
+both need a provider round-trip, so they belong to the login attempt, not to a
+startup probe (`env_facts.rs:92-94`).
+
+`preferred_auth_method` (`env_facts.rs:115-139`) is ordered most-blocking-first:
+
+| Facts | Chosen auth method | `AuthMethodChoice` |
+| --- | --- | --- |
+| `config_writable=No` | Refuse to start login; explain the real problem first | `BlockedConfigUnwritable` |
+| `tty=No` | API key from env/stdin, else fail *fast* with a copyable command | `ApiKeyNonInteractive` |
+| `browser=No`, or `container=Yes` without a confirmed browser | Device code flow | `DeviceCode` |
+| browser ok, `loopback=No` | OAuth with paste-back callback URL | `OAuthPasteCallback` |
+| browser ok, loopback ok | OAuth loopback (best) | `OAuthLoopback` |
+
+`BlockedConfigUnwritable` and `ApiKeyNonInteractive` carry user-facing
+`precondition_message()` text (`env_facts.rs:174-184`); the other three carry
+none.

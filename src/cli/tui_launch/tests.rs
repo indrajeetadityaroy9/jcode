@@ -1,7 +1,5 @@
 #[cfg(unix)]
-use super::{
-    resumed_window_title, should_show_server_spawning, spawn_resume_in_new_terminal,
-};
+use super::{resumed_window_title, should_show_server_spawning, spawn_resume_in_new_terminal};
 #[cfg(unix)]
 use crate::platform::set_permissions_executable;
 #[cfg(unix)]
@@ -159,7 +157,6 @@ fn resumed_window_title_includes_server_name_when_registry_matches_socket() {
 }
 
 #[cfg(unix)]
-
 #[cfg(unix)]
 #[tokio::test]
 async fn suppresses_stale_server_spawning_phase_when_listener_is_already_live() {

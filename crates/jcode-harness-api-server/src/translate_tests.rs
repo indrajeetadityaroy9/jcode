@@ -1181,21 +1181,6 @@ fn credential_provisioning_normalizes_gemini_and_supports_jcode() {
     assert!(gemini.contains("KEEP_ME=yes\n"));
     assert!(!gemini.contains("GOOGLE_API_KEY"));
 
-    let outbound = state.api_request_to_legacy(&json!({
-        "req": "set_api_key",
-        "id": 8,
-        "provider": "subscription",
-        "api_key": "jcode-secret"
-    }));
-    let [Outbound::Legacy(notify)] = outbound.as_slice() else {
-        panic!("jcode credential should notify the daemon: {outbound:?}");
-    };
-    assert_eq!(notify["provider"], "jcode");
-    assert_eq!(
-        std::fs::read_to_string(config.join("jcode-subscription.env")).unwrap(),
-        "JCODE_API_KEY=jcode-secret\n"
-    );
-
     let event = only_reply_event(state.api_request_to_legacy(&json!({
         "req": "set_api_key",
         "id": 9,
@@ -1264,7 +1249,7 @@ fn owner_only_writes_refuse_symlink_targets_and_directories() {
     let event = only_reply_event(BridgeState::default().api_request_to_legacy(&json!({
         "req": "set_api_key",
         "id": 2,
-        "provider": "jcode",
+        "provider": "gemini",
         "api_key": "must-not-land"
     })));
     assert!(matches!(
@@ -1274,7 +1259,7 @@ fn owner_only_writes_refuse_symlink_targets_and_directories() {
             ..
         }
     ));
-    assert!(!outside_dir.join("jcode-subscription.env").exists());
+    assert!(!outside_dir.join("gemini.env").exists());
 }
 
 #[test]

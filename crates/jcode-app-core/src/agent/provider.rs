@@ -78,16 +78,6 @@ impl Agent {
         )
     }
 
-    pub(crate) fn set_route_selection_from_auth(
-        &mut self,
-        selection: &crate::provider::RouteSelection,
-    ) -> Result<()> {
-        self.set_route_selection_from_provider_state_event(
-            selection,
-            crate::provider::ProviderModelSelectionSource::Auth,
-        )
-    }
-
     fn set_route_selection_from_provider_state_event(
         &mut self,
         selection: &crate::provider::RouteSelection,

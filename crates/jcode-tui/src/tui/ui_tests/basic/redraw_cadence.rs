@@ -233,14 +233,14 @@ fn a_lower_configured_animation_rate_is_respected() {
     );
 }
 
-/// The post-onboarding notice screen: the transcript holds only system
-/// notices ("Here are a few things you can try", the login summary), the user
-/// pressed a key moments ago, and no stream has ever run in this process.
+/// A notice-only screen: the transcript holds only system notices (a login
+/// summary, a "run /login when you're ready" hint), the user pressed a key
+/// moments ago, and no stream has ever run in this process.
 ///
 /// `time_since_activity()` reports "past the deep-idle threshold" for any
 /// non-empty never-streamed transcript, which is meant for *restored dormant*
 /// sessions. Treating this screen as dormant parked the donut and the redraw
-/// loop at the 5s crawl the instant onboarding finished, so the decorative
+/// loop at the 5s crawl the instant the first notice landed, so the decorative
 /// animation never ran on the exact screen it was designed for. A recent
 /// keystroke is proof the session is not dormant.
 fn just_touched_notice_screen() -> TestState {

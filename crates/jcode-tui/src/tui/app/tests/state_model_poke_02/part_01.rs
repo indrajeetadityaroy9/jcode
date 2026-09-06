@@ -867,7 +867,7 @@ fn test_auth_doctor_command_suggestion_is_not_shadowed_by_provider_suggestions()
 }
 
 #[test]
-fn test_top_level_command_suggestions_include_config_and_subscription() {
+fn test_top_level_command_suggestions_include_config_and_usage() {
     let app = create_test_app();
     let suggestions = app.get_suggestions_for("/con");
     assert!(suggestions.iter().any(|(cmd, _)| cmd == "/config"));
@@ -876,8 +876,8 @@ fn test_top_level_command_suggestions_include_config_and_subscription() {
     let suggestions = app.get_suggestions_for("/ali");
     assert!(suggestions.iter().any(|(cmd, _)| cmd == "/alignment"));
 
-    let suggestions = app.get_suggestions_for("/sub");
-    assert!(suggestions.iter().any(|(cmd, _)| cmd == "/subscription"));
+    let suggestions = app.get_suggestions_for("/usa");
+    assert!(suggestions.iter().any(|(cmd, _)| cmd == "/usage"));
 }
 
 #[test]

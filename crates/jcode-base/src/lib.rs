@@ -78,8 +78,6 @@ pub mod skill;
 pub mod soft_interrupt_store;
 pub mod stdin_detect;
 pub mod storage;
-pub mod subscription_api;
-pub mod subscription_catalog;
 pub mod telegram;
 pub mod terminal_launch;
 pub mod todo;

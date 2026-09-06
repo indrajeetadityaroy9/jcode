@@ -19,14 +19,7 @@ pub fn native_doctor_supports_provider(provider_id: &str) -> bool {
     matches!(
         crate::auth::lifecycle::normalized_auth_provider_id(Some(provider_id)),
         Some(
-            "claude"
-                | "antigravity"
-                | "openai"
-                | "gemini"
-                | "cursor"
-                | "copilot"
-                | "jcode"
-                | "azure-openai"
+            "claude" | "antigravity" | "openai" | "gemini" | "cursor" | "copilot" | "azure-openai"
         )
     )
 }

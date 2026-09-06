@@ -1297,7 +1297,6 @@ pub enum NativeProviderKind {
     Gemini,
     Cursor,
     Copilot,
-    Jcode,
     Azure,
 }
 
@@ -1309,7 +1308,6 @@ impl NativeProviderKind {
             "gemini" => Some(Self::Gemini),
             "cursor" => Some(Self::Cursor),
             "copilot" => Some(Self::Copilot),
-            "jcode" => Some(Self::Jcode),
             "azure-openai" => Some(Self::Azure),
             _ => None,
         }
@@ -1372,25 +1370,6 @@ impl NativeProviderKind {
                 auth_source: "GitHub Copilot device-flow token via hosts.json",
                 auth_env_key: None,
                 login_hint: "jcode login --provider copilot",
-            },
-            Self::Jcode => NativeProviderSpec {
-                provider_id: "jcode",
-                label: "Jcode Subscription",
-                // The transport is OpenAI-compatible internally, but the public
-                // route identity is the managed Jcode subscription. Model
-                // switches use a bare model id so they stay on that runtime.
-                contract: WiringContract {
-                    api_method: jcode_base::subscription_catalog::JCODE_ROUTE_API_METHOD
-                        .to_string(),
-                    route_provider: jcode_base::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
-                        .to_string(),
-                    expected_runtime: "jcode",
-                    expected_namespace: None,
-                    switch_prefix: String::new(),
-                },
-                auth_source: "Jcode subscription API key (JCODE_API_KEY)",
-                auth_env_key: Some("JCODE_API_KEY"),
-                login_hint: "jcode login --provider jcode",
             },
             Self::Azure => NativeProviderSpec {
                 provider_id: "azure-openai",
@@ -1461,7 +1440,6 @@ impl NativeProviderKind {
                 };
                 std::sync::Arc::new(runtime)
             }
-            Self::Jcode => std::sync::Arc::new(jcode_base::provider::jcode::JcodeProvider::new()),
             Self::Azure => {
                 // Azure OpenAI is the OpenRouter transport configured via Azure
                 // env; apply that env (endpoint/key/header wiring) before building
@@ -1521,15 +1499,6 @@ impl NativeProviderKind {
                 }
                 Ok("GitHub Copilot token resolved".to_string())
             }
-            Self::Jcode => {
-                if !jcode_base::subscription_catalog::has_credentials() {
-                    anyhow::bail!(
-                        "no Jcode subscription credential found (set JCODE_API_KEY or run \
-                         `jcode login --provider jcode`)"
-                    );
-                }
-                Ok("Jcode subscription credential resolved".to_string())
-            }
             Self::Azure => {
                 if !jcode_base::auth::azure::has_configuration() {
                     anyhow::bail!(
@@ -1559,7 +1528,6 @@ impl NativeProviderKind {
             Self::Gemini => &["flash"],
             Self::Cursor => &["composer", "fast", "mini"],
             Self::Copilot => &["mini", "haiku", "flash", "fast"],
-            Self::Jcode => &["mini", "flash", "haiku", "lite", "nano"],
             Self::Azure => &["mini", "nano", "flash", "haiku"],
         };
         for marker in cheap_markers {
@@ -2400,7 +2368,6 @@ mod tests {
             ("gemini", NativeProviderKind::Gemini),
             ("cursor", NativeProviderKind::Cursor),
             ("copilot", NativeProviderKind::Copilot),
-            ("jcode", NativeProviderKind::Jcode),
             ("azure-openai", NativeProviderKind::Azure),
         ] {
             assert_eq!(NativeProviderKind::from_normalized(id), Some(expected));
@@ -2420,23 +2387,15 @@ mod tests {
             NativeProviderKind::Gemini,
             NativeProviderKind::Cursor,
             NativeProviderKind::Copilot,
-            NativeProviderKind::Jcode,
             NativeProviderKind::Azure,
         ] {
             let spec = kind.spec();
             assert!(!spec.provider_id.is_empty(), "{kind:?} has empty id");
             assert!(!spec.label.is_empty(), "{kind:?} has empty label");
-            if kind == NativeProviderKind::Jcode {
-                assert!(
-                    spec.contract.switch_prefix.is_empty(),
-                    "Jcode switches must use bare managed model ids"
-                );
-            } else {
-                assert!(
-                    spec.contract.switch_prefix.ends_with(':'),
-                    "{kind:?} switch_prefix must end with ':'"
-                );
-            }
+            assert!(
+                spec.contract.switch_prefix.ends_with(':'),
+                "{kind:?} switch_prefix must end with ':'"
+            );
             // Round-trips through the id map.
             assert_eq!(
                 NativeProviderKind::from_normalized(spec.provider_id),
@@ -2524,7 +2483,6 @@ mod tests {
             NativeProviderKind::Gemini,
             NativeProviderKind::Cursor,
             NativeProviderKind::Copilot,
-            NativeProviderKind::Jcode,
             NativeProviderKind::Azure,
         ] {
             let id = kind.spec().provider_id;
@@ -2549,22 +2507,6 @@ mod tests {
         assert_eq!(contract.expected_runtime, "antigravity");
         assert!(contract.expected_namespace.is_none());
         assert_eq!(contract.switch_prefix, "antigravity:");
-    }
-
-    #[test]
-    fn native_jcode_contract_uses_managed_subscription_identity() {
-        let contract = NativeProviderKind::Jcode.spec().contract;
-        assert_eq!(
-            contract.api_method,
-            jcode_base::subscription_catalog::JCODE_ROUTE_API_METHOD
-        );
-        assert_eq!(
-            contract.route_provider,
-            jcode_base::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
-        );
-        assert_eq!(contract.expected_runtime, "jcode");
-        assert!(contract.expected_namespace.is_none());
-        assert!(contract.switch_prefix.is_empty());
     }
 
     #[test]

@@ -24,7 +24,6 @@ impl LoginProviderAuthKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoginProviderTarget {
     AutoImport,
-    Jcode,
     Claude,
     ClaudeApiKey,
     OpenAi,
@@ -41,7 +40,6 @@ pub enum LoginProviderTarget {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoginProviderAuthStateKey {
     ExternalImport,
-    Jcode,
     Anthropic,
     OpenAi,
     Azure,
@@ -507,10 +505,6 @@ mod tests {
     #[test]
     fn matrix_login_provider_aliases_resolve_to_canonical_ids() {
         assert_eq!(
-            resolve_login_provider("subscription").map(|provider| provider.id),
-            Some("jcode")
-        );
-        assert_eq!(
             resolve_login_provider("anthropic").map(|provider| provider.id),
             Some("claude")
         );
@@ -648,18 +642,14 @@ mod tests {
         );
         assert_eq!(
             resolve_login_selection("5", &providers).map(|provider| provider.id),
-            Some("jcode")
-        );
-        assert_eq!(
-            resolve_login_selection("6", &providers).map(|provider| provider.id),
             Some("copilot")
         );
         assert_eq!(
-            resolve_login_selection("7", &providers).map(|provider| provider.id),
+            resolve_login_selection("6", &providers).map(|provider| provider.id),
             Some("openrouter")
         );
         assert_eq!(
-            resolve_login_selection("8", &providers).map(|provider| provider.id),
+            resolve_login_selection("7", &providers).map(|provider| provider.id),
             Some("azure")
         );
     }

@@ -1250,8 +1250,10 @@ pub(in crate::tui::app) fn handle_server_event(
                     .as_ref()
                     .map(|pending| pending.is_system)
                 {
-                    let rate_limit_line =
-                        app.rate_limit_notice_with_nudge(reset_duration.as_secs());
+                    let rate_limit_line = format!(
+                        "⏳ Rate limit hit. Will auto-retry in {} seconds...",
+                        reset_duration.as_secs()
+                    );
                     app.push_display_message(DisplayMessage::system(rate_limit_line));
                     if is_system {
                         app.set_status_notice("Rate limited; queued system retry");
@@ -2538,12 +2540,6 @@ pub(in crate::tui::app) fn handle_server_event(
                         || message.starts_with("**Model access refreshed**"))
                 {
                     app.finish_auth_catalog_refresh();
-                }
-                if app.onboarding_flow_active()
-                    && matches!(scope, "auth_activity" | "catalog_activity")
-                {
-                    app.set_status_notice(runtime_activity_status_notice(&message));
-                    return false;
                 }
                 if scope == "catalog_activity"
                     && let Some(progress) =

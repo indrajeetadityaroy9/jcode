@@ -23,7 +23,6 @@ fn lock_env() -> std::sync::MutexGuard<'static, ()> {
 #[test]
 #[allow(deprecated)]
 fn test_provider_choice_arg_values() {
-    assert_eq!(ProviderChoice::Jcode.as_arg_value(), "jcode");
     assert_eq!(ProviderChoice::Claude.as_arg_value(), "claude");
     assert_eq!(ProviderChoice::AnthropicApi.as_arg_value(), "anthropic-api");
     assert_eq!(
@@ -150,11 +149,11 @@ fn test_server_bootstrap_login_selection_preserves_order() {
     );
     assert_eq!(
         resolve_login_selection("4", &providers).map(|provider| provider.id),
-        Some("jcode")
+        Some("copilot")
     );
     assert_eq!(
         resolve_login_selection("5", &providers).map(|provider| provider.id),
-        Some("copilot")
+        Some("openrouter")
     );
 }
 
@@ -170,78 +169,25 @@ fn test_auto_init_login_selection_preserves_order() {
         Some("anthropic-api")
     );
     assert_eq!(
-        resolve_login_selection("11", &providers).map(|provider| provider.id),
+        resolve_login_selection("10", &providers).map(|provider| provider.id),
         Some("alibaba-coding-plan")
     );
     assert_eq!(
-        resolve_login_selection("12", &providers).map(|provider| provider.id),
+        resolve_login_selection("11", &providers).map(|provider| provider.id),
         Some("cursor")
     );
     assert_eq!(
-        resolve_login_selection("13", &providers).map(|provider| provider.id),
+        resolve_login_selection("12", &providers).map(|provider| provider.id),
         Some("copilot")
     );
     assert_eq!(
-        resolve_login_selection("14", &providers).map(|provider| provider.id),
+        resolve_login_selection("13", &providers).map(|provider| provider.id),
         Some("gemini")
     );
     assert_eq!(
-        resolve_login_selection("15", &providers).map(|provider| provider.id),
+        resolve_login_selection("14", &providers).map(|provider| provider.id),
         Some("antigravity")
     );
-}
-
-#[test]
-fn test_init_provider_jcode_delegates_runtime_profile_to_wrapper() {
-    let _guard = lock_env();
-    let _env_guard = crate::storage::lock_test_env();
-    // Sandbox JCODE_HOME: with the real home, persisted auth/credential state
-    // (e.g. a pinned anthropic api-key route) re-pins JCODE_RUNTIME_PROVIDER
-    // during MultiProvider construction and breaks the assertions below.
-    let dir = TempDir::new().expect("temp dir");
-    let saved_home = std::env::var("JCODE_HOME").ok();
-    crate::env::set_var("JCODE_HOME", dir.path());
-    crate::subscription_catalog::clear_runtime_env();
-    crate::env::remove_var("JCODE_OPENROUTER_MODEL");
-    crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
-    crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
-    crate::env::remove_var("JCODE_INITIAL_PROVIDER_EXPLICIT");
-
-    let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
-    let provider = runtime
-        .block_on(init_provider(&ProviderChoice::Jcode, None))
-        .expect("init jcode provider");
-
-    assert_eq!(provider.name(), "Jcode Subscription");
-    assert!(crate::subscription_catalog::is_runtime_mode_enabled());
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_MODEL").ok().as_deref(),
-        Some(crate::subscription_catalog::default_model().id)
-    );
-    assert_eq!(
-        std::env::var("JCODE_ACTIVE_PROVIDER").ok().as_deref(),
-        Some("openrouter")
-    );
-    assert_eq!(
-        std::env::var("JCODE_RUNTIME_PROVIDER").ok().as_deref(),
-        Some("jcode")
-    );
-    assert_eq!(
-        std::env::var("JCODE_INITIAL_PROVIDER_EXPLICIT")
-            .ok()
-            .as_deref(),
-        Some("1")
-    );
-
-    crate::subscription_catalog::clear_runtime_env();
-    crate::env::remove_var("JCODE_OPENROUTER_MODEL");
-    crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
-    crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
-    crate::env::remove_var("JCODE_INITIAL_PROVIDER_EXPLICIT");
-    match saved_home {
-        Some(home) => crate::env::set_var("JCODE_HOME", home),
-        None => crate::env::remove_var("JCODE_HOME"),
-    }
 }
 
 #[test]
@@ -398,10 +344,6 @@ fn login_provider_menu_shows_autodetected_auth_and_skip() {
 
 #[test]
 fn choice_for_login_provider_round_trips_core_targets() {
-    assert_eq!(
-        choice_for_login_provider(provider_catalog::JCODE_LOGIN_PROVIDER),
-        Some(ProviderChoice::Jcode)
-    );
     assert_eq!(
         choice_for_login_provider(provider_catalog::OPENROUTER_LOGIN_PROVIDER),
         Some(ProviderChoice::Openrouter)
@@ -682,8 +624,7 @@ fn apply_login_provider_profile_env_preserves_compatible_profile_for_auto_spawn(
     clippy::await_holding_lock,
     reason = "test env locks intentionally stay held across provider init to isolate process-global runtime env"
 )]
-async fn init_provider_for_ollama_reapplies_local_compat_runtime_env_after_disabling_subscription_mode()
- {
+async fn init_provider_for_ollama_reapplies_local_compat_runtime_env_over_stale_remote_env() {
     let _guard = lock_env();
     let _env_guard = crate::storage::lock_test_env();
     let dir = TempDir::new().expect("temp dir");
@@ -705,7 +646,15 @@ async fn init_provider_for_ollama_reapplies_local_compat_runtime_env_after_disab
     .collect();
 
     crate::env::set_var("JCODE_HOME", dir.path());
-    crate::subscription_catalog::apply_runtime_env();
+    // Simulate a stale OpenAI-compatible runtime left behind by a previously
+    // selected remote provider: `--provider ollama` must overwrite every one of
+    // these, not inherit them.
+    crate::env::set_var("JCODE_OPENROUTER_API_BASE", "https://stale.example/v1");
+    crate::env::set_var("JCODE_OPENROUTER_API_KEY_NAME", "STALE_API_KEY");
+    crate::env::set_var("JCODE_OPENROUTER_ENV_FILE", "stale.env");
+    crate::env::set_var("JCODE_OPENROUTER_CACHE_NAMESPACE", "stale");
+    crate::env::set_var("JCODE_OPENROUTER_PROVIDER_FEATURES", "0");
+    crate::env::set_var("JCODE_OPENROUTER_TRANSPORT_STATE", "stale");
 
     let provider = init_provider_for_validation(&ProviderChoice::Ollama, Some("llama3.2"))
         .await

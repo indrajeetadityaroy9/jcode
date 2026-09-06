@@ -3,7 +3,7 @@
 use crate::agent::Agent;
 use crate::auth::lifecycle::{AuthActivationRequest, AuthActivationResult};
 use crate::protocol::{AuthChanged, NotificationType, ServerEvent};
-use crate::provider::{ModelCatalogRefreshSummary, ModelRoute, Provider, RouteSelection};
+use crate::provider::{ModelCatalogRefreshSummary, Provider};
 use jcode_provider_core::ModelCatalogSnapshot;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -314,58 +314,6 @@ async fn apply_auth_runtime_model_to_agent(
                 "auth_changed_runtime_model_failed",
                 provider,
                 &[("requested_model", model), ("reason", message.as_str())],
-            );
-        }
-    }
-}
-
-async fn apply_auth_route_to_agent(
-    route: &ModelRoute,
-    agent: &Arc<Mutex<Agent>>,
-    unless_user_selected_after: Option<u64>,
-) {
-    let selection = RouteSelection::from_model_route(route);
-    let requested_model = selection.routed_model_spec();
-    let result = {
-        let mut agent_guard = agent.lock().await;
-        if unless_user_selected_after
-            .is_some_and(|generation| agent_guard.user_selected_provider_model_after(generation))
-        {
-            crate::logging::auth_event(
-                "auth_changed_auto_model_skipped_after_manual_switch",
-                &route.provider,
-                &[("reason", "user_selected_provider_model_during_refresh")],
-            );
-            return;
-        }
-        let result = agent_guard.set_route_selection_from_auth(&selection);
-        if result.is_ok() {
-            agent_guard.reset_provider_session();
-        }
-        result.map(|_| agent_guard.provider_model())
-    };
-
-    match result {
-        Ok(resolved_model) => crate::logging::auth_event(
-            "auth_changed_global_route_applied",
-            &route.provider,
-            &[
-                ("requested_model", requested_model.as_str()),
-                ("resolved_model", resolved_model.as_str()),
-                ("api_method", route.api_method.as_str()),
-                ("provider_session", "reset"),
-            ],
-        ),
-        Err(error) => {
-            let message = error.to_string();
-            crate::logging::auth_event(
-                "auth_changed_global_route_failed",
-                &route.provider,
-                &[
-                    ("requested_model", requested_model.as_str()),
-                    ("api_method", route.api_method.as_str()),
-                    ("reason", message.as_str()),
-                ],
             );
         }
     }
@@ -984,7 +932,6 @@ pub(super) async fn handle_notify_auth_changed(
     id: u64,
     provider_hint: Option<String>,
     auth: Option<AuthChanged>,
-    prefer_strongest: bool,
     provider: &Arc<dyn Provider>,
     provider_template: &Arc<dyn Provider>,
     sessions: &SessionAgents,
@@ -1162,18 +1109,7 @@ pub(super) async fn handle_notify_auth_changed(
                 latest_snapshot.clone(),
             ));
         } else {
-            if prefer_strongest {
-                if let Some(route) = crate::auth::lifecycle::globally_preferred_default_route(
-                    &latest_snapshot.model_routes,
-                ) {
-                    apply_auth_route_to_agent(
-                        &route,
-                        &agent_clone,
-                        Some(auth_selection_generation),
-                    )
-                    .await;
-                }
-            } else if let Some(model_to_select) =
+            if let Some(model_to_select) =
                 crate::auth::lifecycle::provider_model_to_select_after_auth(
                     &activation,
                     latest_snapshot.provider_model.as_deref(),

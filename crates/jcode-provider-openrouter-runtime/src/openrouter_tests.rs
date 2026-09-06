@@ -1054,13 +1054,6 @@ fn openrouter_transport_state_distinguishes_runtime_identities() {
     assert!(OpenRouterTransportState::from_current_env(Some("openrouter")).is_real_openrouter());
     jcode_base::env::remove_var("JCODE_RUNTIME_PROVIDER");
 
-    jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", "jcode");
-    assert_eq!(
-        OpenRouterTransportState::from_current_env(Some("jcode")),
-        OpenRouterTransportState::JcodeSubscription
-    );
-    assert!(!OpenRouterTransportState::from_current_env(Some("jcode")).accrues_user_api_key_cost());
-
     jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", "openai-compatible");
     assert_eq!(
         OpenRouterTransportState::from_current_env(Some("openai-compatible")),
@@ -2403,48 +2396,6 @@ fn runtime_display_name_for_profile_runtime_instance() {
 }
 
 #[test]
-fn jcode_subscription_runtime_has_explicit_display_and_route_identity() {
-    let _lock = ENV_LOCK.lock();
-    let temp = TempDir::new().expect("create temp home");
-    let jcode_home = temp.path().join("jcode-home");
-    let _jcode_home = EnvVarGuard::set("JCODE_HOME", &jcode_home);
-    let _home = EnvVarGuard::set("HOME", temp.path());
-    let _appdata = EnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
-    let _env = isolate_openrouter_autodetect_env();
-    let _base = EnvVarGuard::set(
-        "JCODE_OPENROUTER_API_BASE",
-        jcode_base::subscription_catalog::DEFAULT_JCODE_API_BASE,
-    );
-    let _key_name = EnvVarGuard::set(
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        jcode_base::subscription_catalog::JCODE_API_KEY_ENV,
-    );
-    let _env_file = EnvVarGuard::set(
-        "JCODE_OPENROUTER_ENV_FILE",
-        jcode_base::subscription_catalog::JCODE_ENV_FILE,
-    );
-    let _provider_features = EnvVarGuard::set("JCODE_OPENROUTER_PROVIDER_FEATURES", "0");
-    let _transport = EnvVarGuard::set("JCODE_OPENROUTER_TRANSPORT_STATE", "jcode-subscription");
-    let _key = EnvVarGuard::set(
-        jcode_base::subscription_catalog::JCODE_API_KEY_ENV,
-        "jcode_test_subscription_key",
-    );
-
-    let provider = OpenRouterProvider::new().expect("build jcode subscription runtime");
-    assert_eq!(provider.runtime_display_name(), "Jcode Subscription");
-    assert_eq!(Provider::display_name(&provider), "Jcode Subscription");
-    assert_eq!(Provider::name(&provider), "openrouter");
-    assert_eq!(
-        provider.direct_openai_compatible_route_parts(),
-        Some((
-            "Jcode Subscription".to_string(),
-            "jcode-subscription".to_string(),
-            jcode_base::subscription_catalog::DEFAULT_JCODE_API_BASE.to_string(),
-        ))
-    );
-}
-
-#[test]
 fn non_subscription_runtimes_keep_existing_display_and_route_identity() {
     let _lock = ENV_LOCK.lock();
     let temp = TempDir::new().expect("create temp home");
@@ -2472,38 +2423,6 @@ fn non_subscription_runtimes_keep_existing_display_and_route_identity() {
     assert_eq!(Provider::display_name(&compatible), "OpenAI-compatible");
     assert_eq!(
         compatible.direct_openai_compatible_route_parts(),
-        Some((
-            "OpenAI-compatible".to_string(),
-            "openai-compatible".to_string(),
-            "https://example.com/v1".to_string(),
-        ))
-    );
-}
-
-#[test]
-fn custom_endpoint_using_jcode_key_name_is_not_a_subscription_runtime() {
-    let _lock = ENV_LOCK.lock();
-    let temp = TempDir::new().expect("create temp home");
-    let jcode_home = temp.path().join("jcode-home");
-    let _jcode_home = EnvVarGuard::set("JCODE_HOME", &jcode_home);
-    let _home = EnvVarGuard::set("HOME", temp.path());
-    let _appdata = EnvVarGuard::set("APPDATA", temp.path().join("AppData").join("Roaming"));
-    let _env = isolate_openrouter_autodetect_env();
-    let _base = EnvVarGuard::set("JCODE_OPENROUTER_API_BASE", "https://example.com/v1");
-    let _key_name = EnvVarGuard::set(
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        jcode_base::subscription_catalog::JCODE_API_KEY_ENV,
-    );
-    let _provider_features = EnvVarGuard::set("JCODE_OPENROUTER_PROVIDER_FEATURES", "0");
-    let _key = EnvVarGuard::set(
-        jcode_base::subscription_catalog::JCODE_API_KEY_ENV,
-        "custom-endpoint-test-key",
-    );
-
-    let provider = OpenRouterProvider::new().expect("build custom endpoint runtime");
-    assert_eq!(provider.runtime_display_name(), "OpenAI-compatible");
-    assert_eq!(
-        provider.direct_openai_compatible_route_parts(),
         Some((
             "OpenAI-compatible".to_string(),
             "openai-compatible".to_string(),

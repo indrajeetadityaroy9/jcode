@@ -50,10 +50,6 @@ pub enum SessionFilterMode {
     Pi,
     OpenCode,
     Cursor,
-    /// External CLI transcripts (Codex and/or Claude Code) shown together.
-    /// Used by the first-run onboarding "continue where you left off" picker so
-    /// it surfaces every external CLI the user is logged into, not just one.
-    ExternalClis,
 }
 
 impl SessionFilterMode {
@@ -69,9 +65,6 @@ impl SessionFilterMode {
             Self::Pi => Self::OpenCode,
             Self::OpenCode => Self::Cursor,
             Self::Cursor => Self::All,
-            // ExternalClis is an onboarding-only composite filter, not part of
-            // the user-facing cycle; treat it as a no-op anchor.
-            Self::ExternalClis => Self::All,
         }
     }
 
@@ -87,7 +80,6 @@ impl SessionFilterMode {
             Self::Pi => Self::Codex,
             Self::OpenCode => Self::Pi,
             Self::Cursor => Self::OpenCode,
-            Self::ExternalClis => Self::All,
         }
     }
 
@@ -103,7 +95,6 @@ impl SessionFilterMode {
             Self::Pi => Some("π Pi"),
             Self::OpenCode => Some("◌ OpenCode"),
             Self::Cursor => Some("▮ Cursor"),
-            Self::ExternalClis => Some("🧠 Codex + 🧵 Claude Code + π Pi + ◌ OpenCode + ▮ Cursor"),
         }
     }
 }

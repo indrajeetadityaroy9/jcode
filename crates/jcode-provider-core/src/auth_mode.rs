@@ -362,14 +362,7 @@ mod tests {
 
     #[test]
     fn non_dual_and_unknown_tokens_are_none() {
-        for token in [
-            "",
-            "openrouter",
-            "copilot",
-            "gemini",
-            "jcode",
-            "nonsense",
-        ] {
+        for token in ["", "openrouter", "copilot", "gemini", "nonsense"] {
             assert_eq!(AuthRoute::parse(token), None, "{token:?} must be None");
         }
     }

@@ -57,7 +57,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
         "JCODE_HOME",
         "XDG_CONFIG_HOME",
         "HOME",
-        crate::subscription_catalog::JCODE_API_KEY_ENV,
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
@@ -91,10 +90,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
     crate::env::set_var("JCODE_HOME", temp.path().join("jcode-home"));
     crate::env::set_var("XDG_CONFIG_HOME", &xdg);
     crate::env::set_var("HOME", &home);
-    crate::env::set_var(
-        crate::subscription_catalog::JCODE_API_KEY_ENV,
-        "jcode-test-key",
-    );
     crate::env::set_var("ANTHROPIC_API_KEY", "anthropic-test-key");
     crate::env::set_var("OPENAI_API_KEY", "openai-test-key");
     crate::env::set_var("OPENROUTER_API_KEY", "openrouter-test-key");
@@ -136,7 +131,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
     let (fast, _) = build_auth_status_uncached(AuthProbeMode::Fast);
 
     assert_auth_status_shared_fields_match(&full, &fast);
-    assert_eq!(full.jcode, AuthState::Available);
     assert_eq!(full.anthropic.state, AuthState::Available);
     assert_eq!(full.openai, AuthState::Available);
     assert_eq!(full.openrouter, AuthState::Available);
@@ -203,7 +197,6 @@ fn full_and_fast_auth_status_document_cursor_cli_exception() {
 }
 
 fn assert_auth_status_shared_fields_match(full: &AuthStatus, fast: &AuthStatus) {
-    assert_eq!(full.jcode, fast.jcode, "jcode");
     assert_eq!(
         full.anthropic.state, fast.anthropic.state,
         "anthropic.state"
@@ -377,7 +370,7 @@ fn auth_status_check_fast_ignores_expired_full_cache() {
     AuthStatus::invalidate_cache();
 
     let stale_status = AuthStatus {
-        jcode: AuthState::Expired,
+        openrouter: AuthState::Expired,
         ..Default::default()
     };
     let stale_when = std::time::Instant::now()
@@ -394,7 +387,7 @@ fn auth_status_check_fast_ignores_expired_full_cache() {
 
     let status = AuthStatus::check_fast();
     assert_ne!(
-        status.jcode,
+        status.openrouter,
         AuthState::Expired,
         "check_fast must not reuse an expired full auth cache forever"
     );
@@ -872,8 +865,8 @@ fn claude_oauth_provider_reports_oauth_independently_of_api_key() {
     AuthStatus::invalidate_cache();
 }
 
-/// Test binaries must never open real browser windows: login/onboarding flows
-/// are exercised heavily by unit tests, and each ungated `open::that` pops an
+/// Test binaries must never open real browser windows: login flows are
+/// exercised heavily by unit tests, and each ungated `open::that` pops an
 /// OAuth page on the developer's desktop. `running_in_test_harness` detects
 /// the `target/**/deps/` test-binary path, and `browser_suppressed` must honor
 /// it even without --no-browser or NO_BROWSER/JCODE_NO_BROWSER.
@@ -892,7 +885,7 @@ fn browser_suppressed_inside_test_harness_without_env_overrides() {
 /// Antigravity/Gemini access tokens live about an hour and are refreshed
 /// transparently on the next request. Reporting `Expired` just because the
 /// cached access token aged out made a fully working provider render as broken
-/// in `/login`, the header, onboarding, and `jcode auth status`, which is what
+/// in `/login`, the header, and `jcode auth status`, which is what
 /// the "antigravity is not working" reports actually were. Only a missing or
 /// permanently rejected refresh token means the user must log in again.
 #[test]

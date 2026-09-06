@@ -136,7 +136,6 @@ struct TestState {
     changelog_scroll: Option<usize>,
     help_scroll: Option<usize>,
     chat_native_scrollbar: bool,
-    onboarding_preview: bool,
     suggestions: Vec<(String, String)>,
     compacted_hidden_user_prompts: usize,
     side_pane_images: Vec<crate::session::RenderedImage>,
@@ -489,9 +488,6 @@ impl crate::tui::TuiState for TestState {
     fn suggestion_prompts(&self) -> Vec<(String, String)> {
         self.suggestions.clone()
     }
-    fn onboarding_preview_mode(&self) -> bool {
-        self.onboarding_preview
-    }
     fn cache_ttl_status(&self) -> Option<crate::tui::CacheTtlInfo> {
         self.cache_ttl_status.clone()
     }
@@ -515,8 +511,6 @@ mod basic;
 mod diagrams;
 #[path = "inline_picker.rs"]
 mod inline_picker;
-#[path = "onboarding.rs"]
-mod onboarding;
 #[path = "palette_topology.rs"]
 mod palette_topology;
 #[path = "prepare.rs"]

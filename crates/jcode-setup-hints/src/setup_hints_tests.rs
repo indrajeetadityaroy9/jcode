@@ -78,7 +78,7 @@ fn load_from_falls_back_to_bak_when_primary_missing() {
     std::fs::write(&bak, r#"{"launch_count":42}"#).unwrap();
 
     // Primary file missing: must recover launch_count from the .bak instead of
-    // resetting to default (which would re-trigger first-run onboarding).
+    // resetting to default (which would restart the hint cadence).
     let loaded = SetupHintsState::load_from(&path);
     assert_eq!(loaded.launch_count, 42);
 }

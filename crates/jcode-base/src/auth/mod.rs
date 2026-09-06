@@ -134,7 +134,7 @@ fn browser_unusable_here() -> bool {
 /// location no installed or locally built jcode binary ever runs from.
 ///
 /// Used to keep tests from opening real browser windows (OAuth login pages,
-/// files) on the developer's desktop: many login/onboarding flows are
+/// files) on the developer's desktop: many login flows are
 /// exercised by TUI tests, and without this guard each test run could pop
 /// multiple browser tabs. Set `JCODE_ALLOW_BROWSER_IN_TESTS=1` to opt out
 /// (e.g. for an intentionally interactive live test).
@@ -191,7 +191,6 @@ fn log_auth_status_snapshot(event: &str, status: &AuthStatus) {
         event,
         "all",
         &[
-            ("jcode", auth_state_label(status.jcode)),
             ("claude", auth_state_label(status.anthropic.state)),
             ("openai", auth_state_label(status.openai)),
             ("openrouter", auth_state_label(status.openrouter)),
@@ -385,7 +384,6 @@ impl AuthStatus {
     /// Returns true if at least one provider has usable credentials.
     pub fn has_any_available(&self) -> bool {
         self.anthropic.state == AuthState::Available
-            || self.jcode == AuthState::Available
             || self.openai == AuthState::Available
             || self.openrouter == AuthState::Available
             || self.azure == AuthState::Available
@@ -411,7 +409,6 @@ impl AuthStatus {
             vec![
                 ("surface", surface.to_string()),
                 ("any_available", self.has_any_available().to_string()),
-                ("jcode", self.jcode.label().to_string()),
                 ("anthropic", self.anthropic.state.label().to_string()),
                 ("anthropic_oauth", self.anthropic.has_oauth.to_string()),
                 ("anthropic_api", self.anthropic.has_api_key.to_string()),
@@ -449,7 +446,6 @@ impl AuthStatus {
                     AuthState::NotConfigured
                 }
             }
-            LoginProviderAuthStateKey::Jcode => self.jcode,
             LoginProviderAuthStateKey::Anthropic => self.anthropic.state,
             LoginProviderAuthStateKey::OpenAi => self.openai,
             LoginProviderAuthStateKey::Azure => self.azure,
@@ -465,13 +461,6 @@ impl AuthStatus {
         match provider.target {
             crate::provider_catalog::LoginProviderTarget::AutoImport => {
                 if Self::has_any_untrusted_external_auth() {
-                    AuthState::Available
-                } else {
-                    AuthState::NotConfigured
-                }
-            }
-            crate::provider_catalog::LoginProviderTarget::Jcode => {
-                if crate::subscription_catalog::has_credentials() {
                     AuthState::Available
                 } else {
                     AuthState::NotConfigured
@@ -532,23 +521,6 @@ impl AuthStatus {
                     "Existing external logins detected".to_string()
                 } else {
                     "No importable external logins found".to_string()
-                }
-            }
-            crate::provider_catalog::LoginProviderTarget::Jcode => {
-                if self.state_for_provider(provider) == AuthState::Available {
-                    if crate::subscription_catalog::has_router_base() {
-                        format!(
-                            "API key (`{}`) + router base",
-                            crate::subscription_catalog::JCODE_API_KEY_ENV
-                        )
-                    } else {
-                        format!(
-                            "API key (`{}`), router base pending",
-                            crate::subscription_catalog::JCODE_API_KEY_ENV
-                        )
-                    }
-                } else {
-                    "not configured".to_string()
                 }
             }
             crate::provider_catalog::LoginProviderTarget::OpenRouter => {
@@ -682,23 +654,6 @@ impl AuthStatus {
                 AuthRefreshSupport::ExternalManaged,
                 AuthValidationMethod::TrustedImportScan,
             ),
-            crate::provider_catalog::LoginProviderTarget::Jcode => {
-                let (source, detail) = summarize_sources(vec![
-                    env_source(crate::subscription_catalog::JCODE_API_KEY_ENV),
-                    config_source(
-                        crate::subscription_catalog::JCODE_API_KEY_ENV,
-                        crate::subscription_catalog::JCODE_ENV_FILE,
-                        "~/.config/jcode/jcode-subscription.env",
-                    ),
-                ]);
-                (
-                    source,
-                    detail,
-                    AuthExpiryConfidence::NotApplicable,
-                    AuthRefreshSupport::NotApplicable,
-                    AuthValidationMethod::PresenceCheck,
-                )
-            }
             crate::provider_catalog::LoginProviderTarget::OpenRouter => {
                 let (source, detail) = summarize_sources(vec![
                     env_source("OPENROUTER_API_KEY"),
@@ -883,7 +838,6 @@ fn build_auth_status_uncached(mode: AuthProbeMode) -> (AuthStatus, Vec<(&'static
     let mut status = AuthStatus::default();
     let mut timings = Vec::new();
 
-    record_auth_probe_step(&mut timings, "jcode", || probe_jcode_status(&mut status));
     record_auth_probe_step(&mut timings, "anthropic", || {
         probe_anthropic_status(&mut status)
     });
@@ -939,7 +893,7 @@ fn record_auth_probe_step(
 /// access tokens expire roughly hourly and the provider transparently
 /// refreshes them on the next request, so reporting `Expired` purely because
 /// the cached access token aged out makes a perfectly working provider look
-/// dead in `/login`, the header, onboarding, and `jcode auth status`.
+/// dead in `/login`, the header, and `jcode auth status`.
 ///
 /// Only report `Expired` when the refresh token itself is missing or was
 /// already permanently rejected (revoked / `invalid_grant`), which is the case
@@ -970,12 +924,6 @@ fn refreshable_token_state_with(
             }
         }
         Err(_) => AuthState::NotConfigured,
-    }
-}
-
-fn probe_jcode_status(status: &mut AuthStatus) {
-    if crate::subscription_catalog::has_credentials() {
-        status.jcode = AuthState::Available;
     }
 }
 
@@ -1203,8 +1151,7 @@ fn assessment_for_key(
                 AuthValidationMethod::CompositeProbe,
             )
         }
-        LoginProviderAuthStateKey::Jcode
-        | LoginProviderAuthStateKey::Azure
+        LoginProviderAuthStateKey::Azure
         | LoginProviderAuthStateKey::OpenRouterLike
         | LoginProviderAuthStateKey::ExternalImport => (
             AuthCredentialSource::None,

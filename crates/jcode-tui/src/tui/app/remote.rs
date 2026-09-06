@@ -134,7 +134,6 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     needs_redraw |= app.poll_model_picker_load();
     needs_redraw |= app.poll_session_picker_load();
     needs_redraw |= app.poll_session_picker_presence();
-    needs_redraw |= app.onboarding_tick();
     needs_redraw |= app.refresh_keybindings_if_config_reloaded();
 
     let _ = check_debug_command(app, remote).await;
@@ -605,12 +604,9 @@ pub(super) async fn handle_bus_event(
             let success = login.success && login.provider != "copilot_code";
             let provider_hint = auth_provider_hint_for_login_provider(&login.provider);
             let auth = auth_changed_event_for_login_provider(&login.provider);
-            let prefer_strongest = success && app.onboarding_should_prefer_strongest_model();
             app.handle_login_completed(login);
             if success
-                && let Err(error) = remote
-                    .notify_auth_changed_event(provider_hint, auth, prefer_strongest)
-                    .await
+                && let Err(error) = remote.notify_auth_changed_event(provider_hint, auth).await
             {
                 crate::logging::warn(&format!(
                     "Failed to notify server about refreshed auth: {error}"
@@ -619,9 +615,6 @@ pub(super) async fn handle_bus_event(
                 app.set_status_notice("Model setup will retry after reconnect");
             }
             true
-        }
-        Ok(BusEvent::OnboardingModelValidated(result)) => {
-            app.handle_onboarding_model_validated(result)
         }
         Ok(BusEvent::UpdateStatus(status)) => {
             app.handle_update_status(status);

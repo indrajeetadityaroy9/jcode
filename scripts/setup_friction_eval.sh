@@ -2,11 +2,10 @@
 # setup_friction_eval.sh - deterministic install / setup / retention friction
 # scorecard.
 #
-# The TUI onboarding evaluator (onboarding_eval.rs) scores the in-app flow, but
-# most first-run friction happens BEFORE the TUI: the installer, PATH
-# persistence, and whether an upgrade quietly preserves the user's state. This
-# script measures that surface deterministically, with no network and no real
-# user data, by running the REAL scripts/install.sh inside a sandbox with a
+# Most first-run friction happens before the TUI even starts: the installer,
+# PATH persistence, and whether an upgrade quietly preserves the user's state.
+# This script measures that surface deterministically, with no network and no
+# real user data, by running the REAL scripts/install.sh inside a sandbox with a
 # mocked release endpoint, then probing the result with REAL shells.
 #
 #   Section A  fresh-install PATH resolution - after one `curl | sh`-equivalent

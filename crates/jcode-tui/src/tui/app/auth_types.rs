@@ -90,9 +90,6 @@ pub(crate) enum AccountCommand {
     Login {
         provider_id: String,
     },
-    JcodeStatus,
-    JcodeManage,
-    JcodeLogout,
     Add {
         provider_id: String,
         label: Option<String>,

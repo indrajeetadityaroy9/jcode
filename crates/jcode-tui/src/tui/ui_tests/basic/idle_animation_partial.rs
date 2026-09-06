@@ -369,8 +369,8 @@ fn a_full_screen_overlay_stops_the_decorative_animation_cadence() {
 /// repaint to patch. Otherwise every tick is a full frame that changes nothing.
 ///
 /// Checked across terminal sizes and both idle screens, which is how the second
-/// instance of this bug was found: on a short terminal the onboarding donut
-/// shrinks to zero rows, so nothing animates there either.
+/// instance of this bug was found: on a short terminal the donut shrinks to
+/// zero rows, so nothing animates there either.
 #[test]
 fn animation_cadence_implies_the_renderer_published_animated_rows() {
     let _lock = viewport_snapshot_test_lock();
@@ -380,13 +380,9 @@ fn animation_cadence_implies_the_renderer_published_animated_rows() {
     let screens: Vec<(&str, TestState)> = vec![
         ("idle", idle_animation_state(1.0)),
         (
-            "onboarding",
+            "empty with login prompt",
             TestState {
-                onboarding_preview: true,
-                suggestions: vec![
-                    ("Log in to get started".to_string(), "/login".to_string()),
-                    ("Build a CLI".to_string(), "build a CLI".to_string()),
-                ],
+                suggestions: vec![("Log in to get started".to_string(), "/login".to_string())],
                 anim_elapsed: 1.0,
                 ..Default::default()
             },

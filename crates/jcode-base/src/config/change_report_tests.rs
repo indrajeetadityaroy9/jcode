@@ -16,8 +16,11 @@ fn keybinding_edit_reports_as_live() {
 
 #[test]
 fn acp_edit_reports_as_needing_restart() {
-    let report = summarize_toml_change("[acp]\nprofile = \"standard\"\n", "[acp]\nprofile = \"extended\"\n")
-        .expect("changed key should produce a report");
+    let report = summarize_toml_change(
+        "[acp]\nprofile = \"standard\"\n",
+        "[acp]\nprofile = \"extended\"\n",
+    )
+    .expect("changed key should produce a report");
 
     assert!(report.contains("needs restart"), "{report}");
     assert!(

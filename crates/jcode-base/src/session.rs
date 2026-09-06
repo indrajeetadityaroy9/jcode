@@ -268,10 +268,6 @@ fn default_is_test_session() -> bool {
 
 pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
     let normalized_name = provider_name.trim().to_ascii_lowercase();
-    if normalized_name == "jcode" {
-        return Some("jcode".to_string());
-    }
-
     if let Ok(runtime_provider) = std::env::var("JCODE_RUNTIME_PROVIDER") {
         let runtime_provider = runtime_provider.trim().to_ascii_lowercase();
         if !runtime_provider.is_empty() && runtime_provider != "openai-compatible" {

@@ -61,7 +61,16 @@ verdict "$(for p in \
     docs/AWS_BEDROCK_PROVIDER.md docs/BROWSER_PROVIDER_PROTOCOL.md \
     docs/GMAIL_COMPOSIO_BACKEND.md \
     docs/plans/SELFDEV_EXTRACTION.md docs/plans/UNIFIED_SELFDEV_SERVER_PLAN.md \
-    docs/proposals/computer-use-tool.md docs/proposals/computer-use-maximal-control.md
+    docs/proposals/computer-use-tool.md docs/proposals/computer-use-maximal-control.md \
+    crates/jcode-tui/src/tui/app/onboarding_flow.rs \
+    crates/jcode-tui/src/tui/app/onboarding_flow_control.rs \
+    crates/jcode-tui/src/tui/app/onboarding_graph.rs \
+    crates/jcode-tui/src/tui/app/onboarding_repair.rs \
+    crates/jcode-tui/src/tui/app/onboarding_sim.rs \
+    crates/jcode-tui/src/tui/ui_onboarding.rs \
+    crates/jcode-tui/src/tui/ui_tests/onboarding.rs \
+    crates/jcode-import-core/src/repo_ranking.rs \
+    scripts/capture_onboarding.sh docs/ONBOARDING_STATE_GRAPH.md
   do [ -e "$p" ] && echo "  RESURRECTED: $p"; done)"
 
 section "deleted crates must not reappear in any manifest"
@@ -82,6 +91,28 @@ section "removed tool / CLI registrations"
 verdict "$(grep -rnE \
     '"integration_tools"|"request_permission"|Command::(Pair|Permissions)|handle_telemetry_command|commands_remote|SummaryPill::(Subscription|Telemetry)|TelemetryChoice|TelemetryLevel|"/support"|"/feedback"|"/selfdev"|"selfdev"|create_session:selfdev|no_selfdev|self_dev:|Command::SetupHotkey|listen_macos_hotkey|notify_cli_launch|spawn_hotkey|ProviderChoice::(Xai|GrokBuild)|(LoginProviderTarget|LoginProviderAuthStateKey|RuntimeProviderId)::GrokBuild|PendingLogin::GrokBuild|"grok-build"|(ActiveProvider|LoginProviderTarget|ProviderChoice|RuntimeKey|ModelRouteApiMethod|LoginProviderAuthStateKey)::Bedrock|BEDROCK_LOGIN_PROVIDER|SelfDevBuildTarget::Desktop2|Command::Browser|"firefox-browser"|GmailTool|"gmail"|GOOGLE_LOGIN_PROVIDER|(LoginProviderTarget|LoginProviderAuthStateKey)::Google|google_access_tier|GoogleAccessTierArg|JCODE_SMTP_PASSWORD|JCODE_IMAP_HOST|JCODE_EMAIL_TO|JCODE_EMAIL_REPLY_ENABLED|linux-compat-vendored-openssl|"macos_computer_use"|"jcode_docs"' \
     --include='*.rs' crates/ src/ 2>/dev/null | filter_tests | sed 's/^/  /')"
+
+# The first-run onboarding subsystem is purged (docs/FORK_WORKFLOW.md §1). The
+# patterns are the concrete symbols, never a bare `onboarding`: that word still
+# appears legitimately in Gemini Code Assist's `onboardUser` REST API
+# (jcode-provider-gemini*), in scripts/onboarding_sandbox.sh (a kept auth
+# harness), and in prose. A guard that matches those cries wolf and gets
+# ignored.
+section "first-run onboarding must stay deleted"
+verdict "$(grep -rnE \
+    'Onboarding(Phase|Flow|Action|WelcomeKind|PendingValidation)|onboarding_(flow|graph|sim|repair|preview|welcome|banner|startup_checked|import|auto_model)|ui_onboarding|SessionPickerMode::Onboarding|is_new_user_install|prefer_strongest|repo_ranking|SessionFilterMode::ExternalClis|"/onboarding-sim"|"/onboarding-preview"|onboarding-sim' \
+    --include='*.rs' crates/ src/ tests/ 2>/dev/null | sed 's/^/  /')"
+
+# The first-party `jcode` subscription provider is purged (docs/FORK_WORKFLOW.md
+# §1). Tight for the same reason as above and then some: a bare `subscription`
+# would match `channel_subscriptions` (swarm chat pub/sub, 241 hits in
+# jcode-app-core alone) and every third-party subscription-auth path — Claude
+# Pro/Max, ChatGPT, Copilot, Gemini Code Assist — all of which §1 KEEPS as the
+# owner's actual working logins.
+section "first-party jcode subscription provider must stay deleted"
+verdict "$(grep -rnE \
+    'subscription_api|subscription_catalog|JcodeProvider|JCODE_LOGIN_PROVIDER|JCODE_ACCOUNT_URL|jcode_device|subscribe_nudge|(ProviderChoice|LoginProviderTarget|LoginProviderAuthStateKey|RuntimeProviderId)::Jcode\b|(RuntimeKey|ModelRouteApiMethod|OpenRouterTransportState|NativeProviderKind)::Jcode(Subscription)?\b|AccountCommand::Jcode|"jcode-subscription"|disable_subscription_runtime_mode|is_jcode_subscription_runtime' \
+    --include='*.rs' crates/ src/ tests/ 2>/dev/null | sed 's/^/  /')"
 
 # The Windows launcher/hotkey port and the PowerShell installer are purged: this
 # fork is macOS-only. Upstream never touched these files across the 236 commits

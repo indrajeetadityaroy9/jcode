@@ -101,7 +101,6 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
     needs_redraw |= app.poll_model_picker_load();
     needs_redraw |= app.poll_session_picker_load();
     needs_redraw |= app.poll_session_picker_presence();
-    needs_redraw |= app.onboarding_tick();
     needs_redraw |= app.poll_compaction_completion();
     needs_redraw |= app.maybe_refresh_overnight_display_card();
     needs_redraw |= super::commands::poll_local_transfer_prepare(app);
@@ -198,12 +197,8 @@ pub(super) fn handle_bus_event(
             app.handle_login_completed(login);
             true
         }
-        Ok(BusEvent::OnboardingModelValidated(result)) => {
-            app.handle_onboarding_model_validated(result)
-        }
         Ok(BusEvent::ModelsUpdated) => {
             app.invalidate_model_picker_cache();
-            app.maybe_apply_event_driven_onboarding_model();
             true
         }
         Ok(BusEvent::AuthCatalogRefreshReady) => {

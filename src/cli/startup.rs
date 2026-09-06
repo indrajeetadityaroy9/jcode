@@ -176,9 +176,11 @@ pub fn register_external_provider_runtimes() {
                     return None;
                 }
             };
-            Some(std::sync::Arc::new(
-                jcode_provider_openai_runtime::OpenAIProvider::new(credentials),
-            ) as std::sync::Arc<dyn crate::provider::Provider>)
+            Some(
+                std::sync::Arc::new(jcode_provider_openai_runtime::OpenAIProvider::new(
+                    credentials,
+                )) as std::sync::Arc<dyn crate::provider::Provider>,
+            )
         },
     );
     // Copilot's constructor is fallible (needs a GitHub token) and the runtime

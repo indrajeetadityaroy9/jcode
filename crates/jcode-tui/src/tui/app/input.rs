@@ -1046,14 +1046,7 @@ pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
         return false;
     }
 
-    let onboarding_suggestions = matches!(
-        app.onboarding_phase(),
-        Some(crate::tui::app::onboarding_flow::OnboardingPhase::Suggestions)
-    );
-    if app.input.is_empty()
-        && !app.is_processing
-        && (app.display_messages.is_empty() || onboarding_suggestions)
-    {
+    if app.input.is_empty() && !app.is_processing && app.display_messages.is_empty() {
         let mut chars = text.chars();
         if let (Some(c), None) = (chars.next(), chars.next())
             && let Some(digit) = c.to_digit(10)
@@ -1931,12 +1924,6 @@ pub(super) fn delete_input_to_end(app: &mut App) {
 
 pub(super) fn handle_super_key(app: &mut App, code: KeyCode) -> bool {
     match code {
-        // Cmd+5 toggles the onboarding simulator (a dev aid for walking through
-        // every first-run onboarding screen without touching real auth state).
-        KeyCode::Char('5') => {
-            app.toggle_onboarding_simulator();
-            true
-        }
         // macOS terminals that forward Command may report Command+Delete as Super+Backspace,
         // Super+Delete, or Super+DEL. Treat all of them as delete-the-previous-word, matching
         // the requested Cmd+Backspace = delete-by-word behavior.
@@ -2814,24 +2801,7 @@ impl App {
         let mut modifiers = modifiers;
         ctrl_bracket_fallback_to_esc(&mut code, &mut modifiers, self.diagram_available());
 
-        // Alt+5 always starts the onboarding simulator from a pristine first
-        // screen, even when another modal or a previous sim screen is active.
-        if self.handle_onboarding_sim_reset_shortcut(code, modifiers) {
-            return Ok(());
-        }
-
-        // The onboarding simulator owns all key handling while active so the
-        // real onboarding handlers and simulated modal overlays never fire (no
-        // real logins/imports or action selection).
-        if self.handle_onboarding_sim_key(code, modifiers) {
-            return Ok(());
-        }
-
         if handle_modal_key(self, code, modifiers)? {
-            return Ok(());
-        }
-
-        if self.handle_onboarding_continue_prompt_key(code) {
             return Ok(());
         }
 
@@ -2974,17 +2944,6 @@ impl App {
         if code == KeyCode::Enter {
             // Stray post-paste Enter from some terminals is not a submit (#544).
             if paste_guard::consume_paste_trailing_enter() {
-                return Ok(());
-            }
-            // During the onboarding model-selection phase, Enter on an empty
-            // prompt opens the model picker instead of submitting nothing.
-            if self.input.trim().is_empty()
-                && matches!(
-                    self.onboarding_phase(),
-                    Some(crate::tui::app::onboarding_flow::OnboardingPhase::ModelSelect)
-                )
-            {
-                self.open_model_picker();
                 return Ok(());
             }
             handle_enter(self);
@@ -3691,9 +3650,6 @@ impl App {
                 return;
             }
         }
-
-        // Leaving the preview should happen as soon as the user acts on it.
-        self.onboarding_preview_mode = false;
 
         // Add the expanded user message to the transcript. The composer remains compact
         // while editing, but sent turns should show the actual pasted content.

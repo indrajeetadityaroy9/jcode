@@ -6,12 +6,11 @@
 pub use jcode_config_types::{
     AgentsConfig, AmbientConfig, AuthConfig, AutoJudgeConfig, AutoReviewConfig, CompactionConfig,
     CompactionMode, CrossProviderFailoverMode, DiagramDisplayMode, DiagramPanePosition,
-    DiffDisplayMode, DisplayConfig, FeatureConfig, HookCommands, HooksConfig,
-    KeybindingsConfig, LatexRenderingMode,
-    MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
-    NamedProviderType, NativeScrollbarConfig, NotificationsConfig, OverscrollStatusMode,
-    PowerConfig, ProviderConfig, ReasoningDisplayMode, SafetyConfig, SessionPickerResumeAction,
-    SwarmSpawnMode, SwarmStripLayout, TerminalConfig, UpdateChannel,
+    DiffDisplayMode, DisplayConfig, FeatureConfig, HookCommands, HooksConfig, KeybindingsConfig,
+    LatexRenderingMode, MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig,
+    NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig, NotificationsConfig,
+    OverscrollStatusMode, PowerConfig, ProviderConfig, ReasoningDisplayMode, SafetyConfig,
+    SessionPickerResumeAction, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, UpdateChannel,
     WebSearchConfig, WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
@@ -715,4 +714,3 @@ mod tests;
 #[cfg(test)]
 #[path = "config_color_tests.rs"]
 mod color_tests;
-

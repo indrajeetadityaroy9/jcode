@@ -27,11 +27,11 @@ pub(crate) const REDRAW_DEEP_IDLE_AFTER: Duration = Duration::from_secs(30);
 /// "already past the deep-idle threshold" for any non-empty transcript that
 /// has never streamed in this process (see `TuiState::time_since_activity`),
 /// which is correct for a restored historical session but also matches a
-/// brand-new session the moment onboarding leaves its "here are a few things
-/// to try" notice. The user is sitting right there, actively pressing keys,
-/// while every deep-idle consumer (donut gate, tick cadence, periodic-redraw
-/// short-circuit) treats the session as abandoned. That is how the decorative
-/// animation ended up never running on the screen it was built for.
+/// brand-new session that has only ever shown system notices. The user is
+/// sitting right there, actively pressing keys, while every deep-idle consumer
+/// (donut gate, tick cadence, periodic-redraw short-circuit) treats the session
+/// as abandoned. That is how the decorative animation ended up never running on
+/// the screen it was built for.
 ///
 /// A recent keystroke/mouse/paste is direct evidence the session is not
 /// dormant, so it must hold deep idle off for the same window.
@@ -64,12 +64,6 @@ fn idle_donut_active_with_policy(
         return false;
     }
 
-    // The onboarding welcome screen is static (no decorative animation), so it
-    // does not need to keep the animation loop running.
-    if state.onboarding_welcome_active() {
-        return false;
-    }
-
     // The idle donut is decorative.  Leaving many dormant tabs/sessions open
     // should not keep every TUI repainting forever, especially when those tabs
     // are hidden behind a terminal multiplexer or kitty single-instance window.
@@ -88,9 +82,9 @@ fn idle_donut_active_with_policy(
 
 /// Whether the transcript contains any real conversation yet (a user prompt or
 /// an assistant/tool/reasoning reply). A fresh screen that only holds
-/// non-conversational notices (e.g. the "run /login when you're ready" system
-/// message left after onboarding is declined) is still "idle", so the decorative
-/// donut should keep spinning until the user actually starts chatting.
+/// non-conversational notices (e.g. a "run /login when you're ready" system
+/// message) is still "idle", so the decorative donut should keep spinning until
+/// the user actually starts chatting.
 fn has_started_conversation(state: &dyn TuiState) -> bool {
     state
         .display_messages()

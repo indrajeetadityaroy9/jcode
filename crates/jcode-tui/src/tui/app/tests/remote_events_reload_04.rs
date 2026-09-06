@@ -139,10 +139,11 @@ fn test_remote_error_with_retryable_pending_schedules_retry() {
         .expect("retry should surface a connection status message");
     assert_eq!(retry_notice.role, "system");
     assert!(retry_notice.content.contains("Connection lost - retrying"));
-    assert!(retry_notice.content.contains(&format!(
-        "attempt 1/{}",
-        App::AUTO_RETRY_MAX_ATTEMPTS
-    )));
+    assert!(
+        retry_notice
+            .content
+            .contains(&format!("attempt 1/{}", App::AUTO_RETRY_MAX_ATTEMPTS))
+    );
     assert!(retry_notice.content.contains("Remote request failed"));
 }
 
@@ -1477,23 +1478,6 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
         assert!(usage.total_cost > 0.0);
     }
 
-    crate::env::set_var("JCODE_RUNTIME_PROVIDER", "jcode");
-    crate::env::remove_var("JCODE_OPENROUTER_ALLOW_NO_AUTH");
-    let mut app = create_named_provider_test_app("openrouter", "subscription-model");
-    app.streaming.streaming_input_tokens = 1_000;
-    app.streaming.streaming_output_tokens = 1_000;
-    app.token_accounting.total_input_tokens = 12_000;
-    app.token_accounting.total_output_tokens = 3_400;
-    app.update_cost_impl();
-    assert_eq!(app.cost.total_cost, 0.0);
-
-    let data = crate::tui::TuiState::info_widget_data(&app);
-    assert_eq!(
-        data.auth_method,
-        crate::tui::info_widget::AuthMethod::Unknown
-    );
-    assert!(data.usage_info.is_none());
-
     crate::env::set_var("JCODE_RUNTIME_PROVIDER", "openai-compatible");
     crate::env::set_var("JCODE_OPENROUTER_ALLOW_NO_AUTH", "1");
     let mut app = create_named_provider_test_app("openrouter", "local-model");
@@ -1887,7 +1871,9 @@ fn test_debug_command_side_panel_latency_bench_reports_immediate_redraw() {
     // against 16.0ms purely from machine load, while passing in isolation. The
     // behavioral assertions above are the real subject, so gate only the timing
     // (refs #592).
-    let p95 = value["summary"]["latency_ms"]["p95"].as_f64().unwrap_or(0.0);
+    let p95 = value["summary"]["latency_ms"]["p95"]
+        .as_f64()
+        .unwrap_or(0.0);
     assert_perf_budget(p95 < 16.0, || {
         format!("side-panel p95 should stay within a 60fps frame budget: {result}")
     });
@@ -2174,7 +2160,10 @@ fn test_externally_started_turn_adopts_processing_state_and_settles_on_done() {
         app.status
     );
 
-    app.handle_server_event(crate::protocol::ServerEvent::MessageEnd { stop_reason: None }, &mut remote);
+    app.handle_server_event(
+        crate::protocol::ServerEvent::MessageEnd { stop_reason: None },
+        &mut remote,
+    );
     app.handle_server_event(crate::protocol::ServerEvent::Done { id: 0 }, &mut remote);
 
     // Streaming text is revealed at a paced rate, so a `Done` that arrives with
