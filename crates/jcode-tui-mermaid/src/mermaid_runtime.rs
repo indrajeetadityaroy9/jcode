@@ -452,11 +452,6 @@ pub fn set_image_placeholder_mode(enabled: bool) {
     IMAGE_PLACEHOLDER_MODE.store(enabled, Ordering::Relaxed);
 }
 
-/// Check if image-placeholder mode is active.
-pub fn is_image_placeholder_mode() -> bool {
-    IMAGE_PLACEHOLDER_MODE.load(Ordering::Relaxed)
-}
-
 /// Look up a cached PNG for the given mermaid content hash.
 /// Returns (path, width, height) if a cached render exists on disk.
 pub fn get_cached_png(hash: u64) -> Option<(PathBuf, u32, u32)> {

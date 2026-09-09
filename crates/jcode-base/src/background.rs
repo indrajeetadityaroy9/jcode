@@ -855,6 +855,12 @@ impl BackgroundTaskManager {
         tasks.contains_key(task_id)
     }
 
+    /// Best-effort count of tasks still live in this process. `None` when the task
+    /// map was momentarily locked; callers must treat that as "work may exist".
+    pub fn live_task_count(&self) -> Option<usize> {
+        self.tasks.try_read().ok().map(|tasks| tasks.len()) // budget-ok: lock blip, not an error
+    }
+
     /// Get full output of a task
     pub async fn output(&self, task_id: &str) -> Option<String> {
         let output_path = self.output_path_for(task_id);

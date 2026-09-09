@@ -316,14 +316,6 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "/active",
         "Manage live sessions: see which are working vs ready",
     ));
-    lines.push(help_entry(
-        "/catchup [next]",
-        "Jump into finished sessions with a side-panel brief",
-    ));
-    lines.push(help_entry(
-        "/back",
-        "Return to the previous Catch Up session",
-    ));
     lines.push(help_entry("/save [label]", "Bookmark session for /resume"));
     lines.push(help_entry(
         "/rename <name>|--clear",

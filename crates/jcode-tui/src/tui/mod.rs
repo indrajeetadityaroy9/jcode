@@ -164,12 +164,14 @@ pub(crate) fn hash_rendered_image_signature_fields(
 
 /// Trait for TUI state consumed by the shared renderer.
 ///
-/// This is a wide (114-method) presentation interface: the read-only surface the
+/// This is a wide (129-method) presentation interface: the read-only surface the
 /// renderer needs from `App`. The methods are grouped into the domain sections
 /// below (transcript, input, scroll, stream/status, provider, session/server,
 /// workspace, diagram pane, diff pane, side panel, inline, overlay, copy
 /// selection, misc). See `docs/TUISTATE_TRAIT_DECOMPOSITION.md` for
-/// the incremental plan to split these into composable sub-traits.
+/// the incremental plan to split these into composable sub-traits - note that
+/// plan is unrealized (no sub-traits exist yet) and its method list still
+/// names purged onboarding methods.
 pub trait TuiState {
     // ---- Transcript ----
     fn display_messages(&self) -> &[DisplayMessage];
@@ -466,19 +468,6 @@ pub trait TuiState {
         false
     }
 
-    // ---- Workspace ----
-    /// Whether workspace mode is enabled for this client.
-    fn workspace_mode_enabled(&self) -> bool {
-        false
-    }
-    /// Visible Niri-style workspace rows for the workspace-map widget.
-    fn workspace_map_rows(&self) -> Vec<workspace_map::VisibleWorkspaceRow> {
-        Vec::new()
-    }
-    /// Animation tick used for lightweight workspace map animation.
-    fn workspace_animation_tick(&self) -> u64 {
-        0
-    }
     /// Render streaming text using incremental markdown renderer
     /// This is more efficient than re-rendering on every frame
     fn render_streaming_markdown(&self, width: usize) -> Vec<Line<'static>>;
@@ -486,8 +475,6 @@ pub trait TuiState {
     fn centered_mode(&self) -> bool;
     /// Authentication status for all supported providers
     fn auth_status(&self) -> crate::auth::AuthStatus;
-    /// Update cost calculation based on token usage (for API-key providers)
-    fn update_cost(&mut self);
     /// Diagram display mode (none/margin/pinned)
     // ---- Diagram pane ----
     fn diagram_mode(&self) -> crate::config::DiagramDisplayMode;
@@ -577,8 +564,6 @@ pub trait TuiState {
     fn login_picker_overlay(&self) -> Option<&std::cell::RefCell<login_picker::LoginPicker>>;
     /// Account picker overlay for /account command
     fn account_picker_overlay(&self) -> Option<&std::cell::RefCell<account_picker::AccountPicker>>;
-    /// Usage overlay for /usage command
-    fn usage_overlay(&self) -> Option<&std::cell::RefCell<usage_overlay::UsageOverlay>>;
     /// Working directory for this session
     // ---- Misc ----
     fn working_dir(&self) -> Option<String>;
@@ -591,14 +576,15 @@ pub trait TuiState {
     /// UI state for live copy badge highlighting / feedback
     // ---- Copy selection ----
     fn copy_badge_ui(&self) -> crate::tui::CopyBadgeUiState;
-    /// Whether modal in-app copy selection mode is active.
-    fn copy_selection_mode(&self) -> bool;
     /// Current in-app copy selection range, if any.
     fn copy_selection_range(&self) -> Option<CopySelectionRange>;
     /// Persistent status for in-app copy selection mode.
     fn copy_selection_status(&self) -> Option<CopySelectionStatus>;
-    /// Suggestion prompts for new users (shown in initial empty state).
-    /// Returns (label, prompt_text) pairs. Empty if user is experienced or not authenticated.
+    /// Login affordance for the initial empty screen.
+    ///
+    /// Returns (label, prompt_text) pairs: one "log in" prompt while no
+    /// credentials are available anywhere, and nothing once authenticated.
+    /// (The old wording claimed the inverse and predated the onboarding purge.)
     fn suggestion_prompts(&self) -> Vec<(String, String)>;
     /// Cache TTL status - shows whether the prompt cache is warm/cold based on idle time
     fn cache_ttl_status(&self) -> Option<CacheTtlInfo>;

@@ -11,7 +11,6 @@ pub mod cursor;
 mod dispatch;
 pub mod external;
 mod failover;
-mod fingerprint;
 pub mod gemini;
 mod image_clamp;
 pub mod models;

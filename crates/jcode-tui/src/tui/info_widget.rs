@@ -63,7 +63,7 @@ use model::{render_model_info, render_model_widget};
 use swarm_background::{render_background_compact, render_background_widget, render_swarm_widget};
 use text::{truncate_smart, truncate_with_ellipsis};
 pub(crate) use tips::occasional_status_tip;
-use tips::{render_tips_widget, tips_widget_height};
+
 pub(crate) use todos_render::swarm_plan_todos;
 use todos_render::{render_todos_compact, render_todos_expanded, render_todos_widget};
 #[cfg(test)]
@@ -97,10 +97,6 @@ pub enum WidgetKind {
     ModelInfo,
     /// Mermaid diagrams
     Diagrams,
-    /// Ambient mode status
-    AmbientMode,
-    /// Rotating tips/shortcuts
-    Tips,
     /// Git status
     GitStatus,
 }
@@ -122,8 +118,6 @@ impl WidgetKind {
             WidgetKind::BackgroundTasks => 10,
             WidgetKind::GitStatus => 11,
             WidgetKind::SwarmStatus => 12, // Session list - lower priority
-            WidgetKind::AmbientMode => 13, // Scheduled agent - lower priority
-            WidgetKind::Tips => 14,        // Did you know - lowest
         }
     }
 
@@ -139,11 +133,9 @@ impl WidgetKind {
             WidgetKind::SwarmStatus => Side::Left,
             WidgetKind::Compaction => Side::Left,
             WidgetKind::BackgroundTasks => Side::Left,
-            WidgetKind::AmbientMode => Side::Left,
             WidgetKind::UsageLimits => Side::Left,
             WidgetKind::KvCache => Side::Left,
             WidgetKind::ModelInfo => Side::Left,
-            WidgetKind::Tips => Side::Left,
             WidgetKind::GitStatus => Side::Left,
         }
     }
@@ -160,11 +152,9 @@ impl WidgetKind {
             WidgetKind::SwarmStatus => 3,
             WidgetKind::Compaction => 3,
             WidgetKind::BackgroundTasks => 2,
-            WidgetKind::AmbientMode => 3,
             WidgetKind::UsageLimits => 3,
             WidgetKind::KvCache => 3,
             WidgetKind::ModelInfo => 3, // Model + usage bars
-            WidgetKind::Tips => 3,
             WidgetKind::GitStatus => 3,
         }
     }
@@ -185,8 +175,6 @@ impl WidgetKind {
             WidgetKind::BackgroundTasks,
             WidgetKind::GitStatus,
             WidgetKind::SwarmStatus,
-            WidgetKind::AmbientMode,
-            WidgetKind::Tips,
         ]
     }
 
@@ -201,11 +189,9 @@ impl WidgetKind {
             WidgetKind::SwarmStatus => "swarm",
             WidgetKind::BackgroundTasks => "background",
             WidgetKind::Compaction => "compaction",
-            WidgetKind::AmbientMode => "ambient",
             WidgetKind::UsageLimits => "usage",
             WidgetKind::KvCache => "kv-cache",
             WidgetKind::ModelInfo => "model",
-            WidgetKind::Tips => "tips",
             WidgetKind::GitStatus => "git",
         }
     }
@@ -565,10 +551,6 @@ pub struct CompactionInfo {
 }
 
 impl InfoWidgetData {
-    fn widget_disabled(kind: WidgetKind) -> bool {
-        matches!(kind, WidgetKind::AmbientMode | WidgetKind::Tips)
-    }
-
     pub fn is_empty(&self) -> bool {
         self.todos.is_empty()
             && self.context_info.is_none()
@@ -583,10 +565,6 @@ impl InfoWidgetData {
 
     /// Check if a specific widget kind has data to display
     pub fn has_data_for(&self, kind: WidgetKind) -> bool {
-        if Self::widget_disabled(kind) {
-            return false;
-        }
-
         match kind {
             WidgetKind::Diagrams => !self.diagrams.is_empty(),
             WidgetKind::WorkspaceMap => !self.workspace_rows.is_empty(),
@@ -667,7 +645,6 @@ impl InfoWidgetData {
                 .map(|b| b.running_count > 0)
                 .unwrap_or(false),
             WidgetKind::Compaction => self.compaction_info.is_some(),
-            WidgetKind::AmbientMode => false,
             WidgetKind::UsageLimits => self
                 .usage_info
                 .as_ref()
@@ -675,7 +652,6 @@ impl InfoWidgetData {
                 .unwrap_or(false),
             WidgetKind::KvCache => self.cache_hit_info.is_some(),
             WidgetKind::ModelInfo => self.model.is_some(),
-            WidgetKind::Tips => false,
             WidgetKind::GitStatus => self
                 .git_info
                 .as_ref()
@@ -1073,28 +1049,6 @@ pub(crate) fn calculate_widget_height(
             }
             2
         }
-        WidgetKind::AmbientMode => {
-            let Some(info) = &data.ambient_info else {
-                return 0;
-            };
-            if !info.show_widget {
-                return 0;
-            }
-            let mut h = 1u16; // Status line
-            if info.queue_count > 0 || info.reminder_count > 0 {
-                h += 1; // Queue line
-            }
-            if info.last_run_ago.is_some() {
-                h += 1; // Last run line
-            }
-            if info.next_wake.is_some() || info.next_reminder_wake.is_some() {
-                h += 1; // Next wake line
-            }
-            if info.budget_percent.is_some() {
-                h += 1; // Budget bar
-            }
-            h
-        }
         WidgetKind::UsageLimits => {
             if let Some(info) = data.usage_info.as_ref() {
                 if info.available {
@@ -1168,7 +1122,6 @@ pub(crate) fn calculate_widget_height(
             }
             h
         }
-        WidgetKind::Tips => tips_widget_height(inner_width),
         WidgetKind::GitStatus => {
             let Some(info) = &data.git_info else {
                 return 0;
@@ -1187,25 +1140,6 @@ pub(crate) fn calculate_widget_height(
 
     let total = content_height + border_height;
     total.min(max_height)
-}
-
-/// Legacy API for backwards compatibility - will be removed
-/// Calculate the widget layout based on available space
-/// Returns the Rect where the widget should be drawn, or None if it shouldn't show
-#[deprecated(note = "Use calculate_placements instead")]
-pub fn calculate_layout(
-    messages_area: Rect,
-    free_widths: &[u16],
-    data: &InfoWidgetData,
-) -> Option<Rect> {
-    let margins = Margins {
-        right_widths: free_widths.to_vec(),
-        left_widths: Vec::new(),
-        centered: false,
-        ..Default::default()
-    };
-    let placements = calculate_placements(messages_area, &margins, data);
-    placements.first().map(|p| p.rect)
 }
 
 /// Render all placed widgets
@@ -1528,11 +1462,9 @@ fn render_widget_content(
         WidgetKind::SwarmStatus => render_swarm_widget(data, inner),
         WidgetKind::BackgroundTasks => render_background_widget(data, inner),
         WidgetKind::Compaction => render_compaction_widget(data, inner),
-        WidgetKind::AmbientMode => render_ambient_widget(data, inner),
         WidgetKind::UsageLimits => render_usage_widget(data, inner),
         WidgetKind::KvCache => render_kv_cache_widget(data, inner),
         WidgetKind::ModelInfo => render_model_widget(data, inner),
-        WidgetKind::Tips => render_tips_widget(inner),
         WidgetKind::GitStatus => render_git_widget(data, inner),
     }
 }
@@ -1600,177 +1532,6 @@ fn render_context_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static
         limit_tokens,
         inner.width,
     )]
-}
-
-/// Render ambient mode status widget
-fn render_ambient_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
-    let Some(info) = &data.ambient_info else {
-        return Vec::new();
-    };
-    if !info.show_widget {
-        return Vec::new();
-    }
-
-    let mut lines: Vec<Line> = Vec::new();
-    let dim = rgb(100, 100, 110);
-    let label_color = rgb(140, 140, 150);
-    let max_w = inner.width.saturating_sub(2) as usize;
-
-    // Status line with icon
-    let (icon, status_text, status_color) = match &info.status {
-        AmbientStatus::Idle => ("○", "Idle".to_string(), rgb(120, 120, 130)),
-        AmbientStatus::Running { detail } => {
-            ("●", format!("Running: {}", detail), rgb(100, 200, 100))
-        }
-        AmbientStatus::Scheduled { .. } => {
-            ("◐", "Waiting for next run".to_string(), rgb(140, 180, 255))
-        }
-        AmbientStatus::Paused { reason } => (
-            "⏸",
-            format!(
-                "Paused: {}",
-                truncate_smart(reason, inner.width.saturating_sub(12) as usize)
-            ),
-            rgb(255, 200, 100),
-        ),
-        AmbientStatus::Disabled if info.reminder_count > 0 => (
-            "⏰",
-            "Scheduled tasks active".to_string(),
-            rgb(140, 180, 255),
-        ),
-        AmbientStatus::Disabled => ("○", "Not running".to_string(), dim),
-    };
-
-    lines.push(Line::from(vec![
-        Span::styled(format!("{} ", icon), Style::default().fg(status_color)),
-        Span::styled(
-            truncate_smart(&status_text, inner.width.saturating_sub(3) as usize),
-            Style::default().fg(rgb(180, 180, 190)),
-        ),
-    ]));
-
-    // Scheduled tasks count
-    let queue_count = if matches!(info.status, AmbientStatus::Disabled) && info.reminder_count > 0 {
-        info.reminder_count
-    } else {
-        info.queue_count
-    };
-    let queue_preview = if matches!(info.status, AmbientStatus::Disabled) && info.reminder_count > 0
-    {
-        info.next_reminder_preview.as_ref()
-    } else {
-        info.next_queue_preview.as_ref()
-    };
-
-    if queue_count > 0 {
-        let count_text =
-            if matches!(info.status, AmbientStatus::Disabled) && info.reminder_count > 0 {
-                if queue_count == 1 {
-                    "1 scheduled task".to_string()
-                } else {
-                    format!("{} scheduled tasks", queue_count)
-                }
-            } else if queue_count == 1 {
-                "1 task queued".to_string()
-            } else {
-                format!("{} tasks queued", queue_count)
-            };
-        let mut spans = vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(count_text, Style::default().fg(label_color)),
-        ];
-        if let Some(preview) = queue_preview {
-            spans.push(Span::styled(
-                truncate_smart(&format!(" ({})", preview), max_w.saturating_sub(18)),
-                Style::default().fg(dim),
-            ));
-        }
-        lines.push(Line::from(spans));
-    }
-
-    // Last run
-    if let Some(ref ago) = info.last_run_ago {
-        let mut spans = vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(format!("Ran {}", ago), Style::default().fg(label_color)),
-        ];
-        if let Some(ref summary) = info.last_summary {
-            let remaining = max_w.saturating_sub(6 + ago.len());
-            if remaining > 5 {
-                spans.push(Span::styled(
-                    truncate_smart(&format!(" - {}", summary), remaining),
-                    Style::default().fg(dim),
-                ));
-            }
-        }
-        lines.push(Line::from(spans));
-    }
-
-    // Next scheduled run
-    let next_due = if matches!(info.status, AmbientStatus::Disabled) && info.reminder_count > 0 {
-        info.next_reminder_wake.as_ref()
-    } else {
-        info.next_wake.as_ref()
-    };
-
-    if let Some(next) = next_due {
-        let prefix = if matches!(info.status, AmbientStatus::Disabled) && info.reminder_count > 0 {
-            "Next scheduled task"
-        } else {
-            "Next run"
-        };
-        lines.push(Line::from(vec![
-            Span::styled("  ", Style::default()),
-            Span::styled(
-                format!("{} {}", prefix, next),
-                Style::default().fg(label_color),
-            ),
-        ]));
-    }
-
-    // Budget bar
-    if let Some(budget) = info.budget_percent {
-        let pct = (budget * 100.0).round().clamp(0.0, 100.0) as u8;
-        let bar_width = inner.width.saturating_sub(12).clamp(4, 10) as usize;
-        let filled = ((budget * bar_width as f32).round() as usize).min(bar_width);
-        let empty = bar_width.saturating_sub(filled);
-
-        let bar_color = if pct < 20 {
-            rgb(255, 100, 100)
-        } else if pct <= 50 {
-            rgb(255, 200, 100)
-        } else {
-            rgb(100, 200, 100)
-        };
-
-        lines.push(Line::from(vec![
-            Span::styled("  ", Style::default()),
-            Span::styled("█".repeat(filled), Style::default().fg(bar_color)),
-            Span::styled("░".repeat(empty), Style::default().fg(rgb(50, 50, 60))),
-            Span::styled(format!(" {}%", pct), Style::default().fg(bar_color)),
-        ]));
-    }
-
-    lines
-}
-
-/// Legacy render function - kept for backwards compatibility
-/// Renders the first available widget at the given rect
-#[deprecated(note = "Use render_all instead")]
-pub fn render(frame: &mut Frame, rect: Rect, data: &InfoWidgetData) {
-    // Just render as the first available widget type
-    let available = data.available_widgets();
-    if available.is_empty() {
-        return;
-    }
-
-    // Create a temporary placement for the first widget
-    let placement = WidgetPlacement {
-        kind: available[0],
-        rect,
-        side: Side::Right,
-    };
-    render_single_widget(frame, &placement, data);
 }
 
 fn render_page(kind: InfoPageKind, data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {

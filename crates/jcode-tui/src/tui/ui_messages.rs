@@ -49,8 +49,10 @@ fn render_single_line_system_notice(
     msg: &DisplayMessage,
     width: u16,
 ) -> Option<Vec<Line<'static>>> {
-    let is_update_divergence_notice = msg.content.starts_with("Update diverged. Press ")
-        || msg.content.starts_with("Local and upstream have diverged");
+    // The "Update diverged. Press Ctrl+Y…" variant went with the self-updater's
+    // merge offer; the surviving string is produced by
+    // `session_rebuild.rs:243` when a rebuild cannot fast-forward.
+    let is_update_divergence_notice = msg.content.starts_with("Local and upstream have diverged");
     let is_cold_cache_notice = msg.content.starts_with("🧊 Prompt cache went cold");
     if !is_cold_cache_notice && !is_update_divergence_notice {
         return None;

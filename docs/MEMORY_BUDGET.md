@@ -26,14 +26,23 @@ Use existing debug surfaces instead of ad hoc instrumentation:
 - Agent/session memory profile via debug socket: `agent:memory`
 - Fast server incident classification: `server:memory-incident`
 - Full server attribution: `server:memory`
-- Process-lifetime timeline: `python scripts/analyze_runtime_memory_log.py --days 1`
+- Process-lifetime timeline: `python3 scripts/analyze_runtime_memory_log.py --days 1`
 
-On this macOS-only fork the *process* figures inside those reports (RSS, peak RSS, virtual, PSS) are
-always absent: `process_memory::snapshot_with_source` is `#[cfg(target_os = "linux")]` and the
-non-Linux build returns `ProcessMemorySnapshot::default()`
-(`crates/jcode-base/src/process_memory.rs:180`). Every cap and counter in this document is an
-application-level accounting number and is unaffected, but do not expect an RSS delta to corroborate
-them. See [the runbook caveat](./MEMORY_INCIDENT_RUNBOOK.md) before relying on process-level numbers.
+The *process* figures in those reports (RSS, peak RSS, virtual, thread stacks, anonymous heap,
+system total/available, swap, load, battery) are **real on macOS**:
+`process_memory::snapshot_with_source` reads them through `proc_pidinfo`,
+`task_info(TASK_VM_INFO)`, `getrlimit`, `getrusage`, `sysctlbyname` and `host_statistics64`
+(`crates/jcode-base/src/process_memory.rs:186`).
+
+Only the **PSS family** stays `None`: proportional set size is a Linux `smaps_rollup` concept
+with no macOS equivalent, so `os.pss_bytes` and friends are absent and the analyzer falls back to
+RSS, labelling which metric it used. See
+[the runbook's platform note](./MEMORY_INCIDENT_RUNBOOK.md) for the full field-by-field list.
+
+> This paragraph previously claimed every process figure was "always absent" because
+> `snapshot_with_source` was `#[cfg(target_os = "linux")]`. That was true before the macOS
+> readers were implemented; the function carries no `cfg` today, and the daemon's runtime-memory
+> log records real `rss_bytes`.
 
 Primary sources in code (post workspace split):
 - `crates/jcode-tui/src/tui/app/debug_cmds.rs`

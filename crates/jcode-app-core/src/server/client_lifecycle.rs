@@ -362,9 +362,7 @@ async fn refresh_session_control_handle(
 pub(super) async fn handle_client(
     stream: Stream,
     sessions: SessionAgents,
-    _global_event_tx: broadcast::Sender<ServerEvent>,
     provider_template: Arc<dyn Provider>,
-    _global_is_processing: Arc<RwLock<bool>>,
     global_session_id: Arc<RwLock<String>>,
     client_count: Arc<RwLock<usize>>,
     client_connections: Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,

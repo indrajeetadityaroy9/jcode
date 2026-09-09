@@ -141,3 +141,26 @@ async fn debug_accept_loop_responds_to_ping_without_affecting_client_count() {
         .expect("debug accept loop should observe runtime cancellation")
         .expect("debug accept loop should exit cleanly");
 }
+
+#[test]
+fn idle_shutdown_permitted_blocks_on_clients_active_turns_and_lock_contention() {
+    use super::idle_shutdown_permitted;
+
+    // Nothing attached, nothing running: the daemon may exit.
+    assert!(idle_shutdown_permitted(0, Some(0), Some(0)));
+
+    // An attached client keeps the daemon alive.
+    assert!(!idle_shutdown_permitted(1, Some(0), Some(0)));
+
+    // A headless turn contributes nothing to the client count, so this is the
+    // case that used to be killed after 5 minutes of "idle".
+    assert!(!idle_shutdown_permitted(0, Some(1), Some(0)));
+
+    // A live background task outlasting its client also blocks exit.
+    assert!(!idle_shutdown_permitted(0, Some(0), Some(1)));
+
+    // Either registry being momentarily unreadable means "work may exist",
+    // never zero: a lock blip must not kill in-flight work.
+    assert!(!idle_shutdown_permitted(0, None, Some(0)));
+    assert!(!idle_shutdown_permitted(0, Some(0), None));
+}

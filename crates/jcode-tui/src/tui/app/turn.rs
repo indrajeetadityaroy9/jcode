@@ -490,24 +490,8 @@ impl App {
                                         // output so any open reasoning region closes in order as
                                         // the paced stream reveals.
                                         let ops = self.stream_buffer.push_text(&text);
-                                        let revealed: Vec<String> = ops
-                                            .iter()
-                                            .filter_map(|op| match op {
-                                                crate::tui::stream_buffer::StreamOp::Text(chunk) => {
-                                                    Some(chunk.clone())
-                                                }
-                                                _ => None,
-                                            })
-                                            .collect();
-                                        if self.apply_stream_ops(ops) {
-                                            for chunk in revealed {
-                                                self.broadcast_debug(crate::tui::backend::DebugEvent::TextDelta {
-                                                    text: chunk
-                                                });
-                                            }
-                                            if eager_stream_redraw {
-                                                status_spinner_renderer.draw_full(self, terminal)?;
-                                            }
+                                        if self.apply_stream_ops(ops) && eager_stream_redraw {
+                                            status_spinner_renderer.draw_full(self, terminal)?;
                                         }
                                     }
                                     StreamEvent::ToolUseStart { id, name } => {
@@ -517,10 +501,6 @@ impl App {
                                         // tool execution is excluded below at ToolUseEnd.
                                         self.resume_streaming_tps();
                                         self.clear_active_experimental_feature_notice();
-                                        self.broadcast_debug(crate::tui::backend::DebugEvent::ToolStart {
-                                            id: id.clone(),
-                                            name: name.clone(),
-                                        });
                                         // Close any open reasoning region before committing the
                                         // assistant message so the blockquote is well-formed.
                                         if self.reasoning_streaming {
@@ -550,9 +530,6 @@ impl App {
                                         }
                                     }
                                     StreamEvent::ToolInputDelta(delta) => {
-                                        self.broadcast_debug(crate::tui::backend::DebugEvent::ToolInput {
-                                            delta: delta.clone()
-                                        });
                                         current_tool_input.push_str(&delta);
                                     }
                                     StreamEvent::ToolUseEnd => {
@@ -579,10 +556,6 @@ impl App {
                                                 streaming_tool.input = tool.input.clone();
                                                 streaming_tool.intent = tool.intent.clone();
                                             }
-                                            self.broadcast_debug(crate::tui::backend::DebugEvent::ToolExec {
-                                                id: tool.id.clone(),
-                                                name: tool.name.clone(),
-                                            });
                                             self.commit_pending_streaming_assistant_message();
 
                                             // Add tool call as its own display message
@@ -643,13 +616,6 @@ impl App {
                                                 self.check_context_warning(context_tokens);
                                             }
                                         }
-                                        self.broadcast_debug(crate::tui::backend::DebugEvent::TokenUsage {
-                                            input_tokens: self.streaming.streaming_input_tokens,
-                                            output_tokens: self.streaming.streaming_output_tokens,
-                                            cache_read_input_tokens: self.streaming.streaming_cache_read_tokens,
-                                            cache_creation_input_tokens: self
-                                                .streaming.streaming_cache_creation_tokens,
-                                        });
                                     }
                                     StreamEvent::ConnectionType { connection } => {
                                         self.connection_type = Some(connection);
@@ -766,7 +732,6 @@ impl App {
                                         self.thinking_prefix_emitted = false;
                                         // Always show Thinking in status bar
                                         self.status = ProcessingStatus::Thinking(start);
-                                        self.broadcast_debug(crate::tui::backend::DebugEvent::ThinkingStart);
                                         if eager_stream_redraw {
                                             status_spinner_renderer.draw_full(self, terminal)?;
                                         }
@@ -814,7 +779,6 @@ impl App {
                                         self.pause_streaming_tps(true);
                                         self.thinking_start = None;
                                         self.thinking_buffer.clear();
-                                        self.broadcast_debug(crate::tui::backend::DebugEvent::ThinkingEnd);
                                     }
                                     StreamEvent::ThinkingDone { duration_secs: _ } => {
                                         if config().display.reasoning_enabled() {
@@ -873,20 +837,6 @@ impl App {
                                     StreamEvent::ToolResult { tool_use_id, content, is_error } => {
                                         // SDK already executed this tool
                                         self.tool_result_ids.insert(tool_use_id.clone());
-                                        // Find the tool name from our tracking
-                                        let tool_name = self.streaming_tool_calls
-                                            .iter()
-                                            .find(|tc| tc.id == tool_use_id)
-                                            .map(|tc| tc.name.clone())
-                                            .unwrap_or_default();
-
-                                        self.broadcast_debug(crate::tui::backend::DebugEvent::ToolDone {
-                                            id: tool_use_id.clone(),
-                                            name: tool_name.clone(),
-                                            output: content.clone(),
-                                            is_error,
-                                        });
-
                                         // Update the tool's DisplayMessage with the output (if it exists)
                                         if let Some(dm) = self.display_messages.iter_mut().rev().find(|dm| {
                                             dm.tool_data.as_ref().map(|td| &td.id) == Some(&tool_use_id)

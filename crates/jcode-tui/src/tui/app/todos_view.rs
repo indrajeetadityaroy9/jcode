@@ -120,7 +120,6 @@ impl App {
 
     /// The pinned-band renderer that reads this is landing separately, so the
     /// accessor is allowed to be unused (outside tests) until it does.
-    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn pinned_todos_payload_ref(&self) -> Option<&str> {
         self.pinned_todos_payload.as_deref()
     }

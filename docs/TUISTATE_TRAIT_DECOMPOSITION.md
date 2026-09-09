@@ -4,6 +4,19 @@ Status: **unrealized proposal.** Zero sub-traits have been extracted. The only
 part of this plan in the tree is step 1 (the section-header comments inside the
 trait). Everything from "Proposed target shape" down is design, not code.
 
+**The inventory below is also out of date** (audited 2026-09-08). Do not treat its
+method lists or file lists as current:
+
+- `ui_onboarding.rs` no longer exists (first-run onboarding was purged), so the
+  step-1 file group naming it is wrong.
+- The `TuiOnboardingState` group lists `onboarding_preview_mode`,
+  `onboarding_welcome_active` and `onboarding_welcome_kind` - all three are gone
+  from the trait.
+- `copy_selection_mode`, `usage_overlay`, `update_cost`, `workspace_mode_enabled`,
+  `workspace_map_rows` and `workspace_animation_tick` were removed as dead, so
+  several listed groups are smaller than shown.
+- The trait is 129 methods now, not the 114 this document counted.
+
 This document audits the `TuiState` trait (`crates/jcode-tui/src/tui/mod.rs`) and
 proposes a safe, incremental decomposition. It is the Phase 1.5 follow-on to the
 `App` god-object decomposition (see `plans/CLIENT_CORE_PRESENTATION_SPLIT_PLAN.md`).

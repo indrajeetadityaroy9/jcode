@@ -374,7 +374,6 @@ impl crate::tui::TuiState for TestState {
     fn auth_status(&self) -> crate::auth::AuthStatus {
         Default::default()
     }
-    fn update_cost(&mut self) {}
     fn diagram_mode(&self) -> crate::config::DiagramDisplayMode {
         Default::default()
     }
@@ -459,11 +458,6 @@ impl crate::tui::TuiState for TestState {
     ) -> Option<&std::cell::RefCell<crate::tui::account_picker::AccountPicker>> {
         None
     }
-    fn usage_overlay(
-        &self,
-    ) -> Option<&std::cell::RefCell<crate::tui::usage_overlay::UsageOverlay>> {
-        None
-    }
     fn working_dir(&self) -> Option<String> {
         self.working_dir.clone()
     }
@@ -472,9 +466,6 @@ impl crate::tui::TuiState for TestState {
     }
     fn copy_badge_ui(&self) -> crate::tui::CopyBadgeUiState {
         Default::default()
-    }
-    fn copy_selection_mode(&self) -> bool {
-        false
     }
     fn copy_selection_range(&self) -> Option<crate::tui::CopySelectionRange> {
         None

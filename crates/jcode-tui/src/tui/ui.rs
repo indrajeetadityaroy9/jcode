@@ -157,7 +157,6 @@ use transitions::inline_ui_gap_height;
 use viewport::compute_visible_margins;
 use viewport::draw_messages;
 #[cfg(test)]
-#[allow(unused_imports)]
 pub(crate) use viewport::{
     copy_badge_alt_badge, copy_badge_reserved_width, expand_badge_reserved_width,
     pick_copy_badge_line, reserve_copy_badge_margins, truncate_line_for_copy_badge,

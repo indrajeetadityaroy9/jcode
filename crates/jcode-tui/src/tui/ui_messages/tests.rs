@@ -83,15 +83,21 @@ fn render_cold_cache_warning_is_always_one_width_bounded_line() {
     crate::tui::markdown::set_center_code_blocks(saved);
 }
 
+/// The compaction contract for divergence notices: exactly one width-bounded
+/// line, ellipsised when narrow.
+///
+/// The fixture is `session_rebuild.rs`'s `GIT_PULL_DIVERGED_SUMMARY`, the only
+/// string that reaches this path. It previously used the self-updater's
+/// "Update diverged. Press Ctrl+Y…" message, which no code has emitted since
+/// that feature was purged - so the test passed against a notice the product
+/// could never show.
 #[test]
 fn render_compact_divergence_notice_as_one_line() {
     let saved = crate::tui::markdown::center_code_blocks();
-    let notices = [
-        DisplayMessage::system(
-            "Update diverged. Press Ctrl+Y to let a jcode agent merge local and upstream (or run `git pull` / `git rebase` yourself).",
-        )
-        .with_title("Update"),
-    ];
+    let notices = [DisplayMessage::system(
+        "Local and upstream have diverged, so the update could not fast-forward.",
+    )
+    .with_title("Update")];
 
     for centered in [false, true] {
         crate::tui::markdown::set_center_code_blocks(centered);

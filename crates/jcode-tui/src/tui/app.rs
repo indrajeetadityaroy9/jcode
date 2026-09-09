@@ -1010,7 +1010,6 @@ pub struct App {
     // Hot-reload: if set, exec into new binary with this session ID (no rebuild)
     reload_requested: Option<String>,
     // Hot-rebuild: if set, do full git pull + cargo build + tests then exec
-    rebuild_requested: Option<String>,
     // Interactive background client maintenance action currently running
     background_client_action: Option<crate::bus::ClientMaintenanceAction>,
     // Reload the updated/rebuilt client once the current turn is idle
@@ -1043,8 +1042,6 @@ pub struct App {
     /// keep auto-scrolling on every tick (browser-style) until the drag leaves the
     /// edge or ends. Stores the pane and whether to scroll upward.
     copy_selection_edge_autoscroll: Option<(crate::tui::CopySelectionPane, bool)>,
-    // Debug socket broadcast channel (if enabled)
-    debug_tx: Option<tokio::sync::broadcast::Sender<super::backend::DebugEvent>>,
     // Remote provider info (set when running in remote mode)
     remote_client_instance_id: String,
     remote_provider_name: Option<String>,
@@ -1121,9 +1118,9 @@ pub struct App {
     pub is_replay: bool,
     // Suppress terminal title updates for off-screen/silent replay instances.
     suppress_terminal_title_updates: bool,
-    /// Override for elapsed time during headless video replay.
+    /// Override for elapsed time during replay playback.
     pub replay_elapsed_override: Option<Duration>,
-    /// Sim-time at which processing started (video replay only)
+    /// Sim-time at which processing started (replay playback only)
     replay_processing_started_ms: Option<f64>,
     // Remember tool call ids that have appeared in the provider transcript
     tool_call_ids: HashSet<String>,
@@ -1237,14 +1234,11 @@ pub struct App {
     /// the feature is off or the session has no todos. Refreshed on tick.
     /// The renderer wiring for these three fields is landing separately, so
     /// they are allowed to be unread until it does.
-    #[allow(dead_code)]
     pinned_todos_payload: Option<String>,
     /// Hash of the todo payload behind `pinned_todos_payload`, used to skip
     /// re-serializing when nothing changed between ticks.
-    #[allow(dead_code)]
     pinned_todos_rendered_hash: u64,
     /// Last time the pinned todo band re-read todos from disk (1s throttle).
-    #[allow(dead_code)]
     pinned_todos_checked_at: Option<Instant>,
     last_side_panel_refresh: Option<Instant>,
     // Most recently persisted focus target for transcript injection routing.

@@ -721,10 +721,6 @@ impl crate::tui::TuiState for App {
         self.streaming_tool_calls.clone()
     }
 
-    fn update_cost(&mut self) {
-        self.update_cost_impl()
-    }
-
     fn elapsed(&self) -> Option<std::time::Duration> {
         if let Some(d) = self.replay_elapsed_override {
             return Some(d);
@@ -1610,24 +1606,6 @@ impl crate::tui::TuiState for App {
         }
     }
 
-    fn workspace_mode_enabled(&self) -> bool {
-        self.workspace_client.is_enabled()
-    }
-
-    fn workspace_map_rows(&self) -> Vec<crate::tui::workspace_map::VisibleWorkspaceRow> {
-        let session_id = if self.is_remote {
-            self.remote_session_id.as_deref()
-        } else {
-            Some(self.session.id.as_str())
-        };
-        self.workspace_client
-            .visible_rows(5, session_id, self.is_processing)
-    }
-
-    fn workspace_animation_tick(&self) -> u64 {
-        self.app_started.elapsed().as_millis() as u64 / 180
-    }
-
     fn render_streaming_markdown(&self, width: usize) -> Vec<ratatui::text::Line<'static>> {
         let mut renderer = self.streaming_md_renderer.borrow_mut();
         renderer.set_width(Some(width));
@@ -1884,10 +1862,6 @@ impl crate::tui::TuiState for App {
         self.account_picker_overlay.as_ref()
     }
 
-    fn usage_overlay(&self) -> Option<&RefCell<crate::tui::usage_overlay::UsageOverlay>> {
-        self.usage_overlay.as_ref()
-    }
-
     fn working_dir(&self) -> Option<String> {
         self.session.working_dir.clone()
     }
@@ -1902,10 +1876,6 @@ impl crate::tui::TuiState for App {
 
     fn copy_badge_ui(&self) -> crate::tui::CopyBadgeUiState {
         self.copy_badge_ui.clone()
-    }
-
-    fn copy_selection_mode(&self) -> bool {
-        self.copy_selection_mode
     }
 
     fn copy_selection_range(&self) -> Option<crate::tui::CopySelectionRange> {
@@ -2008,12 +1978,6 @@ impl App {
             self.swarm_panel_selected = self.swarm_panel_selected.min(count.saturating_sub(1));
         }
         next
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn set_swarm_panel_focus(&mut self, focused: bool) {
-        self.swarm_panel_focused = focused && self.inline_swarm_gallery_active();
-        self.swarm_panel_full_page = false;
     }
 
     /// Move the swarm panel selection by `delta` (e.g. +1 for next, -1 for

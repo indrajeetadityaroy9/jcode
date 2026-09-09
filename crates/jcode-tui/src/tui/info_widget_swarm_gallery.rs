@@ -10,9 +10,9 @@
 use crate::protocol::SwarmMemberStatus;
 use jcode_tui_core::keybind::alt_chord_lower;
 use jcode_tui_render::swarm_gallery::{
-    GalleryMember, SwarmStripHint, display_order, humanize_age, is_active_status, render_gallery,
-    render_swarm_compact, render_swarm_dock, render_swarm_live_card, render_swarm_panel,
-    render_swarm_strip, render_swarm_strip_vertical, status_accent, status_glyph,
+    GalleryMember, SwarmStripHint, display_order, humanize_age, is_active_status,
+    render_swarm_compact, render_swarm_live_card, render_swarm_strip, render_swarm_strip_vertical,
+    status_accent, status_glyph,
 };
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -450,41 +450,6 @@ fn clamp_line_to_width(line: &mut Line<'static>, width: usize) {
     line.spans = spans;
 }
 
-/// Render the inline swarm gallery for the given members into `area`-width lines.
-#[allow(dead_code)]
-pub(crate) fn render_swarm_gallery_lines(
-    members: &[SwarmMemberStatus],
-    width: usize,
-    max_height: usize,
-) -> Vec<Line<'static>> {
-    if members.is_empty() {
-        return Vec::new();
-    }
-    render_gallery(&members_to_gallery(members), width, max_height)
-}
-
-/// Render the list+detail swarm panel: a compact list of managed agents plus a
-/// detail viewport for the `selected` one. `focused` adds an interaction hint.
-#[allow(dead_code)]
-pub(crate) fn render_swarm_panel_lines(
-    members: &[SwarmMemberStatus],
-    selected: usize,
-    focused: bool,
-    width: usize,
-    max_height: usize,
-) -> Vec<Line<'static>> {
-    if members.is_empty() {
-        return Vec::new();
-    }
-    render_swarm_panel(
-        &members_to_gallery(members),
-        selected,
-        focused,
-        width,
-        max_height,
-    )
-}
-
 /// Render the compact swarm strip (agent chips + status glyphs + todo counts)
 /// shown directly above the status line.
 ///
@@ -583,33 +548,6 @@ pub(crate) fn render_swarm_compact_lines(
         return Vec::new();
     }
     render_swarm_compact(&members_to_gallery(members), plan, width, max_height)
-}
-
-/// Render the swarm dock widget body: a narrow vertical agent list for the
-/// info-widget margins. `plan` is the coordinator's swarm plan progress
-/// (completed, total), shown in the header when present.
-#[allow(dead_code)]
-pub(crate) fn render_swarm_dock_lines(
-    members: &[SwarmMemberStatus],
-    selected: usize,
-    focused: bool,
-    plan: Option<(u32, u32)>,
-    spinner_frame: usize,
-    width: usize,
-    max_height: usize,
-) -> Vec<Line<'static>> {
-    if members.is_empty() {
-        return Vec::new();
-    }
-    render_swarm_dock(
-        &members_to_gallery(members),
-        selected,
-        focused,
-        plan,
-        spinner_frame,
-        width,
-        max_height,
-    )
 }
 
 /// Session ids of `members` in the same order the panel/gallery displays them
@@ -717,27 +655,6 @@ mod tests {
                 "wt-session".to_string(),
             ]
         );
-    }
-
-    #[test]
-    fn renders_header_and_boxes() {
-        let members = vec![
-            member("alpha", "running", Some("editing config.rs"), None),
-            member("beta", "done", Some("reviewed"), None),
-        ];
-        let lines = render_swarm_gallery_lines(&members, 80, 12);
-        assert!(!lines.is_empty());
-        let header: String = lines[0].spans.iter().map(|s| s.content.as_ref()).collect();
-        assert!(header.contains("🐝 2 agents · 1 active"), "got: {header}");
-        assert!(!header.contains("swarm"), "got: {header}");
-        for line in &lines {
-            assert!(line.width() <= 80);
-        }
-    }
-
-    #[test]
-    fn empty_members_render_nothing() {
-        assert!(render_swarm_gallery_lines(&[], 80, 12).is_empty());
     }
 
     #[test]

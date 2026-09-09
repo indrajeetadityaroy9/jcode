@@ -359,7 +359,6 @@ struct BenchState {
     linked_refresh_generation: usize,
     session_source: Option<String>,
     copy_selection_range: Option<jcode::tui::CopySelectionRange>,
-    copy_selection_mode: bool,
 }
 
 impl BenchState {
@@ -464,7 +463,6 @@ impl BenchState {
             linked_refresh_generation: 0,
             session_source: None,
             copy_selection_range: None,
-            copy_selection_mode: matches!(mode, BenchMode::CopySelection),
         })
     }
 
@@ -542,7 +540,6 @@ impl BenchState {
             linked_refresh_generation: 0,
             session_source: Some(session.id),
             copy_selection_range: None,
-            copy_selection_mode: matches!(mode, BenchMode::CopySelection),
         })
     }
 
@@ -1033,10 +1030,6 @@ impl TuiState for BenchState {
         self.info_widget.clone()
     }
 
-    fn update_cost(&mut self) {
-        // Benchmark doesn't track cost
-    }
-
     fn render_streaming_markdown(&self, width: usize) -> Vec<ratatui::text::Line<'static>> {
         // For benchmarks, just use the standard markdown renderer
         jcode::tui::markdown::render_markdown_with_width(&self.streaming_text, Some(width))
@@ -1149,12 +1142,6 @@ impl TuiState for BenchState {
         None
     }
 
-    fn usage_overlay(
-        &self,
-    ) -> Option<&std::cell::RefCell<jcode::tui::usage_overlay::UsageOverlay>> {
-        None
-    }
-
     fn working_dir(&self) -> Option<String> {
         None
     }
@@ -1165,10 +1152,6 @@ impl TuiState for BenchState {
 
     fn copy_badge_ui(&self) -> jcode::tui::CopyBadgeUiState {
         jcode::tui::CopyBadgeUiState::default()
-    }
-
-    fn copy_selection_mode(&self) -> bool {
-        self.copy_selection_mode
     }
 
     fn copy_selection_range(&self) -> Option<jcode::tui::CopySelectionRange> {

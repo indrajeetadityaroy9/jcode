@@ -8,7 +8,6 @@ use super::{
 };
 use crate::agent::Agent;
 use crate::ambient_runner::AmbientRunnerHandle;
-use crate::protocol::ServerEvent;
 use crate::provider::Provider;
 use crate::transport::{Listener, Stream};
 use jcode_agent_runtime::InterruptSignal;
@@ -89,9 +88,7 @@ fn log_task_completion(result: Result<(), tokio::task::JoinError>) {
 #[derive(Clone)]
 pub(super) struct ServerRuntime {
     sessions: Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,
-    event_tx: broadcast::Sender<ServerEvent>,
     provider: Arc<dyn Provider>,
-    is_processing: Arc<RwLock<bool>>,
     session_id: Arc<RwLock<String>>,
     client_count: Arc<RwLock<usize>>,
     client_connections: Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
@@ -122,9 +119,7 @@ impl ServerRuntime {
     pub(super) fn from_server(server: &super::Server) -> Self {
         Self {
             sessions: Arc::clone(&server.sessions),
-            event_tx: server.event_tx.clone(),
             provider: Arc::clone(&server.provider),
-            is_processing: Arc::clone(&server.is_processing),
             session_id: Arc::clone(&server.session_id),
             client_count: Arc::clone(&server.client_count),
             client_connections: Arc::clone(&server.client_connections),
@@ -275,9 +270,7 @@ impl ServerRuntime {
                 handle_client(
                     stream,
                     Arc::clone(&self.sessions),
-                    self.event_tx.clone(),
                     Arc::clone(&self.provider),
-                    Arc::clone(&self.is_processing),
                     Arc::clone(&self.session_id),
                     Arc::clone(&self.client_count),
                     Arc::clone(&self.client_connections),
@@ -333,7 +326,6 @@ impl ServerRuntime {
             handle_debug_client(
                 stream,
                 Arc::clone(&self.sessions),
-                Arc::clone(&self.is_processing),
                 Arc::clone(&self.session_id),
                 Arc::clone(&self.provider),
                 Arc::clone(&self.client_connections),

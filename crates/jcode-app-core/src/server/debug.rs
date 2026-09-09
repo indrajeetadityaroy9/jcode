@@ -59,6 +59,19 @@ pub(super) struct ClientConnectionInfo {
     pub(super) disconnect_tx: mpsc::UnboundedSender<()>,
 }
 
+/// True when any attached client connection is mid-turn.
+///
+/// The debug socket has no owning connection, so this is its equivalent of the
+/// main socket's per-connection `client_is_processing` (see
+/// `client_state::handle_get_state`). Server-wide is the right scope here: the
+/// sibling `message_count` field in the same `ServerEvent::State` response is
+/// also daemon-wide.
+pub(super) fn any_connection_processing(
+    connections: &HashMap<String, ClientConnectionInfo>,
+) -> bool {
+    connections.values().any(|info| info.is_processing)
+}
+
 impl ClientDebugState {
     pub(super) fn register(&mut self, client_id: String, tx: mpsc::UnboundedSender<(u64, String)>) {
         self.active_id = Some(client_id.clone());
@@ -244,7 +257,6 @@ pub(super) async fn inject_transcript(
 pub(super) async fn handle_debug_client(
     stream: Stream,
     sessions: Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,
-    is_processing: Arc<RwLock<bool>>,
     session_id: Arc<RwLock<String>>,
     provider: Arc<dyn Provider>,
     client_connections: Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
@@ -303,6 +315,8 @@ pub(super) async fn handle_debug_client(
 
             Request::GetState { id } => {
                 let current_session_id = session_id.read().await.clone();
+                // Bound before taking the sessions guard so the two locks never nest.
+                let any_processing = any_connection_processing(&*client_connections.read().await);
                 let sessions = sessions.read().await;
                 let message_count = sessions.len();
 
@@ -310,7 +324,7 @@ pub(super) async fn handle_debug_client(
                     id,
                     session_id: current_session_id,
                     message_count,
-                    is_processing: *is_processing.read().await,
+                    is_processing: any_processing,
                 };
                 let json = encode_event(&event);
                 writer.write_all(json.as_bytes()).await?;

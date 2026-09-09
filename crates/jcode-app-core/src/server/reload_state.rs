@@ -7,18 +7,6 @@ pub fn reload_marker_path() -> PathBuf {
     crate::storage::runtime_dir().join("jcode.reload")
 }
 
-pub fn write_reload_marker() {
-    ReloadState {
-        request_id: "unknown".to_string(),
-        hash: "unknown".to_string(),
-        phase: ReloadPhase::Starting,
-        pid: std::process::id(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-        detail: None,
-    }
-    .write();
-}
-
 pub fn clear_reload_marker() {
     let _ = std::fs::remove_file(reload_marker_path());
 }
@@ -233,7 +221,7 @@ pub async fn await_reload_handoff(
             ReloadWaitStatus::Waiting { pid } => {
                 last_known_pid = pid;
                 crate::logging::info(&format!(
-                    "await_reload_handoff: waiting for reload event socket={} pid={:?}",
+                    "await_reload_handoff: waiting for reload handoff socket={} pid={:?}",
                     socket_path.display(),
                     pid
                 ));
@@ -252,23 +240,63 @@ pub async fn await_reload_handoff(
     }
 }
 
+/// Bounded wait for the next observable change in a reload handoff.
+///
+/// There is no cross-process event channel for this: the waiter is a client and
+/// the reloading daemon is a different process, so adding one would mean a
+/// filesystem-watch dependency. Instead this polls the two conditions that
+/// actually end a handoff — the replacement daemon binding the socket, and the
+/// reloading process dying — and returns as soon as either is observed, or when
+/// [`HANDOFF_MAX_WAIT`] elapses. Callers loop and re-run
+/// [`inspect_reload_wait_status`], so a bounded wake is sufficient; the cap keeps
+/// a caller's redraw/input select responsive.
 pub async fn wait_for_reload_handoff_event(
     reloading_pid: Option<u32>,
     socket_path: &std::path::Path,
 ) {
+    /// Granularity of the handoff poll.
+    const HANDOFF_POLL_INTERVAL: Duration = Duration::from_millis(25);
+    /// Upper bound on one wait. Must stay below the 500 ms boundedness assertion in
+    /// `socket_tests::wait_for_reload_handoff_event_returns_promptly_when_no_event_arrives`.
+    const HANDOFF_MAX_WAIT: Duration = Duration::from_millis(250);
+
     crate::logging::info(&format!(
         "wait_for_reload_handoff_event: start socket={} pid={:?}",
         socket_path.display(),
         reloading_pid
     ));
-    {
-        let _ = (reloading_pid, socket_path);
-        tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Sleep before probing, never after. The caller has just observed the current
+    // state via `inspect_reload_wait_status` and is asking to wait for it to
+    // *change*, so a probe before any delay can only re-report what the caller
+    // already knows. Checking first also lets `await_reload_handoff` spin at full
+    // CPU: it keeps returning `Waiting` while the marker says `Starting` even once
+    // the replacement socket is live (see
+    // `inspect_reload_wait_status_keeps_waiting_while_starting_marker_is_active_even_if_socket_is_live`),
+    // so a zero-delay return would busy-loop for the whole bind-to-`SocketReady`
+    // window. This guarantees at least one poll interval per call.
+    let started = std::time::Instant::now();
+    let mut reason = "timeout";
+    while started.elapsed() < HANDOFF_MAX_WAIT {
+        tokio::time::sleep(HANDOFF_POLL_INTERVAL).await;
+        if has_live_listener(socket_path).await {
+            reason = "socket_live";
+            break;
+        }
+        if let Some(pid) = reloading_pid
+            && !reload_process_alive(pid)
+        {
+            reason = "reload_process_gone";
+            break;
+        }
     }
+
     crate::logging::info(&format!(
-        "wait_for_reload_handoff_event: wake socket={} pid={:?}",
+        "wait_for_reload_handoff_event: wake socket={} pid={:?} reason={} after {}ms",
         socket_path.display(),
-        reloading_pid
+        reloading_pid,
+        reason,
+        started.elapsed().as_millis()
     ));
 }
 

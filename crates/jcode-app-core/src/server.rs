@@ -594,7 +594,7 @@ pub use self::reload_state::{
     await_reload_handoff, clear_reload_marker, inspect_reload_wait_status,
     publish_reload_socket_ready, recent_reload_state, reload_marker_active, reload_marker_exists,
     reload_marker_path, reload_process_alive, reload_state_summary, send_reload_signal,
-    wait_for_reload_ack, wait_for_reload_handoff_event, write_reload_marker, write_reload_state,
+    wait_for_reload_ack, wait_for_reload_handoff_event, write_reload_state,
 };
 
 pub use self::lifecycle::configure_temporary_server;
@@ -647,6 +647,30 @@ const HEAP_RETENTION_CHECK_SECS: u64 = 120;
 /// Exit code when server shuts down due to idle timeout
 pub const EXIT_IDLE_TIMEOUT: i32 = 44;
 
+/// Idle shutdown is permitted only when nothing is attached AND no server-owned
+/// work is in flight.
+///
+/// A headless swarm member contributes nothing to the connected-client count, so
+/// keying shutdown on clients alone kills in-flight headless turns.
+///
+/// `active_turns` comes from the RAII turn-cancel registry rather than from
+/// `SwarmMember.status == "running"`: a member status can be stranded at
+/// `running` forever (a mid-turn session takeover drops the terminal `Done`
+/// event, and neither the terminal-member GC nor the idle-spawned-worker reap
+/// considers a `running` member), which would make the daemon immortal. A turn
+/// guard is dropped even when its task is aborted or panics.
+///
+/// Both counts are `Option`: `None` means the corresponding registry lock was
+/// momentarily unavailable, which is treated as "work may exist" so a lock blip
+/// can never kill an in-flight turn or task.
+fn idle_shutdown_permitted(
+    connected_clients: usize,
+    active_turns: Option<usize>,
+    live_background_tasks: Option<usize>,
+) -> bool {
+    connected_clients == 0 && active_turns == Some(0) && live_background_tasks == Some(0)
+}
+
 /// Server state
 pub struct Server {
     provider: Arc<dyn Provider>,
@@ -654,12 +678,8 @@ pub struct Server {
     debug_socket_path: PathBuf,
     /// Server identity for multi-server support
     identity: ServerIdentity,
-    /// Broadcast channel for streaming events to all subscribers
-    event_tx: broadcast::Sender<ServerEvent>,
     /// Active sessions (session_id -> Agent)
     sessions: Arc<RwLock<HashMap<String, Arc<Mutex<Agent>>>>>,
-    /// Current processing state
-    is_processing: Arc<RwLock<bool>>,
     /// Session ID for the default session
     session_id: Arc<RwLock<String>>,
     /// Number of connected clients
@@ -719,7 +739,6 @@ impl Server {
         // Copilot, Antigravity, Gemini, Cursor, and OpenRouter.
         crate::provider::set_active_provider(Arc::clone(&provider));
 
-        let (event_tx, _) = broadcast::channel(1024);
         let (client_debug_response_tx, _) = broadcast::channel(64);
 
         // Generate a memorable server name unless the operator configured a
@@ -759,9 +778,7 @@ impl Server {
             socket_path: socket_path(),
             debug_socket_path: debug_socket_path(),
             identity,
-            event_tx,
             sessions: Arc::new(RwLock::new(HashMap::new())),
-            is_processing: Arc::new(RwLock::new(false)),
             session_id: Arc::new(RwLock::new(String::new())),
             client_count: Arc::new(RwLock::new(0)),
             client_connections: Arc::new(RwLock::new(HashMap::new())),
@@ -1258,7 +1275,10 @@ impl Server {
             }
         });
 
-        // Spawn reload monitor (event-driven via in-process channel).
+        // Spawn reload monitor. The in-process reload *signal* is event-driven via a
+        // `watch` channel; the cross-process handoff a reconnecting client waits on is a
+        // bounded poll (see `wait_for_reload_handoff_event`), because a client and the
+        // reloading daemon are separate processes.
         // Every session shares the main server, so the shared server must
         // always listen for reload signals.
         let signal_sessions = Arc::clone(&self.sessions);
@@ -1761,10 +1781,12 @@ impl Server {
                 loop {
                     check_interval.tick().await;
 
-                    let count = *idle_client_count.read().await;
+                    let clients = *idle_client_count.read().await;
+                    let active_turns = crate::turn_cancel_registry::active_turn_count();
+                    let live_background = crate::background::global().live_task_count();
 
-                    if count == 0 {
-                        // No clients connected
+                    if idle_shutdown_permitted(clients, active_turns, live_background) {
+                        // Nothing attached and nothing in flight.
                         if idle_since.is_none() {
                             idle_since = Some(std::time::Instant::now());
                             crate::logging::info(&format!(
@@ -1785,9 +1807,11 @@ impl Server {
                             }
                         }
                     } else {
-                        // Clients connected - reset idle timer
+                        // A client is attached, or server-owned work is still in flight.
                         if idle_since.is_some() {
-                            crate::logging::info("Client connected. Idle timer cancelled.");
+                            crate::logging::info(&format!(
+                                "Idle timer cancelled (clients={clients}, active_turns={active_turns:?}, background={live_background:?})"
+                            ));
                         }
                         idle_since = None;
                     }

@@ -195,6 +195,36 @@ mod tests {
         );
     }
 
+    /// The idle watchdog refuses to exit the daemon while this count is nonzero,
+    /// so the count must fall back to zero on its own when a turn ends — including
+    /// when the turn's task is dropped rather than completed.
+    #[test]
+    fn active_turn_count_returns_to_zero_when_guards_drop() {
+        let base = active_turn_count().expect("registry lock should be available");
+
+        let first = register_active_turn("turn_cancel_registry_count_a", InterruptSignal::new());
+        assert_eq!(active_turn_count(), Some(base + 1));
+
+        let second = register_active_turn("turn_cancel_registry_count_b", InterruptSignal::new());
+        assert_eq!(active_turn_count(), Some(base + 2));
+
+        // Two turns in one session count as one busy session, not two.
+        let same_session =
+            register_active_turn("turn_cancel_registry_count_b", InterruptSignal::new());
+        assert_eq!(active_turn_count(), Some(base + 2));
+
+        drop(same_session);
+        drop(second);
+        assert_eq!(active_turn_count(), Some(base + 1));
+
+        drop(first);
+        assert_eq!(
+            active_turn_count(),
+            Some(base),
+            "a daemon whose turns have all ended must be allowed to idle out"
+        );
+    }
+
     #[test]
     fn multiple_turns_for_one_session_are_all_listed() {
         let session_id = "turn_cancel_registry_multiple";
@@ -292,4 +322,20 @@ pub fn has_active_turn(session_id: &str) -> bool {
         .lock()
         .ok()
         .is_some_and(|map| map.get(session_id).is_some_and(|turns| !turns.is_empty()))
+}
+
+/// Number of sessions with at least one in-flight turn, or `None` if the
+/// registry lock could not be taken.
+///
+/// This is the idle watchdog's "is server-owned work executing" signal. It is
+/// preferred over `SwarmMember.status == "running"` because registration is
+/// RAII: [`ActiveTurnGuard::drop`] removes the entry even when a turn task is
+/// aborted or panics, whereas a member status can be left at `running`
+/// indefinitely (a session takeover mid-turn drops the terminal `Done` event,
+/// and neither the terminal-member GC nor the idle-worker reap touches a
+/// `running` member). Counting stale statuses would make the daemon immortal.
+///
+/// `None` means "work may exist" and must never be read as zero.
+pub fn active_turn_count() -> Option<usize> {
+    ACTIVE_TURNS.lock().ok().map(|map| map.len()) // budget-ok: poisoned lock is unknown, not failure
 }

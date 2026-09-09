@@ -45,7 +45,6 @@ libc = "0.2"             # Unix system calls (flock)
 chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 urlencoding = "2"        # URL encoding for web search
-uuid = { version = "1", features = ["v4", "v5"] }
 
 # Embeddings (local inference) live in jcode-base; this crate forwards the
 # `embeddings` feature to jcode-base rather than depending on jcode-embedding.
@@ -53,7 +52,6 @@ jcode-import-core = { path = "../jcode-import-core" }
 
 # OAuth
 base64 = "0.22"
-sha2 = "0.10"
 rand = "0.9.3"
 url = "2"
 jcode-agent-runtime = { path = "../jcode-agent-runtime" }
@@ -69,7 +67,6 @@ jcode-terminal-image = { path = "../jcode-terminal-image" }
 tokio-stream = "0.1"
 
 # TUI
-ratatui = "0.30"
 crossterm = { version = "0.29", features = ["event-stream"] }
 
 # Markdown & syntax highlighting
@@ -98,7 +95,6 @@ jcode-tool-core = { path = "../jcode-tool-core" }
 jcode-tool-types = { path = "../jcode-tool-types" }
 
 # Archive extraction (for auto-update)
-flate2 = "1"
 tar = "0.4"
 tempfile = "3"
 agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.6" }

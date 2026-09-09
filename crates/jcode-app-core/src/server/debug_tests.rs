@@ -647,3 +647,40 @@ mod debug_execution_tests {
         assert_eq!(debug_message_timeout_secs(), None);
     }
 }
+
+mod connection_processing_tests {
+    use super::super::{ClientConnectionInfo, any_connection_processing};
+    use std::collections::HashMap;
+    use std::time::Instant;
+    use tokio::sync::mpsc;
+
+    fn connection(client_id: &str, is_processing: bool) -> ClientConnectionInfo {
+        let now = Instant::now();
+        ClientConnectionInfo {
+            client_id: client_id.to_string(),
+            session_id: format!("session-{client_id}"),
+            client_instance_id: None,
+            debug_client_id: None,
+            connected_at: now,
+            last_seen: now,
+            is_processing,
+            current_tool_name: None,
+            terminal_env: Vec::new(),
+            disconnect_tx: mpsc::unbounded_channel().0,
+        }
+    }
+
+    #[test]
+    fn any_connection_processing_reports_true_only_when_a_connection_is_mid_turn() {
+        let mut connections: HashMap<String, ClientConnectionInfo> = HashMap::new();
+        assert!(!any_connection_processing(&connections));
+
+        connections.insert("a".to_string(), connection("a", false));
+        connections.insert("b".to_string(), connection("b", false));
+        assert!(!any_connection_processing(&connections));
+
+        // The debug socket previously reported a hardcoded `false` here.
+        connections.insert("b".to_string(), connection("b", true));
+        assert!(any_connection_processing(&connections));
+    }
+}

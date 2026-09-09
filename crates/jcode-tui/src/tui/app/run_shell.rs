@@ -750,7 +750,11 @@ impl App {
 
         Ok(RunResult {
             reload_session: self.reload_requested.take(),
-            rebuild_session: self.rebuild_requested.take(),
+            // Superseded: `/rebuild` runs through `start_background_client_rebuild`
+            // (tui_lifecycle_runtime.rs:501), not through a request flag read on
+            // exit. The `App::rebuild_requested` field it used to read was never
+            // assigned `Some`, so this was always `None`.
+            rebuild_session: None,
             restart_session: self.restart_requested.take(),
             exit_code: self.requested_exit_code,
             session_id: Some(self.session.id.clone()),
@@ -975,7 +979,11 @@ impl App {
 
         Ok(RunResult {
             reload_session: self.reload_requested.take(),
-            rebuild_session: self.rebuild_requested.take(),
+            // Superseded: `/rebuild` runs through `start_background_client_rebuild`
+            // (tui_lifecycle_runtime.rs:501), not through a request flag read on
+            // exit. The `App::rebuild_requested` field it used to read was never
+            // assigned `Some`, so this was always `None`.
+            rebuild_session: None,
             restart_session: self.restart_requested.take(),
             exit_code: self.requested_exit_code,
             session_id: if self.is_remote {

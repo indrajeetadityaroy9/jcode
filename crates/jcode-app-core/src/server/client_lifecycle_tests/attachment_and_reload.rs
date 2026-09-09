@@ -514,8 +514,6 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
     let event_history = Arc::new(RwLock::new(std::collections::VecDeque::new()));
     let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let (swarm_event_tx, _) = broadcast::channel(8);
-    let (_global_event_tx, _) = broadcast::channel(8);
-    let global_is_processing = Arc::new(RwLock::new(false));
     let shutdown_signals = Arc::new(RwLock::new(HashMap::new()));
     let soft_interrupt_queues: SessionInterruptQueues = Arc::new(RwLock::new(HashMap::new()));
     let mcp_pool = Arc::new(crate::mcp::SharedMcpPool::from_default_config());
@@ -523,9 +521,7 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
     let server_task = tokio::spawn(handle_client(
         server_stream,
         Arc::clone(&sessions),
-        _global_event_tx,
         provider_template,
-        global_is_processing,
         global_session_id,
         client_count,
         Arc::clone(&client_connections),
