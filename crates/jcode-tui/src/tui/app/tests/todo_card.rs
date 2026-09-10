@@ -65,13 +65,6 @@ fn todos_command_defaults_to_card_and_panel_subcommand_keeps_side_panel() {
 }
 
 #[test]
-fn todo_alias_shows_card() {
-    let mut app = create_test_app();
-    assert!(super::commands::handle_session_command(&mut app, "/todo"));
-    assert!(app.display_messages.iter().any(|m| m.role == "todos"));
-}
-
-#[test]
 fn refresh_todo_card_updates_content_when_todos_change() {
     let _env_lock = crate::storage::lock_test_env();
     let mut app = create_test_app();
@@ -375,7 +368,10 @@ fn pinned_todo_band_renders_below_sticky_prompt_without_separator() {
     app.auto_scroll_paused = true;
     let top_text = render_and_snap(&app, &mut terminal);
     assert!(
-        top_text.lines().take(6).any(|row| row.contains("pinned band item")),
+        top_text
+            .lines()
+            .take(6)
+            .any(|row| row.contains("pinned band item")),
         "pinned todo should remain visible at the top of scrollback, got:\n{}",
         top_text
     );

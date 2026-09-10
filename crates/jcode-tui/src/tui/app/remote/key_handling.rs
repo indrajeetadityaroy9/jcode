@@ -251,10 +251,6 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if app.changelog_scroll.is_some() {
-        return app.handle_changelog_key(code);
-    }
-
     if app.help_scroll.is_some() {
         return app.handle_help_key(code);
     }
@@ -829,12 +825,12 @@ async fn handle_remote_key_internal(
             }
             if !app.input.is_empty() {
                 let prepared = input::take_prepared_input(app);
-                let trimmed = prepared.expanded.trim();
+                // Rewrite aliases to canonical names once, so none of the arms
+                // below need to know an alias exists.
+                let canonical = app_mod::command_spec::canonical_input(prepared.expanded.trim());
+                let trimmed = canonical.as_deref().unwrap_or(prepared.expanded.trim());
 
-                if let Some(topic) = trimmed
-                    .strip_prefix("/help ")
-                    .or_else(|| trimmed.strip_prefix("/? "))
-                {
+                if let Some(topic) = trimmed.strip_prefix("/help ") {
                     if let Some(help) = app.command_help(topic) {
                         app.push_display_message(DisplayMessage::system(help));
                     } else {
@@ -846,7 +842,7 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed == "/help" || trimmed == "/?" || trimmed == "/commands" {
+                if trimmed == "/help" {
                     app.help_scroll = Some(0);
                     return Ok(());
                 }
@@ -901,7 +897,7 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed == "/continue" || trimmed == "/resumeall" || trimmed == "/resume-all" {
+                if trimmed == "/continue" {
                     app.push_display_message(DisplayMessage::system(
                         "Continuing all interrupted sessions...".to_string(),
                     ));
@@ -963,7 +959,7 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed == "/model" || trimmed == "/models" {
+                if trimmed == "/model" {
                     let _ = remote.refresh_models().await;
                     // `refresh_models` re-queries providers and pushes the
                     // result over the bus, where oversized frames get
@@ -1597,7 +1593,7 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed == "/fork" || trimmed == "/split" {
+                if trimmed == "/fork" {
                     app.push_display_message(DisplayMessage::system(
                         "Forking session...".to_string(),
                     ));
@@ -1633,7 +1629,6 @@ async fn handle_remote_key_internal(
                     || trimmed == "/observe on"
                     || trimmed == "/observe off"
                     || trimmed == "/observe status"
-                    || trimmed == "/todo"
                     || trimmed == "/todos"
                     || trimmed == "/todos card"
                     || trimmed == "/todos panel"
@@ -1644,20 +1639,12 @@ async fn handle_remote_key_internal(
                     || trimmed == "/splitview on"
                     || trimmed == "/splitview off"
                     || trimmed == "/splitview status"
-                    || trimmed == "/split-view"
-                    || trimmed == "/split-view on"
-                    || trimmed == "/split-view off"
-                    || trimmed == "/split-view status"
                 {
                     let _ = app_mod::commands::handle_session_command(app, trimmed);
                     return Ok(());
                 }
 
                 if app_mod::commands::handle_test_command(app, trimmed) {
-                    return Ok(());
-                }
-
-                if app_mod::commands::handle_disabled_mission_command(app, trimmed) {
                     return Ok(());
                 }
 
@@ -1714,7 +1701,7 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
-                if trimmed == "/resume" || trimmed == "/sessions" || trimmed == "/session" {
+                if trimmed == "/resume" {
                     app.open_session_picker();
                     app.record_keybinding_slow(
                         crate::tui::app::shortcut_hints::LearnableAction::Resume,
@@ -1868,33 +1855,15 @@ async fn handle_remote_key_internal(
 
                 if trimmed == "/commit"
                     || trimmed == "/commit-push"
-                    || trimmed == "/commit-and-push"
-                    || trimmed == "/fast-release"
-                    || trimmed == "/fast-macos-release"
-                    || trimmed == "/remote-release"
-                    || trimmed == "/cut-release"
-                    || trimmed == "/commit-push-release"
                     || trimmed == "/triage"
                     || trimmed.starts_with("/triage ")
                 {
                     let is_triage = trimmed == "/triage" || trimmed.starts_with("/triage ");
-                    let is_fast_release = matches!(
-                        trimmed,
-                        "/fast-release" | "/cut-release" | "/commit-push-release"
-                    );
-                    let is_remote_release = trimmed == "/remote-release";
-                    let is_fast_macos_release = trimmed == "/fast-macos-release";
                     let is_push = trimmed != "/commit";
                     let prompt = if is_triage {
                         app_mod::commands::build_triage_prompt(
                             trimmed.strip_prefix("/triage").unwrap_or_default(),
                         )
-                    } else if is_fast_macos_release {
-                        app_mod::commands::build_fast_macos_release_prompt()
-                    } else if is_fast_release {
-                        app_mod::commands::build_fast_release_prompt()
-                    } else if is_remote_release {
-                        app_mod::commands::build_remote_release_prompt()
                     } else if is_push {
                         app_mod::commands::build_commit_push_prompt()
                     } else {
@@ -1903,12 +1872,6 @@ async fn handle_remote_key_internal(
                     let launch_notice = |interrupted: bool| {
                         if is_triage {
                             app_mod::commands::triage_launch_notice(interrupted)
-                        } else if is_fast_macos_release {
-                            app_mod::commands::fast_macos_release_launch_notice(interrupted)
-                        } else if is_fast_release {
-                            app_mod::commands::fast_release_launch_notice(interrupted)
-                        } else if is_remote_release {
-                            app_mod::commands::remote_release_launch_notice(interrupted)
                         } else if is_push {
                             app_mod::commands::commit_push_launch_notice(interrupted)
                         } else {
@@ -1917,12 +1880,6 @@ async fn handle_remote_key_internal(
                     };
                     let cmd_label = if is_triage {
                         "/triage"
-                    } else if is_fast_macos_release {
-                        "/fast-macos-release"
-                    } else if is_fast_release {
-                        "/fast-release"
-                    } else if is_remote_release {
-                        "/remote-release"
                     } else if is_push {
                         "/commit-push"
                     } else {
@@ -1999,57 +1956,6 @@ async fn handle_remote_key_internal(
                     app.input = trimmed.to_string();
                     app.cursor_pos = app.input.len();
                     app.submit_input();
-                    return Ok(());
-                }
-
-                if trimmed == "/z" || trimmed == "/zz" || trimmed == "/zzz" {
-                    use crate::provider::copilot::PremiumMode;
-                    let current = app.provider.premium_mode();
-
-                    if trimmed == "/z" {
-                        app.provider.set_premium_mode(PremiumMode::Normal);
-                        let _ = remote.set_premium_mode(PremiumMode::Normal as u8).await;
-                        let _ = crate::config::Config::set_copilot_premium(None);
-                        app.set_status_notice("Premium: normal");
-                        app.push_display_message(DisplayMessage::system(
-                            "Premium request mode reset to normal. (saved to config)".to_string(),
-                        ));
-                        return Ok(());
-                    }
-
-                    let mode = if trimmed == "/zzz" {
-                        PremiumMode::Zero
-                    } else {
-                        PremiumMode::OnePerSession
-                    };
-                    if current == mode {
-                        app.provider.set_premium_mode(PremiumMode::Normal);
-                        let _ = remote.set_premium_mode(PremiumMode::Normal as u8).await;
-                        let _ = crate::config::Config::set_copilot_premium(None);
-                        app.set_status_notice("Premium: normal");
-                        app.push_display_message(DisplayMessage::system(
-                            "Premium request mode reset to normal. (saved to config)".to_string(),
-                        ));
-                    } else {
-                        app.provider.set_premium_mode(mode);
-                        let _ = remote.set_premium_mode(mode as u8).await;
-                        let config_val = match mode {
-                            PremiumMode::Zero => "zero",
-                            PremiumMode::OnePerSession => "one",
-                            PremiumMode::Normal => "normal",
-                        };
-                        let _ = crate::config::Config::set_copilot_premium(Some(config_val));
-                        let label = match mode {
-                            PremiumMode::OnePerSession => "one premium per session",
-                            PremiumMode::Zero => "zero premium requests",
-                            PremiumMode::Normal => "normal",
-                        };
-                        app.set_status_notice(format!("Premium: {}", label));
-                        app.push_display_message(DisplayMessage::system(format!(
-                            "Premium mode: {}. Toggle off with /z. (saved to config)",
-                            label,
-                        )));
-                    }
                     return Ok(());
                 }
 

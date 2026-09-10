@@ -423,49 +423,6 @@ fn buffer_to_text(terminal: &ratatui::Terminal<ratatui::backend::TestBackend>) -
 }
 
 #[test]
-fn test_changelog_overlay_repeated_renders_are_stable() {
-    let _lock = viewport_snapshot_test_lock();
-    let state = TestState {
-        changelog_scroll: Some(0),
-        chat_native_scrollbar: true,
-        ..Default::default()
-    };
-    let sizes = [
-        (24_u16, 10_u16),
-        (28, 12),
-        (32, 14),
-        (36, 16),
-        (40, 18),
-        (48, 20),
-        (60, 20),
-        (72, 24),
-    ];
-
-    for (width, height) in sizes {
-        let backend = ratatui::backend::TestBackend::new(width, height);
-        let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
-        let mut frames = Vec::new();
-        clear_flicker_frame_history_for_tests();
-        for _ in 0..3 {
-            terminal
-                .draw(|frame| crate::tui::ui::draw(frame, &state))
-                .expect("overlay draw should succeed");
-            frames.push(buffer_to_text(&terminal));
-        }
-        assert!(
-            frames.windows(2).all(|pair| pair[0] == pair[1]),
-            "expected stable changelog overlay renders at {width}x{height}, got differing frames: {frames:#?}"
-        );
-
-        let payload = debug_flicker_frame_history(8);
-        assert_eq!(
-            payload["buffered_samples"], 3,
-            "expected overlay frames to be recorded for flicker diagnostics at {width}x{height}"
-        );
-    }
-}
-
-#[test]
 fn test_updates_header_repeated_renders_stay_stable_near_scrollbar_threshold() {
     let _lock = viewport_snapshot_test_lock();
     super::header::set_unseen_changelog_entries_override_for_tests(Some(vec![

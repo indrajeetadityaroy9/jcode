@@ -463,35 +463,6 @@ impl App {
         }
     }
 
-    pub(super) fn handle_changelog_key(&mut self, code: KeyCode) -> Result<()> {
-        let scroll = self.changelog_scroll.unwrap_or(0);
-        match code {
-            KeyCode::Esc | KeyCode::Char('q') => {
-                self.changelog_scroll = None;
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.changelog_scroll = Some(scroll.saturating_add(1));
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.changelog_scroll = Some(scroll.saturating_sub(1));
-            }
-            KeyCode::PageDown | KeyCode::Char(' ') => {
-                self.changelog_scroll = Some(scroll.saturating_add(20));
-            }
-            KeyCode::PageUp => {
-                self.changelog_scroll = Some(scroll.saturating_sub(20));
-            }
-            KeyCode::Home | KeyCode::Char('g') => {
-                self.changelog_scroll = Some(0);
-            }
-            KeyCode::End | KeyCode::Char('G') => {
-                self.changelog_scroll = Some(usize::MAX);
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
     pub(super) fn handle_help_key(&mut self, code: KeyCode) -> Result<()> {
         let scroll = self.help_scroll.unwrap_or(0);
         match code {

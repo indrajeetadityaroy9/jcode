@@ -1017,7 +1017,7 @@ pub(super) fn insert_input_text(app: &mut App, text: &str) {
     // space), the next printable character starts its filter. Insert the
     // separator instead of extending the command token and closing the picker.
     if at_end
-        && matches!(app.input.trim_start(), "/login" | "/model" | "/models")
+        && matches!(app.input.trim_start(), "/login" | "/model")
         && !text.starts_with(char::is_whitespace)
     {
         app.input.push(' ');
@@ -1030,9 +1030,7 @@ pub(super) fn insert_input_text(app: &mut App, text: &str) {
     // Typing the final command character immediately arms picker filtering.
     // Without this, users can keep typing the command token or press Enter
     // without realizing the visible picker is ready to filter.
-    if app.cursor_pos == app.input.len()
-        && matches!(app.input.trim_start(), "/login" | "/model" | "/models")
-    {
+    if app.cursor_pos == app.input.len() && matches!(app.input.trim_start(), "/login" | "/model") {
         app.input.push(' ');
         app.cursor_pos = app.input.len();
     }
@@ -2438,11 +2436,6 @@ pub(super) fn handle_modal_key(
 ) -> Result<bool> {
     if app.prompt_history_search.is_some() {
         app.handle_prompt_history_search_key(code, modifiers);
-        return Ok(true);
-    }
-
-    if app.changelog_scroll.is_some() {
-        app.handle_changelog_key(code)?;
         return Ok(true);
     }
 

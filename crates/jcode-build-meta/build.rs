@@ -76,37 +76,24 @@ fn main() {
     )
     .unwrap_or_default();
 
-    // Get recent commit messages with commit timestamps and version tag decorations.
-    // Format: "hash|timestamp|decorations|subject" per line.
-    // We embed a deeper window so /changelog can cover many more releases.
+    // Recent commit subjects for the startup "Updates" box. Git emits the final
+    // embedded record directly — "hash<RS>subject" per line — so this script does
+    // no field parsing and a field-offset bug is impossible. The RS byte cannot
+    // appear in a hash and does not appear in commit subjects.
+    //
+    // The window is deep so the box can still count every commit a user missed
+    // after a long gap between builds.
     let raw_log = std::env::var("JCODE_BUILD_CHANGELOG_RAW")
         .ok()
         .or_else(|| metadata_value("changelog_raw"))
-        .or_else(|| git_output(&repo_root, ["log", "-700", "--format=%h|%ct|%D|%s"]))
+        .or_else(|| git_output(&repo_root, ["log", "-700", "--format=%h%x1e%s"]))
         .unwrap_or_default();
 
-    // Normalize to "hash<RS>tag<RS>timestamp<RS>subject" — extract version tag or
-    // leave empty. We use ASCII record/unit separators so fields can safely
-    // contain punctuation.
+    // Join into one line: a `cargo:rustc-env` value cannot contain a newline, so
+    // entries are separated by the ASCII unit separator.
     let changelog = raw_log
         .lines()
-        .filter_map(|line| {
-            let mut parts = line.splitn(4, '|');
-            let hash = parts.next()?;
-            let timestamp = parts.next().unwrap_or("");
-            let decorations = parts.next().unwrap_or("");
-            let subject = parts.next()?;
-            let tag = decorations
-                .split(',')
-                .map(|d| d.trim())
-                .find(|d| d.starts_with("tag: v"))
-                .and_then(|d| d.strip_prefix("tag: "))
-                .unwrap_or("");
-            Some(format!(
-                "{}\x1e{}\x1e{}\x1e{}",
-                hash, tag, timestamp, subject
-            ))
-        })
+        .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\x1f");
 

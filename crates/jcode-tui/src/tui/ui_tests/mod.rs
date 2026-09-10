@@ -1,3 +1,4 @@
+use super::changelog::parse_changelog_from;
 use super::*;
 use crate::tui::session_picker;
 use crate::tui::ui::tools_ui;
@@ -9,73 +10,28 @@ fn viewport_snapshot_test_lock() -> crate::tui::ui::RenderStateTestGuard {
 }
 
 #[test]
-fn parse_changelog_from_supports_timestamped_entries() {
-    let changelog = concat!(
-        "abc123\x1ev1.2.2\x1e1711234500\x1eCut release\x1f",
-        "def456\x1e\x1e1711234600\x1eFix follow-up"
-    );
+fn parse_changelog_from_reads_hash_and_subject_records() {
+    let changelog = concat!("abc123\x1eCut release\x1f", "def456\x1eFix follow-up");
 
     let entries = parse_changelog_from(changelog);
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].hash, "abc123");
-    assert_eq!(entries[0].tag, "v1.2.2");
-    assert_eq!(entries[0].timestamp, Some(1711234500));
     assert_eq!(entries[0].subject, "Cut release");
-    assert_eq!(entries[1].timestamp, Some(1711234600));
+    assert_eq!(entries[1].hash, "def456");
+    assert_eq!(entries[1].subject, "Fix follow-up");
 }
 
 #[test]
-fn group_changelog_entries_includes_release_times() {
-    let entries = vec![
-        ChangelogEntry {
-            hash: "aaa111",
-            tag: "",
-            timestamp: Some(1711235600),
-            subject: "Latest unreleased fix",
-        },
-        ChangelogEntry {
-            hash: "bbb222",
-            tag: "v1.2.2",
-            timestamp: Some(1711234500),
-            subject: "Cut release",
-        },
-        ChangelogEntry {
-            hash: "ccc333",
-            tag: "",
-            timestamp: Some(1711234400),
-            subject: "Earlier release commit",
-        },
-    ];
-
-    let groups = group_changelog_entries(&entries, "v1.2.3 (deadbee)", "2024-03-23 16:46:40 +0000");
-
-    assert_eq!(groups.len(), 2);
-    assert_eq!(groups[0].version, "v1.2.3 (unreleased)");
-    assert_eq!(
-        groups[0].released_at.as_deref(),
-        Some("2024-03-23 16:46 UTC")
+fn parse_changelog_from_rejects_records_that_are_not_two_fields() {
+    // The retired 4-field record (hash, tag, timestamp, subject). A producer
+    // script left on the old `git log` format must yield nothing, not a subject
+    // read out of the wrong field.
+    assert!(
+        parse_changelog_from("abc123\x1ev1.2.2\x1e1711234500\x1eCut release").is_empty(),
+        "a stale 4-field producer must not render garbage subjects"
     );
-    assert_eq!(groups[0].entries, vec!["Latest unreleased fix"]);
-
-    assert_eq!(groups[1].version, "v1.2.2");
-    assert_eq!(
-        groups[1].released_at.as_deref(),
-        Some("2024-03-23 22:55 UTC")
-    );
-    assert_eq!(
-        groups[1].entries,
-        vec!["Cut release", "Earlier release commit"]
-    );
-}
-
-#[test]
-fn parse_changelog_from_supports_legacy_entries_without_timestamps() {
-    let entries = parse_changelog_from("abc123:v1.2.2:Legacy entry");
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].hash, "abc123");
-    assert_eq!(entries[0].tag, "v1.2.2");
-    assert_eq!(entries[0].timestamp, None);
-    assert_eq!(entries[0].subject, "Legacy entry");
+    // A record with no separator at all carries no subject to show.
+    assert!(parse_changelog_from("abc123").is_empty());
 }
 
 #[test]
@@ -133,7 +89,6 @@ struct TestState {
     remote_startup_phase_active: bool,
     inline_view_state: Option<crate::tui::InlineViewState>,
     inline_interactive_state: Option<crate::tui::InlineInteractiveState>,
-    changelog_scroll: Option<usize>,
     help_scroll: Option<usize>,
     chat_native_scrollbar: bool,
     suggestions: Vec<(String, String)>,
@@ -435,9 +390,6 @@ impl crate::tui::TuiState for TestState {
     }
     fn inline_view_state(&self) -> Option<&crate::tui::InlineViewState> {
         self.inline_view_state.as_ref()
-    }
-    fn changelog_scroll(&self) -> Option<usize> {
-        self.changelog_scroll
     }
     fn help_scroll(&self) -> Option<usize> {
         self.help_scroll

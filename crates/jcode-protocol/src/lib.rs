@@ -593,7 +593,6 @@ impl Request {
             Request::SetReasoningEffort { id, .. } => *id,
             Request::SetServiceTier { id, .. } => *id,
             Request::SetTransport { id, .. } => *id,
-            Request::SetPremiumMode { id, .. } => *id,
             Request::SetFeature { id, .. } => *id,
             Request::SetCompactionMode { id, .. } => *id,
             Request::RenameSession { id, .. } => *id,

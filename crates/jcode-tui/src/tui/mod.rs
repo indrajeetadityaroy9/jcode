@@ -551,7 +551,6 @@ pub trait TuiState {
     }
     /// Changelog overlay scroll offset (None = not showing)
     // ---- Overlay ----
-    fn changelog_scroll(&self) -> Option<usize>;
     /// Help overlay scroll offset (None = not showing)
     fn help_scroll(&self) -> Option<usize>;
     /// Model status overlay scroll offset and markdown content (None = not showing)

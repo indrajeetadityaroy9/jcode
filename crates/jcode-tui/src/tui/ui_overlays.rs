@@ -1,7 +1,7 @@
 use super::{
-    accent_color, ai_color, ai_text, asap_color, clear_area, dim_color, get_grouped_changelog,
-    header_icon_color, header_name_color, header_session_color, pending_color, queued_color,
-    record_chat_overlay_copy_snapshot, rgb, tool_color, user_bg, user_color, user_text,
+    accent_color, ai_color, ai_text, asap_color, clear_area, dim_color, header_icon_color,
+    header_name_color, header_session_color, pending_color, queued_color, rgb, tool_color, user_bg,
+    user_color, user_text,
 };
 use crate::tui::TuiState;
 use crate::tui::info_widget::WidgetPlacement;
@@ -9,131 +9,6 @@ use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Paragraph},
 };
-
-use super::selection_highlight::highlight_line_selection;
-
-pub(super) fn draw_changelog_overlay(
-    frame: &mut Frame,
-    area: Rect,
-    scroll: usize,
-    app: &dyn TuiState,
-) {
-    clear_area(frame, area);
-
-    let groups = get_grouped_changelog();
-    let mut lines: Vec<Line<'static>> = Vec::new();
-
-    if groups.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "No changelog entries available.",
-            Style::default().fg(dim_color()),
-        )));
-    } else {
-        for group in &groups {
-            let heading = match &group.released_at {
-                Some(released_at) => format!("  {} · {}", group.version, released_at),
-                None => format!("  {}", group.version),
-            };
-            lines.push(Line::from(Span::styled(
-                heading,
-                Style::default()
-                    .fg(rgb(200, 200, 220))
-                    .add_modifier(Modifier::BOLD),
-            )));
-            lines.push(Line::from(""));
-            for entry in &group.entries {
-                lines.push(Line::from(vec![
-                    Span::styled("    • ", Style::default().fg(dim_color())),
-                    Span::styled(entry.clone(), Style::default().fg(rgb(170, 170, 185))),
-                ]));
-            }
-            lines.push(Line::from(""));
-        }
-    }
-
-    let total_lines = lines.len();
-    let visible_height = area.height.saturating_sub(2) as usize;
-    let max_scroll = total_lines.saturating_sub(visible_height);
-    let scroll = scroll.min(max_scroll);
-
-    let scroll_info = if total_lines > visible_height {
-        let pct = if max_scroll > 0 {
-            (scroll * 100) / max_scroll
-        } else {
-            100
-        };
-        format!(" {}% ", pct)
-    } else {
-        String::new()
-    };
-
-    let title = format!(" Changelog {} ", scroll_info);
-    let block = Block::default()
-        .title(Span::styled(
-            title,
-            Style::default()
-                .fg(rgb(200, 200, 220))
-                .add_modifier(Modifier::BOLD),
-        ))
-        .title_bottom(Line::from(Span::styled(
-            " Esc to close · drag to select, release to copy · wheel/j/k scroll ",
-            Style::default().fg(dim_color()),
-        )))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(dim_color()));
-
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    if inner.width == 0 || inner.height == 0 {
-        return;
-    }
-
-    let visible_end = scroll
-        .saturating_add(inner.height as usize)
-        .min(total_lines);
-
-    // Register the rendered lines so the shared copy-selection machinery can map
-    // mouse drags to text and highlight + copy the selection, exactly like the
-    // chat viewport. Without this, mouse capture would block native terminal
-    // selection and there would be no way to copy from the overlay.
-    record_chat_overlay_copy_snapshot(&lines, scroll, visible_end, inner);
-
-    let mut visible_lines: Vec<Line<'static>> =
-        lines.get(scroll..visible_end).unwrap_or(&[]).to_vec();
-
-    if let Some(range) = app.copy_selection_range().filter(|range| {
-        range.start.pane == crate::tui::CopySelectionPane::Chat
-            && range.end.pane == crate::tui::CopySelectionPane::Chat
-    }) {
-        let (start, end) = if (range.start.abs_line, range.start.column)
-            <= (range.end.abs_line, range.end.column)
-        {
-            (range.start, range.end)
-        } else {
-            (range.end, range.start)
-        };
-        for abs_idx in start.abs_line.max(scroll)..=end.abs_line.min(visible_end.saturating_sub(1))
-        {
-            let rel_idx = abs_idx.saturating_sub(scroll);
-            if let Some(line) = visible_lines.get_mut(rel_idx) {
-                let start_col = if abs_idx == start.abs_line {
-                    start.column
-                } else {
-                    0
-                };
-                let end_col = if abs_idx == end.abs_line {
-                    end.column
-                } else {
-                    line.width()
-                };
-                *line = highlight_line_selection(line, start_col, end_col);
-            }
-        }
-    }
-
-    frame.render_widget(Paragraph::new(visible_lines), inner);
-}
 
 pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, app: &dyn TuiState) {
     clear_area(frame, area);
@@ -239,10 +114,6 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
     ));
     lines.push(help_entry("/usage", "Show connected provider usage limits"));
     lines.push(help_entry("/version", "Show version and build details"));
-    lines.push(help_entry(
-        "/changelog",
-        "Show recent changes in this build",
-    ));
 
     lines.push(Line::from(""));
     lines.push(separator());

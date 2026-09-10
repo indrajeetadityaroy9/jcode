@@ -143,13 +143,12 @@ pub(super) fn split_view_status_message(app: &App) -> String {
 }
 
 pub(super) fn handle_split_view_command(app: &mut App, trimmed: &str) -> bool {
-    if !trimmed.starts_with("/splitview") && !trimmed.starts_with("/split-view") {
+    if !trimmed.starts_with("/splitview") {
         return false;
     }
 
     let arg = trimmed
         .strip_prefix("/splitview")
-        .or_else(|| trimmed.strip_prefix("/split-view"))
         .unwrap_or_default()
         .trim();
 

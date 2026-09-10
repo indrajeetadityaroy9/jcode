@@ -12,15 +12,26 @@ use super::App;
 
 /// Run `trimmed` against every locally handled slash command.
 ///
+/// Aliases are rewritten to their canonical name first, so no handler below
+/// ever has to know about them: a new alias is one `aliases` entry in
+/// `command_spec` and zero dispatch changes.
+///
 /// Returns `true` when a handler claimed the input. Callers own presentation
 /// concerns (clearing the input line) because those differ between
 /// the local and remote entry points.
 pub(super) fn dispatch_local_command(app: &mut App, trimmed: &str) -> bool {
+    match super::command_spec::canonical_input(trimmed) {
+        Some(canonical) => dispatch_canonical_command(app, &canonical),
+        None => dispatch_canonical_command(app, trimmed),
+    }
+}
+
+fn dispatch_canonical_command(app: &mut App, trimmed: &str) -> bool {
     super::commands::handle_cancel_command(app, trimmed)
         || super::commands::handle_help_command(app, trimmed)
         || super::commands::handle_keys_command(app, trimmed)
         || super::commands::handle_ssh_command(app, trimmed)
-        // `/test`, `/mission`, `/goal`, and `/goals` are dispatched inside
+        // `/test` and `/initiatives` are dispatched inside
         // `handle_session_command`, so they need no separate entries here.
         || super::commands::handle_session_command(app, trimmed)
         || super::commands::handle_config_command(app, trimmed)

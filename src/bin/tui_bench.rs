@@ -1116,10 +1116,6 @@ impl TuiState for BenchState {
         None
     }
 
-    fn changelog_scroll(&self) -> Option<usize> {
-        None
-    }
-
     fn help_scroll(&self) -> Option<usize> {
         None
     }

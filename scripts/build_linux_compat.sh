@@ -50,7 +50,8 @@ if command -v git >/dev/null 2>&1 && git -C "$repo_root" rev-parse --git-dir >/d
   git_hash="$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || true)"
   git_date="$(git -C "$repo_root" log -1 --format=%ci 2>/dev/null || true)"
   git_tag="$(git -C "$repo_root" describe --tags --always 2>/dev/null || true)"
-  changelog_raw="$(git -C "$repo_root" log -700 --format='%h|%ct|%D|%s' 2>/dev/null || true)"
+  # Must match crates/jcode-build-meta/build.rs: "hash<RS>subject" per line.
+  changelog_raw="$(git -C "$repo_root" log -700 --format='%h%x1e%s' 2>/dev/null || true)"
   if [[ -n "$(git -C "$repo_root" status --porcelain 2>/dev/null || true)" ]]; then
     git_dirty="1"
   fi

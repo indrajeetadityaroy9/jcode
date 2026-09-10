@@ -1,14 +1,6 @@
 use super::*;
 
 impl Agent {
-    pub fn set_premium_mode(&self, mode: crate::provider::copilot::PremiumMode) {
-        self.provider.set_premium_mode(mode);
-    }
-
-    pub fn premium_mode(&self) -> crate::provider::copilot::PremiumMode {
-        self.provider.premium_mode()
-    }
-
     pub fn provider_fork(&self) -> Arc<dyn Provider> {
         self.provider.fork()
     }

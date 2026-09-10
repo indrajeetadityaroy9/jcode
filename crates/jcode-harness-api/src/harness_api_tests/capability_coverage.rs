@@ -61,7 +61,6 @@ const LEDGER: &[(&str, Disposition)] = &[
     ("SetCompactionMode", ClientInternal),
     ("SetFeature", ClientInternal),
     ("SetModel", Covered),
-    ("SetPremiumMode", ClientInternal),
     ("SetReasoningEffort", Covered),
     ("SetRoute", ClientInternal),
     ("SetServiceTier", ClientInternal),

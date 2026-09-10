@@ -8,12 +8,9 @@
 use super::*;
 use crate::bus::{Bus, BusEvent, ProductivityReportPayload, ProductivityReportReady};
 
-/// Handle `/productivity` (aliases: `/wrapped`, `/stats`).
+/// Handle `/productivity`.
 pub(super) fn handle_productivity_command(app: &mut App, trimmed: &str) -> bool {
-    let is_match = matches!(
-        trimmed,
-        "/productivity" | "/wrapped" | "/stats" | "/productivity report"
-    );
+    let is_match = matches!(trimmed, "/productivity" | "/productivity report");
     if !is_match {
         return false;
     }

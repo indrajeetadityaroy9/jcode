@@ -94,9 +94,6 @@ use box_utils::{
     line_plain_text, render_rounded_box, truncate_line_preserving_suffix_to_width,
     truncate_line_with_ellipsis_to_width,
 };
-use changelog::get_grouped_changelog;
-#[cfg(test)]
-use changelog::{ChangelogEntry, group_changelog_entries, parse_changelog_from};
 use debug_capture::{
     build_info_widget_summary, capture_widget_placements, rect_within_bounds, rects_overlap,
     widget_overlaps_content,
@@ -1877,26 +1874,6 @@ pub(crate) fn record_side_pane_snapshot(
     );
 }
 
-/// Record a copy-selection snapshot for the chat pane from already-wrapped
-/// display lines. Used by full-screen overlays (e.g. `/changelog`) that replace
-/// the chat viewport but still want drag-to-select-and-copy support. Each
-/// display line is treated as a single raw line, so the copied text matches the
-/// rendered text verbatim.
-pub(crate) fn record_chat_overlay_copy_snapshot(
-    wrapped_lines: &[Line<'static>],
-    scroll: usize,
-    visible_end: usize,
-    content_area: Rect,
-) {
-    record_pane_snapshot_from_lines(
-        crate::tui::CopySelectionPane::Chat,
-        wrapped_lines,
-        scroll,
-        visible_end,
-        content_area,
-    );
-}
-
 /// Record a copy-selection snapshot for the prompt composer (input box).
 /// Called from `draw_input` each frame with the composer's wrapped rows so a
 /// mouse drag over the text being typed selects and copies it, exactly like
@@ -2590,18 +2567,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // Uses Color::Reset (terminal default bg) so text selection highlighting works
     // natively in all terminal emulators.
     clear_area(frame, area);
-
-    if let Some(scroll) = app.changelog_scroll() {
-        overlays::draw_changelog_overlay(frame, area, scroll, app);
-        finalize_frame_metrics(
-            app,
-            total_start,
-            Duration::ZERO,
-            total_start.elapsed(),
-            None,
-        );
-        return;
-    }
 
     if let Some(scroll) = app.help_scroll() {
         overlays::draw_help_overlay(frame, area, scroll, app);

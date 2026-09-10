@@ -100,9 +100,7 @@ pub(crate) async fn handle_account_command_remote(
 }
 
 fn parse_account_command(trimmed: &str) -> Option<Result<AccountCommand, String>> {
-    let rest = trimmed
-        .strip_prefix("/account")
-        .or_else(|| trimmed.strip_prefix("/accounts"))?;
+    let rest = trimmed.strip_prefix("/account")?;
     let rest = rest.trim();
     if rest.is_empty() {
         return Some(Ok(AccountCommand::OpenOverlay {

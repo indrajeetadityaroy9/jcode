@@ -1459,7 +1459,7 @@ pub(super) fn handle_model_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if trimmed == "/model" || trimmed == "/models" {
+    if trimmed == "/model" {
         app.record_keybinding_slow(crate::tui::app::shortcut_hints::LearnableAction::ModelSwitch);
         app.open_model_picker();
         return true;

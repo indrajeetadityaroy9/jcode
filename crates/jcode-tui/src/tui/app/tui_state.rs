@@ -1833,10 +1833,6 @@ impl crate::tui::TuiState for App {
         self.inline_view_state.as_ref()
     }
 
-    fn changelog_scroll(&self) -> Option<usize> {
-        self.changelog_scroll
-    }
-
     fn help_scroll(&self) -> Option<usize> {
         self.help_scroll
     }

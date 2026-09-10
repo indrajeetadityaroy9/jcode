@@ -605,18 +605,6 @@ fn test_account_default_provider_command_saves_config() {
 }
 
 #[test]
-fn test_commands_alias_shows_help() {
-    let mut app = create_test_app();
-    app.input = "/commands".to_string();
-    app.submit_input();
-
-    assert!(
-        app.help_scroll.is_some(),
-        "/commands should open help overlay"
-    );
-}
-
-#[test]
 fn test_improve_command_starts_improvement_loop() {
     let mut app = create_test_app();
     app.input = "/improve".to_string();

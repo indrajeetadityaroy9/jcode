@@ -15,7 +15,6 @@ struct MouseScrollTraceState {
     diagram_y: i32,
     diagram_zoom: u8,
     help_scroll: Option<usize>,
-    changelog_scroll: Option<usize>,
 }
 
 impl MouseScrollTraceState {
@@ -32,13 +31,12 @@ impl MouseScrollTraceState {
             diagram_y: app.diagram_scroll_y,
             diagram_zoom: app.diagram_zoom,
             help_scroll: app.help_scroll,
-            changelog_scroll: app.changelog_scroll,
         }
     }
 
     fn summary(&self) -> String {
         format!(
-            "chat={} auto={} queue={} target={:?} diff={} diff_auto={} diagram_focus={} diagram=({},{} @ {}%) help={:?} changelog={:?}",
+            "chat={} auto={} queue={} target={:?} diff={} diff_auto={} diagram_focus={} diagram=({},{} @ {}%) help={:?}",
             self.chat_offset,
             self.auto_scroll_paused,
             self.mouse_queue,
@@ -50,7 +48,6 @@ impl MouseScrollTraceState {
             self.diagram_y,
             self.diagram_zoom,
             self.help_scroll,
-            self.changelog_scroll,
         )
     }
 }
@@ -891,17 +888,6 @@ impl App {
                 });
                 true
             }
-            MouseScrollTarget::ChangelogOverlay => {
-                let Some(current) = self.changelog_scroll else {
-                    return false;
-                };
-                self.changelog_scroll = Some(if direction < 0 {
-                    current.saturating_sub(1)
-                } else {
-                    current.saturating_add(1)
-                });
-                true
-            }
             MouseScrollTarget::ModelStatusOverlay => {
                 let Some(current) = self.model_status_scroll else {
                     return false;
@@ -1333,29 +1319,6 @@ impl App {
                 }
                 return scroll_only;
             }};
-        }
-
-        if self.changelog_scroll.is_some() {
-            match mouse.kind {
-                MouseEventKind::ScrollUp => {
-                    self.enqueue_mouse_scroll(MouseScrollTarget::ChangelogOverlay, -1);
-                    finish_mouse_event!(true, "changelog_overlay_scroll_up");
-                }
-                MouseEventKind::ScrollDown => {
-                    self.enqueue_mouse_scroll(MouseScrollTarget::ChangelogOverlay, 1);
-                    finish_mouse_event!(true, "changelog_overlay_scroll_down");
-                }
-                _ => {
-                    // Let the shared copy-selection machinery handle press/drag/
-                    // release so text in the overlay can be selected and copied,
-                    // just like the chat viewport. Mouse capture otherwise blocks
-                    // native terminal selection here.
-                    if let Some(scroll_only) = self.handle_copy_selection_mouse(mouse) {
-                        finish_mouse_event!(scroll_only, "changelog_overlay_copy_selection");
-                    }
-                    finish_mouse_event!(false, "changelog_overlay_non_scroll");
-                }
-            }
         }
 
         if self.help_scroll.is_some() {

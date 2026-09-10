@@ -51,6 +51,7 @@ pub enum AppRuntimeMode {
 mod auth;
 mod auth_account_picker_saved_accounts;
 mod catchup;
+mod command_spec;
 mod commands;
 mod commands_colors;
 mod commands_dispatch;
@@ -563,7 +564,6 @@ pub(super) enum MouseScrollTarget {
     Chat,
     SidePane,
     HelpOverlay,
-    ChangelogOverlay,
     ModelStatusOverlay,
     /// The right-hand preview pane of the /resume session picker overlay.
     SessionPickerPreview,
@@ -1493,7 +1493,6 @@ pub struct App {
     /// overscroll reveal (default). From `display.overscroll_status` config.
     overscroll_status_mode: crate::config::OverscrollStatusMode,
     /// Scroll offset for changelog overlay (None = not visible)
-    changelog_scroll: Option<usize>,
     help_scroll: Option<usize>,
     model_status_scroll: Option<usize>,
     model_status_content: String,

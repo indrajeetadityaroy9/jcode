@@ -323,22 +323,13 @@ fn a_full_screen_overlay_stops_the_decorative_animation_cadence() {
          {animation_interval:?}"
     );
 
-    let overlays: Vec<(&str, TestState)> = vec![
-        (
-            "changelog",
-            TestState {
-                changelog_scroll: Some(0),
-                ..idle_animation_state(1.0)
-            },
-        ),
-        (
-            "help",
-            TestState {
-                help_scroll: Some(0),
-                ..idle_animation_state(1.0)
-            },
-        ),
-    ];
+    let overlays: Vec<(&str, TestState)> = vec![(
+        "help",
+        TestState {
+            help_scroll: Some(0),
+            ..idle_animation_state(1.0)
+        },
+    )];
 
     for (name, state) in overlays {
         // Render the overlay: this is the frame that (correctly) publishes no

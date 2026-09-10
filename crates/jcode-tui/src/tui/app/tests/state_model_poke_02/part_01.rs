@@ -350,35 +350,6 @@ fn test_mouse_scroll_help_overlay_updates_help_scroll() {
 }
 
 #[test]
-fn test_mouse_scroll_changelog_overlay_updates_changelog_scroll() {
-    let mut app = create_test_app();
-    app.changelog_scroll = Some(2);
-
-    let scroll_only = app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::ScrollUp,
-        column: 10,
-        row: 5,
-        modifiers: KeyModifiers::empty(),
-    });
-
-    assert!(
-        scroll_only,
-        "changelog overlay mouse wheel should be scroll-only"
-    );
-    assert_eq!(app.changelog_scroll, Some(0));
-
-    let scroll_only = app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::ScrollDown,
-        column: 10,
-        row: 5,
-        modifiers: KeyModifiers::empty(),
-    });
-
-    assert!(scroll_only);
-    assert_eq!(app.changelog_scroll, Some(3));
-}
-
-#[test]
 fn test_mouse_scroll_over_unfocused_diagram_scrolls_chat_without_resizing_pane() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_scroll_test_app(120, 30, 0, 80);
@@ -840,13 +811,15 @@ fn test_registered_command_suggestions_include_aliases_and_hide_secret_commands(
     let commands: Vec<&str> = suggestions.iter().map(|(cmd, _)| cmd.as_str()).collect();
 
     assert_eq!(commands.iter().filter(|cmd| **cmd == "/cancel").count(), 1);
-    assert!(commands.contains(&"/models"));
-    assert!(commands.contains(&"/sessions"));
-    assert!(commands.contains(&"/commands"));
     assert!(commands.contains(&"/plan"));
-    assert!(!commands.contains(&"/z"));
-    assert!(!commands.contains(&"/zz"));
-    assert!(!commands.contains(&"/zzz"));
+    // `/initiatives` keeps three names; every retired alias and the secret
+    // premium commands must stay out of autocomplete.
+    for kept in ["/goals", "/goal", "/mission"] {
+        assert!(commands.contains(&kept), "{kept} missing");
+    }
+    for gone in ["/models", "/sessions", "/commands", "/z", "/zz", "/zzz"] {
+        assert!(!commands.contains(&gone), "{gone} still suggested");
+    }
 }
 
 #[test]
@@ -1244,7 +1217,7 @@ fn test_model_picker_preview_filter_parsing() {
         Some("gpt-5".to_string())
     );
     assert_eq!(
-        App::model_picker_preview_filter("   /models codex"),
+        App::model_picker_preview_filter("   /model codex"),
         Some("codex".to_string())
     );
     assert_eq!(App::model_picker_preview_filter("/modelx"), None);

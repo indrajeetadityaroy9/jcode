@@ -6,7 +6,7 @@ use crossterm::event::{KeyCode, KeyModifiers};
 
 impl App {
     pub(crate) fn model_picker_preview_filter(input: &str) -> Option<String> {
-        slash_command_preview_filter(input, &["/model", "/models"])
+        slash_command_preview_filter(input, &["/model"])
     }
 
     pub(crate) fn login_picker_preview_filter(input: &str) -> Option<String> {
@@ -15,9 +15,7 @@ impl App {
 
     fn account_picker_preview_request(&self, input: &str) -> Option<InlinePickerPreviewRequest> {
         let trimmed = input.trim_start();
-        let rest = trimmed
-            .strip_prefix("/account")
-            .or_else(|| trimmed.strip_prefix("/accounts"))?;
+        let rest = trimmed.strip_prefix("/account")?;
 
         if rest.is_empty() {
             return Some(InlinePickerPreviewRequest::Account {
@@ -130,12 +128,11 @@ impl App {
         if should_open {
             let saved_input = self.input.clone();
             let saved_cursor = self.cursor_pos;
-            let append_model_filter_space =
-                matches!(
-                    request,
-                    InlinePickerPreviewRequest::Model { ref filter } if filter.is_empty()
-                ) && matches!(saved_input.trim_start(), "/model" | "/models")
-                    && saved_cursor == saved_input.len();
+            let append_model_filter_space = matches!(
+                request,
+                InlinePickerPreviewRequest::Model { ref filter } if filter.is_empty()
+            ) && matches!(saved_input.trim_start(), "/model")
+                && saved_cursor == saved_input.len();
             request.open(self);
             let mut preview_opened = false;
             if let Some(ref mut picker) = self.inline_interactive_state {

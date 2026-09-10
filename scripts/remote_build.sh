@@ -206,7 +206,8 @@ if command -v git >/dev/null 2>&1 && git -C "$LOCAL_DIR" rev-parse --git-dir >/d
     local_git_hash="$(git -C "$LOCAL_DIR" rev-parse --short HEAD 2>/dev/null || true)"
     local_git_date="$(git -C "$LOCAL_DIR" log -1 --format=%ci 2>/dev/null || true)"
     local_git_tag="$(git -C "$LOCAL_DIR" describe --tags --always 2>/dev/null || true)"
-    local_changelog_raw="$(git -C "$LOCAL_DIR" log -700 --format='%h|%ct|%D|%s' 2>/dev/null || true)"
+    # Must match crates/jcode-build-meta/build.rs: "hash<RS>subject" per line.
+    local_changelog_raw="$(git -C "$LOCAL_DIR" log -700 --format='%h%x1e%s' 2>/dev/null || true)"
     if [[ -n "$(git -C "$LOCAL_DIR" status --porcelain 2>/dev/null || true)" ]]; then
         local_git_dirty="1"
     fi

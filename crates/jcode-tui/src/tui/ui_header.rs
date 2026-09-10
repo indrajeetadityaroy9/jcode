@@ -949,7 +949,7 @@ pub(super) fn build_updates_box_lines(width: u16, max_lines: usize) -> Vec<Line<
     if has_more {
         content.push(Line::from(Span::styled(
             format!(
-                "  …{} more · /changelog to see all",
+                "  …{} more · git log to see all",
                 new_entries.len() - display_count
             ),
             Style::default().fg(dim_color()),

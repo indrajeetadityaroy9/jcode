@@ -89,6 +89,7 @@ run_ratchet "swallowed-error usage ratchet" check_swallowed_error_budget.py
 run_gate "crate dependency boundaries" python3 scripts/check_dependency_boundaries.py
 run_gate "wildcard re-export ratchet" python3 scripts/check_wildcard_reexport_budget.py
 run_gate "dead surface (orphan crates/bins/scripts)" python3 scripts/check_dead_surface.py
+run_gate "slash command parity (advertised but undispatched)" python3 scripts/check_command_parity.py
 
 if $SKIP_SLOW; then
     :

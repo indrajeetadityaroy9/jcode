@@ -47,7 +47,9 @@ fn test_local_tool_error_copy_badge_shortcut_supported() {
         .unwrap();
 
     assert_eq!(app.status_notice(), Some("Copied error".to_string()));
-    let copied = clipboard.text().expect("tool error should reach the clipboard");
+    let copied = clipboard
+        .text()
+        .expect("tool error should reach the clipboard");
     assert!(
         copied.contains("permission denied"),
         "clipboard should carry the tool error: {copied:?}"
@@ -111,7 +113,9 @@ fn test_local_blockquote_copy_badge_shortcut_supported() {
         .unwrap();
 
     assert_eq!(app.status_notice(), Some("Copied quote".to_string()));
-    let copied = clipboard.text().expect("blockquote should reach the clipboard");
+    let copied = clipboard
+        .text()
+        .expect("blockquote should reach the clipboard");
     assert!(
         copied.contains("the quick brown fox") && copied.contains("jumps over the lazy dog"),
         "clipboard should carry the quoted lines: {copied:?}"
@@ -185,8 +189,7 @@ fn test_copy_selection_metrics_match_built_selection_text() {
     let text = app
         .current_copy_selection_text()
         .expect("selection text for full transcript");
-    let (chars, lines) =
-        crate::tui::ui::copy_selection_metrics(range).expect("selection metrics");
+    let (chars, lines) = crate::tui::ui::copy_selection_metrics(range).expect("selection metrics");
 
     assert_eq!(
         chars,
@@ -957,9 +960,7 @@ fn test_copy_selection_drag_to_top_edge_auto_scrolls_chat() {
         modifiers: KeyModifiers::empty(),
     });
     assert!(!app.progress_copy_selection_edge_autoscroll());
-    assert!(!crate::tui::TuiState::copy_selection_edge_autoscroll_active(
-        &app
-    ));
+    assert!(!crate::tui::TuiState::copy_selection_edge_autoscroll_active(&app));
 }
 
 #[test]
@@ -1058,9 +1059,7 @@ fn test_copy_selection_drag_near_top_edge_keeps_auto_scrolling() {
         row: near_top_row,
         modifiers: KeyModifiers::empty(),
     });
-    assert!(!crate::tui::TuiState::copy_selection_edge_autoscroll_active(
-        &app
-    ));
+    assert!(!crate::tui::TuiState::copy_selection_edge_autoscroll_active(&app));
 }
 
 #[test]
@@ -1333,110 +1332,3 @@ fn test_alt_a_copies_chat_viewport_with_context_when_input_empty() {
             | Some("Nothing visible to copy")
     ));
 }
-
-#[test]
-fn test_changelog_overlay_supports_drag_select_and_copy() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.changelog_scroll = Some(0);
-
-    let backend = ratatui::backend::TestBackend::new(80, 24);
-    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
-    render_and_snap(&app, &mut terminal);
-
-    // The overlay must register a chat-pane copy snapshot so the shared
-    // selection machinery can map screen coordinates to text.
-    let (visible_start, visible_end) = crate::tui::ui::copy_viewport_visible_range()
-        .expect("changelog overlay should register a copy viewport snapshot");
-    assert!(visible_end > visible_start);
-
-    // Find a non-empty rendered line to select.
-    let (line_idx, line_text) = (visible_start..visible_end)
-        .find_map(|abs_line| {
-            let text = crate::tui::ui::copy_viewport_line_text(abs_line)?;
-            (!text.trim().is_empty()).then_some((abs_line, text))
-        })
-        .expect("expected a visible non-empty changelog line");
-
-    app.copy_selection_anchor = Some(crate::tui::CopySelectionPoint {
-        pane: crate::tui::CopySelectionPane::Chat,
-        abs_line: line_idx,
-        column: 0,
-    });
-    app.copy_selection_cursor = Some(crate::tui::CopySelectionPoint {
-        pane: crate::tui::CopySelectionPane::Chat,
-        abs_line: line_idx,
-        column: unicode_width::UnicodeWidthStr::width(line_text.as_str()),
-    });
-
-    let selected = app
-        .current_copy_selection_text()
-        .expect("expected selection text from changelog overlay");
-    assert_eq!(selected, line_text);
-}
-
-#[test]
-fn test_changelog_overlay_mouse_drag_release_copies_text() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.changelog_scroll = Some(0);
-
-    let backend = ratatui::backend::TestBackend::new(80, 24);
-    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
-    render_and_snap(&app, &mut terminal);
-
-    let (visible_start, visible_end) = crate::tui::ui::copy_viewport_visible_range()
-        .expect("changelog overlay should register a copy viewport snapshot");
-    let line_idx = (visible_start..visible_end)
-        .find(|&abs_line| {
-            crate::tui::ui::copy_viewport_line_text(abs_line)
-                .is_some_and(|t| !t.trim().is_empty())
-        })
-        .expect("expected a visible non-empty changelog line");
-
-    // Resolve a screen row for that line via the recorded snapshot.
-    let mut found_row = None;
-    for row in 0..24u16 {
-        for col in 0..80u16 {
-            if let Some(point) = crate::tui::ui::copy_point_from_screen(col, row)
-                && point.pane == crate::tui::CopySelectionPane::Chat
-                && point.abs_line == line_idx
-            {
-                found_row = Some(row);
-                break;
-            }
-        }
-        if found_row.is_some() {
-            break;
-        }
-    }
-    let row = found_row.expect("expected a screen row mapping to the changelog line");
-
-    // Press, drag across the line, and release: this should select and attempt a copy.
-    app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::Down(MouseButton::Left),
-        column: 2,
-        row,
-        modifiers: KeyModifiers::empty(),
-    });
-    app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::Drag(MouseButton::Left),
-        column: 40,
-        row,
-        modifiers: KeyModifiers::empty(),
-    });
-    app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::Up(MouseButton::Left),
-        column: 40,
-        row,
-        modifiers: KeyModifiers::empty(),
-    });
-
-    // A copy was attempted (success/failure depends on clipboard availability
-    // in the test environment, but the selection path must have run).
-    assert!(matches!(
-        app.status_notice().as_deref(),
-        Some("Copied selection") | Some("Failed to copy selection") | Some("Selection is empty")
-    ));
-}
-

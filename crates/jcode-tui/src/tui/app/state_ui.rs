@@ -1646,12 +1646,6 @@ pub(super) fn handle_info_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if trimmed == "/changelog" {
-        app.changelog_scroll = Some(0);
-        app.set_status_notice("Changelog");
-        return true;
-    }
-
     if trimmed == "/cache" || trimmed.starts_with("/cache ") {
         let arg = trimmed.strip_prefix("/cache").unwrap_or("").trim();
         match arg {

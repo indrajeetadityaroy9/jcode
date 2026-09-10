@@ -97,7 +97,9 @@ fn session_picker_enter_queues_current_terminal_resume_and_closes_overlay() {
 
     assert!(app.session_picker_overlay.is_none());
     assert_eq!(
-        app.workspace_client.take_pending_resume_session().as_deref(),
+        app.workspace_client
+            .take_pending_resume_session()
+            .as_deref(),
         Some("session_here_123")
     );
 }
@@ -132,36 +134,6 @@ fn slash_command_submit_retains_pending_images() {
     // the images stay pending and go out with the next real prompt submission.
     assert_eq!(app.pending_images.len(), 1);
     assert_eq!(app.pending_images[0].0, "image/png");
-    assert!(app.input.is_empty());
-}
-
-#[test]
-fn slash_sessions_alias_opens_session_picker_overlay_locally() {
-    let runtime = tokio::runtime::Runtime::new().expect("test runtime");
-    let _guard = runtime.enter();
-    let mut app = create_test_app();
-
-    app.input = "/sessions".to_string();
-    app.submit_input();
-
-    assert!(app.session_picker_overlay.is_some());
-    assert_eq!(app.session_picker_mode, SessionPickerMode::Resume);
-    assert!(app.pending_session_picker_load.is_some());
-    assert!(app.input.is_empty());
-}
-
-#[test]
-fn slash_session_alias_opens_session_picker_overlay_locally() {
-    let runtime = tokio::runtime::Runtime::new().expect("test runtime");
-    let _guard = runtime.enter();
-    let mut app = create_test_app();
-
-    app.input = "/session".to_string();
-    app.submit_input();
-
-    assert!(app.session_picker_overlay.is_some());
-    assert_eq!(app.session_picker_mode, SessionPickerMode::Resume);
-    assert!(app.pending_session_picker_load.is_some());
     assert!(app.input.is_empty());
 }
 
@@ -324,10 +296,7 @@ fn slash_provider_test_coverage_with_args_shows_provider_detail() {
             .starts_with("# Provider test coverage")
     );
     assert!(app.model_status_content.contains("Provider: fpt"));
-    assert!(
-        app.model_status_content
-            .contains("Model: FPT.AI-KIE-v1.7")
-    );
+    assert!(app.model_status_content.contains("Model: FPT.AI-KIE-v1.7"));
 }
 
 #[test]
@@ -580,24 +549,6 @@ fn test_help_topic_shows_commit_push_command_details() {
 }
 
 #[test]
-fn test_fast_release_command_starts_synthetic_user_turn() {
-    let mut app = create_test_app();
-    app.input = "/fast-release".to_string();
-    app.submit_input();
-
-    assert!(app.is_processing);
-    assert!(app.pending_turn);
-    let notice = app
-        .display_messages()
-        .last()
-        .expect("missing launch notice");
-    assert_eq!(notice.role, "system");
-    assert!(notice
-        .content
-        .contains("Starting logical commits + push + fast local release"));
-}
-
-#[test]
 fn test_triage_command_starts_synthetic_user_turn() {
     let mut app = create_test_app();
     app.input = "/triage".to_string();
@@ -618,149 +569,6 @@ fn test_triage_command_includes_focus_in_prompt() {
     let prompt = crate::tui::app::commands::build_triage_prompt(" only crash reports");
     assert!(prompt.contains("Triage the open GitHub issues"));
     assert!(prompt.contains("Additional focus from the user: only crash reports"));
-}
-
-#[test]
-fn test_cut_release_alias_starts_fast_release_turn() {
-    let mut app = create_test_app();
-    app.input = "/cut-release".to_string();
-    app.submit_input();
-
-    assert!(app.is_processing);
-    assert!(app.pending_turn);
-    let notice = app
-        .display_messages()
-        .last()
-        .expect("missing launch notice");
-    assert!(notice.content.contains("fast local release"));
-}
-
-#[test]
-fn test_fast_release_prompt_uses_warm_cargo_cache() {
-    let fast_prompt = super::commands::build_fast_release_prompt();
-    assert!(fast_prompt.contains("quick-release.sh --prepare-fast"));
-    assert!(fast_prompt.contains("quick-release.sh --fast-local"));
-    assert!(fast_prompt.contains("warm target/selfdev cache"));
-    assert!(fast_prompt.contains("Do not run the separate local macOS cross-build"));
-    let prepare = fast_prompt.find("--prepare-fast").unwrap();
-    let bump = fast_prompt.find("Bump the version").unwrap();
-    assert!(prepare < bump);
-}
-
-#[test]
-fn test_fast_macos_release_command_uses_prepared_cross_build() {
-    let mut app = create_test_app();
-    app.input = "/fast-macos-release".to_string();
-    app.submit_input();
-
-    assert!(app.is_processing);
-    assert!(app.pending_turn);
-    let notice = app
-        .display_messages()
-        .last()
-        .expect("missing launch notice");
-    assert!(notice.content.contains("fast macOS release"));
-
-    let prompt = super::commands::build_fast_macos_release_prompt();
-    assert!(prompt.contains("quick-release.sh --prepare-fast-macos"));
-    assert!(prompt.contains("quick-release.sh --fast-macos-local"));
-    assert!(prompt.contains("macOS arm64"));
-    let prepare = prompt.find("--prepare-fast-macos").unwrap();
-    let bump = prompt.find("Bump the version").unwrap();
-    assert!(prepare < bump);
-}
-
-#[test]
-fn test_help_topic_shows_fast_macos_release_details() {
-    let mut app = create_test_app();
-    app.input = "/help fast-macos-release".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/fast-macos-release"));
-    assert!(msg.content.contains("--prepare-fast-macos"));
-    assert!(msg.content.contains("--fast-macos-local"));
-    assert!(msg.content.contains("osxcross"));
-}
-
-#[test]
-fn test_remote_release_command_uses_tag_only_ci_path() {
-    let mut app = create_test_app();
-    app.input = "/remote-release".to_string();
-    app.submit_input();
-
-    assert!(app.is_processing);
-    assert!(app.pending_turn);
-    let notice = app
-        .display_messages()
-        .last()
-        .expect("missing launch notice");
-    assert_eq!(notice.role, "system");
-    assert!(notice
-        .content
-        .contains("Starting logical commits + push + remote release"));
-
-    let prompt = super::commands::build_remote_release_prompt();
-    assert!(prompt.contains("quick-release.sh --remote"));
-    assert!(prompt.contains("without any local build"));
-    assert!(prompt.contains("publication gated"));
-}
-
-#[test]
-fn test_commit_push_release_alias_starts_synthetic_user_turn() {
-    let mut app = create_test_app();
-    app.input = "/commit-push-release".to_string();
-    app.submit_input();
-
-    assert!(app.is_processing);
-    assert!(app.pending_turn);
-    let notice = app
-        .display_messages()
-        .last()
-        .expect("missing launch notice");
-    assert_eq!(notice.role, "system");
-    assert!(notice
-        .content
-        .contains("Starting logical commits + push + fast local release"));
-}
-
-#[test]
-fn test_help_topic_shows_cut_release_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help cut-release".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/fast-release"));
-    assert!(msg.content.contains("--prepare-fast"));
-    assert!(msg.content.contains("--fast-local"));
-    assert!(msg.content.contains("target/selfdev"));
-    assert!(msg.content.contains("compatibility alias"));
-}
-
-#[test]
-fn test_help_topic_shows_remote_release_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help remote-release".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/remote-release"));
-    assert!(msg.content.contains("--remote"));
-    assert!(msg.content.contains("without running any local build"));
-    assert!(msg.content.contains("remains a draft"));
 }
 
 #[test]
@@ -1192,10 +1000,7 @@ fn test_fork_command_with_prompt_forks_session() {
     app.input = "/fork try the other approach".to_string();
     app.submit_input();
 
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing fork message");
+    let msg = app.display_messages().last().expect("missing fork message");
     assert_eq!(msg.role, "system");
     assert!(msg.content.contains("created for the next prompt"));
     let session_id = msg
@@ -1228,10 +1033,7 @@ fn test_fork_command_without_prompt_forks_idle_session() {
     app.input = "/fork".to_string();
     app.submit_input();
 
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing fork message");
+    let msg = app.display_messages().last().expect("missing fork message");
     assert_eq!(msg.role, "system");
     assert!(msg.content.contains("✂ Fork →"));
     let session_id = msg
@@ -1245,31 +1047,6 @@ fn test_fork_command_without_prompt_forks_idle_session() {
         App::restore_input_for_reload(&session_id).is_none(),
         "idle fork should not stage a startup submission"
     );
-
-    if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
-    } else {
-        crate::env::remove_var("JCODE_HOME");
-    }
-}
-
-#[test]
-fn test_split_command_local_is_alias_for_fork() {
-    let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
-
-    let mut app = create_test_app();
-    app.input = "/split".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing split message");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("✂ Fork →"));
 
     if let Some(prev_home) = prev_home {
         crate::env::set_var("JCODE_HOME", prev_home);
@@ -1510,7 +1287,9 @@ fn test_observe_updates_latest_tool_context_only() {
         id: "tool_1".to_string(),
         name: "read".to_string(),
         input: serde_json::json!({"file_path": "src/main.rs", "start_line": 1, "end_line": 10}),
-        intent: None, thought_signature: None, };
+        intent: None,
+        thought_signature: None,
+    };
     app.observe_tool_call(&tool_call);
 
     let page = app.side_panel.focused_page().expect("missing observe page");
@@ -1549,7 +1328,9 @@ fn test_observe_ignores_noise_tools_and_preserves_latest_useful_context() {
         id: "tool_read".to_string(),
         name: "read".to_string(),
         input: serde_json::json!({"file_path": "src/main.rs"}),
-        intent: None, thought_signature: None, };
+        intent: None,
+        thought_signature: None,
+    };
     app.observe_tool_result(&read_tool, "fn main() {}", false, Some("read"));
     let before = app
         .side_panel
@@ -1562,7 +1343,9 @@ fn test_observe_ignores_noise_tools_and_preserves_latest_useful_context() {
         id: "tool_side_panel".to_string(),
         name: "side_panel".to_string(),
         input: serde_json::json!({"action": "write", "page_id": "plan"}),
-        intent: None, thought_signature: None, };
+        intent: None,
+        thought_signature: None,
+    };
     app.observe_tool_call(&noise_tool);
     app.observe_tool_result(&noise_tool, "ok", false, Some("side_panel"));
 

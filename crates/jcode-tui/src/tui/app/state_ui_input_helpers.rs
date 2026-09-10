@@ -1,213 +1,12 @@
 use super::*;
 use crate::tui::core;
 
-#[derive(Clone, Copy)]
-struct RegisteredCommand {
-    name: &'static str,
-    help: &'static str,
-    hidden: bool,
-}
-
-impl RegisteredCommand {
-    const fn public(name: &'static str, help: &'static str) -> Self {
-        Self {
-            name,
-            help,
-            hidden: false,
-        }
-    }
-
-    const fn remote(name: &'static str, help: &'static str) -> Self {
-        Self {
-            name,
-            help,
-            hidden: false,
-        }
-    }
-
-    const fn hidden(name: &'static str, help: &'static str) -> Self {
-        Self {
-            name,
-            help,
-            hidden: true,
-        }
-    }
-}
-
-const REGISTERED_COMMANDS: &[RegisteredCommand] = &[
-    RegisteredCommand::public("/help", "Show help and keyboard shortcuts"),
-    RegisteredCommand::public("/?", "Show help and keyboard shortcuts"),
-    RegisteredCommand::public("/commands", "Alias for /help"),
-    RegisteredCommand::public("/model", "List or switch models"),
-    RegisteredCommand::public("/models", "Alias for /model"),
-    RegisteredCommand::public(
-        "/provider-test-coverage",
-        "Show live-test evidence for the current provider/model",
-    ),
-    RegisteredCommand::hidden("/model-status", "Alias for /provider-test-coverage"),
-    RegisteredCommand::public("/refresh-model-list", "Refresh provider model catalogs"),
-    RegisteredCommand::public("/agents", "Configure models for agent roles"),
-    RegisteredCommand::public(
-        "/swarm-prompt",
-        "Open the active swarm routing prompt in your editor",
-    ),
-    RegisteredCommand::public("/subagent", "Launch a subagent manually"),
-    RegisteredCommand::public("/observe", "Show the latest tool context in the side panel"),
-    RegisteredCommand::public("/todos", "Show the session todo list as a card in the chat"),
-    RegisteredCommand::hidden("/todo", "Alias for /todos"),
-    RegisteredCommand::public("/splitview", "Mirror the current chat in the side panel"),
-    RegisteredCommand::public("/split-view", "Alias for /splitview"),
-    RegisteredCommand::public("/btw", "Ask a side question in the side panel"),
-    RegisteredCommand::public("/ssh", "Connect to a remote machine using system SSH"),
-    RegisteredCommand::public("/git", "Show git status for the session working directory"),
-    RegisteredCommand::public("/colors", "List, configure, and score every TUI color"),
-    RegisteredCommand::hidden("/color", "Alias for /colors"),
-    RegisteredCommand::public("/hotkeys", "List hotkeys with your personal usage"),
-    RegisteredCommand::public("/terminal-setup", "Fix Shift+Enter newlines"),
-    RegisteredCommand::public("/commit", "Make logical commits from current changes"),
-    RegisteredCommand::public(
-        "/commit-push",
-        "Make logical commits from current changes, then push",
-    ),
-    RegisteredCommand::hidden("/commit-and-push", "Alias for /commit-push"),
-    RegisteredCommand::public(
-        "/fast-release",
-        "Publish Linux immediately from the warm selfdev cache; CI adds other platforms",
-    ),
-    RegisteredCommand::public(
-        "/fast-macos-release",
-        "Publish a prepared macOS arm64 build immediately; CI adds other platforms",
-    ),
-    RegisteredCommand::public(
-        "/remote-release",
-        "Push the release tag immediately; CI builds and publishes every platform",
-    ),
-    RegisteredCommand::hidden("/cut-release", "Alias for /fast-release"),
-    RegisteredCommand::hidden("/commit-push-release", "Alias for /cut-release"),
-    RegisteredCommand::public(
-        "/triage",
-        "Triage new GitHub issues and autonomously fix the safe ones",
-    ),
-    RegisteredCommand::public("/transcript", "Open the current session transcript file"),
-    RegisteredCommand::public("/subagent-model", "Show/change subagent model policy"),
-    RegisteredCommand::public("/autoreview", "Show/toggle automatic end-of-turn review"),
-    RegisteredCommand::public("/autojudge", "Show/toggle automatic end-of-turn judging"),
-    RegisteredCommand::public("/review", "Launch a one-shot headed review session"),
-    RegisteredCommand::public("/judge", "Launch a one-shot headed judge session"),
-    RegisteredCommand::public("/effort", crate::tui::keybind::EFFORT_HELP),
-    RegisteredCommand::public("/fast", "Toggle fast mode"),
-    RegisteredCommand::public("/transport", "Show/change connection transport"),
-    RegisteredCommand::public("/alignment", "Show/change default text alignment"),
-    RegisteredCommand::public(
-        "/compact-notifications",
-        "Show/toggle single-line swarm/file-activity notifications",
-    ),
-    RegisteredCommand::public(
-        "/show-agentgrep-output",
-        "Show/toggle full agentgrep search output inline in chat",
-    ),
-    RegisteredCommand::public(
-        "/tool-call-details",
-        "Show/toggle dimmed technical details on tool rows with an intent",
-    ),
-    RegisteredCommand::public(
-        "/thinking-display",
-        "Show/hide the model's thinking text (off/full/current)",
-    ),
-    RegisteredCommand::hidden("/thinking", "Alias for /thinking-display"),
-    RegisteredCommand::hidden("/reasoning", "Alias for /thinking-display"),
-    RegisteredCommand::public("/cancel", "Cancel the current prompt or operation"),
-    RegisteredCommand::public("/clear", "Clear conversation history"),
-    RegisteredCommand::public("/cls", "Clear the view only, keeping context"),
-    RegisteredCommand::hidden("/clear-view", "Alias for /cls"),
-    RegisteredCommand::public("/rewind", "Rewind conversation to previous message"),
-    RegisteredCommand::public("/poke", "Poke model to resume with incomplete todos"),
-    RegisteredCommand::public("/plan", "Create a plan-only response as a plan card"),
-    RegisteredCommand::public("/improve", "Autonomously improve the repository"),
-    RegisteredCommand::public("/refactor", "Run a safe refactor loop"),
-    RegisteredCommand::public("/compact", "Compact context"),
-    RegisteredCommand::public("/fix", "Recover when the model cannot continue"),
-    RegisteredCommand::public("/memory", "Toggle memory feature"),
-    RegisteredCommand::public("/test", "Verify a claim/current changes with layered tests"),
-    RegisteredCommand::public(
-        "/initiatives",
-        "Open initiatives overview / resume tracked initiatives",
-    ),
-    RegisteredCommand::public("/goals", "Legacy alias for /initiatives"),
-    RegisteredCommand::public("/swarm", "Toggle swarm feature"),
-    RegisteredCommand::public("/overnight", "Run a supervised overnight coordinator"),
-    RegisteredCommand::public("/context", "Show the full session context snapshot"),
-    RegisteredCommand::public(
-        "/skills",
-        "Show loaded skills and jcode-endorsed recommendations",
-    ),
-    RegisteredCommand::public("/version", "Show current version"),
-    RegisteredCommand::public("/changelog", "Show recent changes in this build"),
-    RegisteredCommand::public("/info", "Show session info and tokens"),
-    RegisteredCommand::public("/usage", "Show connected provider usage limits"),
-    RegisteredCommand::public(
-        "/productivity",
-        "Generate a shareable usage report + dashboard image",
-    ),
-    RegisteredCommand::public("/wrapped", "Alias for /productivity"),
-    RegisteredCommand::public("/config", "Show or edit configuration"),
-    RegisteredCommand::public("/log", "Mark the current location in the jcode logs"),
-    RegisteredCommand::public(
-        "/keys",
-        "Show keybinding conflicts with your terminal and OS (/keys refresh to rescan)",
-    ),
-    RegisteredCommand::hidden("/keybindings", "Alias for /keys"),
-    RegisteredCommand::public(
-        "/diff",
-        "Cycle or set diff display mode (off/inline/full/pinned/file)",
-    ),
-    RegisteredCommand::public("/reload", "Reload into newest available binary"),
-    RegisteredCommand::public("/restart", "Restart with current binary"),
-    RegisteredCommand::public("/rebuild", "Background rebuild and auto reload"),
-    RegisteredCommand::public("/resume", "Open session picker"),
-    RegisteredCommand::public("/sessions", "Alias for /resume"),
-    RegisteredCommand::public("/session", "Alias for /resume"),
-    RegisteredCommand::public("/active", "Manage live sessions (working vs ready)"),
-    RegisteredCommand::public("/catchup", "Open Catch Up picker"),
-    RegisteredCommand::public("/back", "Return to the previous Catch Up session"),
-    RegisteredCommand::public("/save", "Bookmark session for easy access"),
-    RegisteredCommand::public("/unsave", "Remove bookmark from session"),
-    RegisteredCommand::public("/rename", "Rename current session"),
-    RegisteredCommand::public("/fork", "Fork session into a new window (optional prompt)"),
-    RegisteredCommand::hidden("/split", "Alias for /fork"),
-    RegisteredCommand::public("/transfer", "Compact context into a fresh handoff session"),
-    RegisteredCommand::public("/workspace", "Niri-style session workspace"),
-    RegisteredCommand::public("/quit", "Exit jcode"),
-    RegisteredCommand::public("/auth", "Show authentication status"),
-    RegisteredCommand::public("/login", "Login to a provider"),
-    RegisteredCommand::public("/logout", "Log out of a provider"),
-    RegisteredCommand::public("/account", "Open the combined account picker"),
-    RegisteredCommand::public("/accounts", "Alias for /account"),
-    RegisteredCommand::public("/cache", "Show cache stats or set cache TTL"),
-    RegisteredCommand::public("/debug-visual", "Toggle visual debug overlay"),
-    RegisteredCommand::remote("/client-reload", "Force reload client binary"),
-    RegisteredCommand::remote("/server-reload", "Force reload server binary"),
-    RegisteredCommand::remote(
-        "/continue",
-        "Continue every interrupted live session that would auto-resume",
-    ),
-    RegisteredCommand::remote("/resumeall", "Alias for /continue"),
-    RegisteredCommand::hidden("/resume-all", "Alias for /continue"),
-    RegisteredCommand::hidden("/z", "Secret premium-mode command"),
-    RegisteredCommand::hidden("/zz", "Secret premium-mode command"),
-    RegisteredCommand::hidden("/zzz", "Secret premium-mode command"),
-    RegisteredCommand::hidden("/zstatus", "Secret premium-mode status command"),
-];
-
 /// Every non-hidden slash command with its one-line description, in
 /// registration order. The `/help` overlay uses this to list commands its
 /// hand-written sections have not covered, so a newly registered command can
 /// never be invisible to users.
 pub(crate) fn registered_command_entries() -> impl Iterator<Item = (&'static str, &'static str)> {
-    REGISTERED_COMMANDS
-        .iter()
-        .filter(|command| !command.hidden)
-        .map(|command| (command.name, command.help))
+    super::command_spec::advertised().map(|spec| (spec.name, spec.summary))
 }
 
 impl App {
@@ -337,14 +136,17 @@ impl App {
         }
 
         let mut seen = std::collections::HashSet::new();
-        let mut commands: Vec<(String, &'static str)> = REGISTERED_COMMANDS
-            .iter()
-            .filter(|command| !command.hidden)
-            .filter_map(|command| {
-                let name = command.name.to_string();
-                seen.insert(name.clone()).then_some((name, command.help))
-            })
-            .collect();
+        // Aliases are offered alongside their canonical name so typing one still
+        // autocompletes, while `/help` lists the canonical name only.
+        let mut commands: Vec<(String, &'static str)> = Vec::new();
+        for spec in super::command_spec::advertised() {
+            for name in std::iter::once(spec.name).chain(spec.aliases.iter().copied()) {
+                let name = name.to_string();
+                if seen.insert(name.clone()) {
+                    commands.push((name, spec.summary));
+                }
+            }
+        }
 
         let skills = self.current_skills_snapshot();
         push_skill_commands(&mut commands, &mut seen, &skills);
@@ -654,7 +456,7 @@ impl App {
         }
 
         // /model opens the interactive picker, and `/model <name>` supports direct completion.
-        if prefix_trimmed == "/model" || prefix_trimmed == "/models" {
+        if prefix_trimmed == "/model" {
             return vec![("/model".into(), "Open model picker or type `/model <name>`")];
         }
 
@@ -662,12 +464,8 @@ impl App {
             return vec![("/agents".into(), "Open agent model config picker")];
         }
 
-        if prefix.starts_with("/help ") || prefix.starts_with("/? ") {
-            let base = if prefix.starts_with("/? ") {
-                "/?"
-            } else {
-                "/help"
-            };
+        if prefix.starts_with("/help ") {
+            let base = "/help";
             let topics = self
                 .command_candidates()
                 .into_iter()
@@ -676,12 +474,8 @@ impl App {
             return self.rank_suggestions(input, topics);
         }
 
-        if prefix.starts_with("/colors ") || prefix.starts_with("/color ") {
-            let base = if prefix.starts_with("/color ") {
-                "/color"
-            } else {
-                "/colors"
-            };
+        if prefix.starts_with("/colors ") {
+            let base = "/colors";
             let mut suggestions: Vec<(String, &'static str)> = vec![
                 (
                     format!("{base} harmony"),
@@ -1197,9 +991,7 @@ impl App {
         if let Some(kind) = signature.inline_preview_kind {
             let input = self.input.trim_start();
             let suppress = match kind {
-                crate::tui::PickerKind::Model => {
-                    input.starts_with("/model") || input.starts_with("/models")
-                }
+                crate::tui::PickerKind::Model => input.starts_with("/model"),
                 crate::tui::PickerKind::Login => input.starts_with("/login"),
                 _ => false,
             };
@@ -1397,7 +1189,6 @@ impl App {
         matches!(
             cmd.trim(),
             "/help"
-                | "/?"
                 | "/btw"
                 | "/fork"
                 | "/git"
@@ -1405,7 +1196,6 @@ impl App {
                 | "/observe"
                 | "/todos"
                 | "/splitview"
-                | "/split-view"
                 | "/model"
                 | "/agents"
                 | "/effort"
@@ -1442,8 +1232,6 @@ impl App {
                 | "/alignment"
                 | "/compact-notifications"
                 | "/show-agentgrep-output"
-                | "/reasoning"
-                | "/thinking"
                 | "/thinking-display"
                 | "/config"
                 | "/save"
@@ -1457,39 +1245,19 @@ impl App {
 mod registered_command_tests {
     use super::*;
 
-    /// Every slash command must be registered exactly once. Duplicate entries
-    /// mean two different handlers claim the same name, so which one runs
-    /// depends on dispatch order rather than on the registry the palette and
-    /// `/help` show the user.
+    /// Uniqueness and alias resolution are enforced in `command_spec`; this
+    /// covers the surface built on top of it: aliases must reach autocomplete,
+    /// while `/help` lists canonical names only so one command is not shown
+    /// three times.
     #[test]
-    fn registered_commands_have_no_duplicate_names() {
-        let mut seen = std::collections::HashSet::new();
-        let duplicates: Vec<&str> = REGISTERED_COMMANDS
-            .iter()
-            .filter(|command| !seen.insert(command.name))
-            .map(|command| command.name)
-            .collect();
-        assert!(
-            duplicates.is_empty(),
-            "duplicate slash command registrations: {:?}",
-            duplicates
-        );
-    }
-
-    /// Aliases users can actually type must be discoverable through the
-    /// registry, otherwise autocomplete silently omits working commands.
-    #[test]
-    fn known_aliases_are_registered() {
-        let names: std::collections::HashSet<&str> =
-            REGISTERED_COMMANDS.iter().map(|c| c.name).collect();
-        for alias in [
-            "/keybindings",
-            "/commit-and-push",
-            "/resume-all",
-            "/hotkeys",
-            "/keys",
-        ] {
-            assert!(names.contains(alias), "{alias} is not registered");
+    fn help_lists_canonical_names_only() {
+        let advertised: Vec<&str> = registered_command_entries().map(|(name, _)| name).collect();
+        assert!(advertised.contains(&"/initiatives"));
+        for alias in ["/goals", "/goal", "/mission"] {
+            assert!(
+                !advertised.contains(&alias),
+                "{alias} should be reachable but not listed separately"
+            );
         }
     }
 }

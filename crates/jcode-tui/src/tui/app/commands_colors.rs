@@ -19,10 +19,7 @@ const USAGE: &str = "Usage:\n  \
     /colors export                Print the palette as config TOML";
 
 pub(super) fn handle_colors_command(app: &mut App, trimmed: &str) -> bool {
-    let Some(rest) = trimmed
-        .strip_prefix("/colors")
-        .or_else(|| trimmed.strip_prefix("/color"))
-    else {
+    let Some(rest) = trimmed.strip_prefix("/colors") else {
         return false;
     };
     // Only claim the exact command or `command <args>`, never `/colorsomething`.

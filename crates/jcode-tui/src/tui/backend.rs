@@ -651,16 +651,6 @@ impl RemoteConnection {
         self.send_request(request).await
     }
 
-    /// Set Copilot premium request conservation mode on the server
-    pub async fn set_premium_mode(&mut self, mode: u8) -> Result<()> {
-        let request = Request::SetPremiumMode {
-            id: self.next_request_id,
-            mode,
-        };
-        self.next_request_id += 1;
-        self.send_request(request).await
-    }
-
     /// Set reasoning effort on the server (for OpenAI models)
     pub async fn set_reasoning_effort(&mut self, effort: &str) -> Result<()> {
         let request = Request::SetReasoningEffort {

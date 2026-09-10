@@ -839,7 +839,7 @@ fn handle_subagent_command(app: &mut App, trimmed: &str) -> bool {
 /// pending prompt fell through to skill parsing and produced
 /// "Unknown skill: /cancel" (issue #496).
 pub(super) fn handle_cancel_command(app: &mut App, trimmed: &str) -> bool {
-    if trimmed != "/cancel" && trimmed != "/stop" {
+    if trimmed != "/cancel" {
         return false;
     }
 
@@ -871,10 +871,7 @@ pub(super) fn handle_cancel_command(app: &mut App, trimmed: &str) -> bool {
 }
 
 pub(super) fn handle_help_command(app: &mut App, trimmed: &str) -> bool {
-    if let Some(topic) = trimmed
-        .strip_prefix("/help ")
-        .or_else(|| trimmed.strip_prefix("/? "))
-    {
+    if let Some(topic) = trimmed.strip_prefix("/help ") {
         if let Some(help) = app.command_help(topic) {
             app.push_display_message(DisplayMessage::system(help));
         } else {
@@ -886,7 +883,7 @@ pub(super) fn handle_help_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if trimmed == "/help" || trimmed == "/?" || trimmed == "/commands" {
+    if trimmed == "/help" {
         app.help_scroll = Some(0);
         return true;
     }
@@ -899,9 +896,7 @@ pub(super) fn handle_help_command(app: &mut App, trimmed: &str) -> bool {
 /// `/keys refresh` forces a fresh scan of the machine (otherwise a cached
 /// snapshot up to a day old is reused).
 pub(super) fn handle_keys_command(app: &mut App, trimmed: &str) -> bool {
-    let Some(rest) = slash_command_rest(trimmed, "/keys")
-        .or_else(|| slash_command_rest(trimmed, "/keybindings"))
-    else {
+    let Some(rest) = slash_command_rest(trimmed, "/keys") else {
         return false;
     };
 
@@ -927,9 +922,7 @@ pub(super) fn handle_keys_command(app: &mut App, trimmed: &str) -> bool {
 }
 
 pub(super) fn handle_model_status_command(app: &mut App, trimmed: &str) -> bool {
-    let Some(rest) = slash_command_rest(trimmed, "/provider-test-coverage")
-        .or_else(|| slash_command_rest(trimmed, "/model-status"))
-    else {
+    let Some(rest) = slash_command_rest(trimmed, "/provider-test-coverage") else {
         return false;
     };
 
@@ -1343,7 +1336,7 @@ fn handle_btw_command(app: &mut App, trimmed: &str) -> bool {
 /// `/fork [prompt]` and `/split`: fork the current session into a new window.
 /// With a prompt, the forked session starts by answering it.
 fn handle_fork_command(app: &mut App, trimmed: &str) -> bool {
-    let rest = if trimmed == "/fork" || trimmed == "/split" {
+    let rest = if trimmed == "/fork" {
         ""
     } else if let Some(rest) = trimmed.strip_prefix("/fork ") {
         rest
@@ -1697,26 +1690,8 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if trimmed == "/commit-push" || trimmed == "/commit-and-push" {
+    if trimmed == "/commit-push" {
         handle_commit_push_command_local(app);
-        return true;
-    }
-
-    if matches!(
-        trimmed,
-        "/fast-release" | "/cut-release" | "/commit-push-release"
-    ) {
-        handle_fast_release_command_local(app);
-        return true;
-    }
-
-    if trimmed == "/fast-macos-release" {
-        handle_fast_macos_release_command_local(app);
-        return true;
-    }
-
-    if trimmed == "/remote-release" {
-        handle_remote_release_command_local(app);
         return true;
     }
 
@@ -1726,7 +1701,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if trimmed == "/resume" || trimmed == "/sessions" || trimmed == "/session" {
+    if trimmed == "/resume" {
         app.open_session_picker();
         app.record_keybinding_slow(super::shortcut_hints::LearnableAction::Resume);
         return true;
@@ -1763,7 +1738,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if trimmed == "/cls" || trimmed == "/clear-view" {
+    if trimmed == "/cls" {
         app.clear_view_keep_context();
         return true;
     }
@@ -1924,10 +1899,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if handle_test_command(app, trimmed) {
-        return true;
-    }
-
-    if handle_disabled_mission_command(app, trimmed) {
         return true;
     }
 
@@ -2187,41 +2158,6 @@ pub(super) fn build_commit_push_prompt() -> String {
     prompt
 }
 
-fn build_release_prompt(before_bump_instruction: &str, release_instruction: &str) -> String {
-    let mut prompt = build_commit_push_prompt();
-    prompt.push(' ');
-    prompt.push_str("Then cut a release. Find the last release tag (git describe --tags --abbrev=0 or gh release list) and review everything that changed since it to pick the semver bump: patch for fixes and small internal changes, minor for new features, major only for breaking changes. ");
-    if !before_bump_instruction.is_empty() {
-        prompt.push_str(before_bump_instruction);
-        prompt.push(' ');
-    }
-    prompt.push_str("Bump the version in the root Cargo.toml, refresh Cargo.lock (for example with cargo check), and, if the repo has a changelog/ directory, write a user-facing changelog entry changelog/v<version>.json following changelog/README.md (translate commits into user-visible effects, skip internal-only changes, update changelog/index.json). Commit the version bump together with the changelog entry as one release-metadata commit, and push. ");
-    prompt.push_str(release_instruction);
-    prompt.push_str(" Do not force-push or move existing tags. Finally, report the new version, the commits created, the tag push, and the release status.");
-    prompt
-}
-
-pub(super) fn build_fast_release_prompt() -> String {
-    build_release_prompt(
-        "Before editing Cargo.toml or the changelog for the version bump, run scripts/quick-release.sh --prepare-fast v<version>. It must refresh the warm target/selfdev cache for the Linux x86_64 binary while the existing Cargo version is unchanged and record the prepared commit.",
-        "Then run scripts/quick-release.sh --fast-local v<version>. It must wrap the prepared selfdev binary with the release identity, publish that Linux asset and the GitHub release immediately, and let CI replace it with the portable Linux artifact while adding macOS, Windows, FreeBSD, signatures, and final checksums. Do not run the separate local macOS cross-build or wait for release optimization. If preparation is stale or the release-metadata commit contains code changes, stop instead of publishing a binary that differs from the tag.",
-    )
-}
-
-pub(super) fn build_fast_macos_release_prompt() -> String {
-    build_release_prompt(
-        "Before editing Cargo.toml or the changelog for the version bump, run scripts/quick-release.sh --prepare-fast-macos v<version>. It must cross-build and record the macOS arm64 binary with the future release identity while the release metadata is still unchanged.",
-        "Then run scripts/quick-release.sh --fast-macos-local v<version>. It must validate and publish the prepared macOS arm64 asset and GitHub release immediately, while CI replaces it with the signoff artifact and adds macOS Intel, Linux, Windows, FreeBSD, signatures, and final checksums. If preparation is stale or the release-metadata commit contains code changes, stop instead of publishing a binary that differs from the tag.",
-    )
-}
-
-pub(super) fn build_remote_release_prompt() -> String {
-    build_release_prompt(
-        "",
-        "Then run scripts/quick-release.sh --remote v<version> to push the tag immediately without any local build. Let the release workflow build, sign, checksum, and publish every platform, and leave publication gated on those remote checks.",
-    )
-}
-
 pub(super) fn build_triage_prompt(focus: &str) -> String {
     let mut prompt = String::from(
         "Triage the open GitHub issues for the repository in the current working directory, then autonomously fix the ones that are safe to fix. \
@@ -2279,30 +2215,6 @@ pub(super) fn commit_push_launch_notice(interrupted: bool) -> String {
     }
 }
 
-pub(super) fn fast_release_launch_notice(interrupted: bool) -> String {
-    if interrupted {
-        "👉 Interrupting and starting logical commits + push + fast local release...".to_string()
-    } else {
-        "🚀 Starting logical commits + push + fast local release...".to_string()
-    }
-}
-
-pub(super) fn fast_macos_release_launch_notice(interrupted: bool) -> String {
-    if interrupted {
-        "👉 Interrupting and starting logical commits + push + fast macOS release...".to_string()
-    } else {
-        "🚀 Starting logical commits + push + fast macOS release...".to_string()
-    }
-}
-
-pub(super) fn remote_release_launch_notice(interrupted: bool) -> String {
-    if interrupted {
-        "👉 Interrupting and starting logical commits + push + remote release...".to_string()
-    } else {
-        "🚀 Starting logical commits + push + remote release...".to_string()
-    }
-}
-
 fn handle_commit_command_local(app: &mut App) {
     let prompt = build_commit_prompt();
     if app.is_processing {
@@ -2333,58 +2245,11 @@ fn handle_commit_push_command_local(app: &mut App) {
     }
 }
 
-fn handle_fast_release_command_local(app: &mut App) {
-    let prompt = build_fast_release_prompt();
-    if app.is_processing {
-        super::commands_improve::interrupt_and_queue_synthetic_message(
-            app,
-            prompt,
-            "Interrupting for /fast-release...",
-            fast_release_launch_notice(true),
-        );
-    } else {
-        app.push_display_message(DisplayMessage::system(fast_release_launch_notice(false)));
-        super::commands_improve::start_synthetic_user_turn(app, prompt);
-    }
-}
-
-fn handle_fast_macos_release_command_local(app: &mut App) {
-    let prompt = build_fast_macos_release_prompt();
-    if app.is_processing {
-        super::commands_improve::interrupt_and_queue_synthetic_message(
-            app,
-            prompt,
-            "Interrupting for /fast-macos-release...",
-            fast_macos_release_launch_notice(true),
-        );
-    } else {
-        app.push_display_message(DisplayMessage::system(fast_macos_release_launch_notice(
-            false,
-        )));
-        super::commands_improve::start_synthetic_user_turn(app, prompt);
-    }
-}
-
-fn handle_remote_release_command_local(app: &mut App) {
-    let prompt = build_remote_release_prompt();
-    if app.is_processing {
-        super::commands_improve::interrupt_and_queue_synthetic_message(
-            app,
-            prompt,
-            "Interrupting for /remote-release...",
-            remote_release_launch_notice(true),
-        );
-    } else {
-        app.push_display_message(DisplayMessage::system(remote_release_launch_notice(false)));
-        super::commands_improve::start_synthetic_user_turn(app, prompt);
-    }
-}
-
 pub(super) fn handle_goals_command(app: &mut App, trimmed: &str) -> bool {
-    let Some(trimmed) = trimmed
-        .strip_prefix("/initiatives")
-        .or_else(|| trimmed.strip_prefix("/goals"))
-    else {
+    // `/goals`, `/goal` and `/mission` are declared as aliases in
+    // `command_spec`, so both dispatch entry points rewrite them to
+    // `/initiatives` before this runs.
+    let Some(trimmed) = trimmed.strip_prefix("/initiatives") else {
         return false;
     };
     let trimmed = format!("/initiatives{}", trimmed);
@@ -2482,19 +2347,6 @@ pub(super) fn handle_goals_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    true
-}
-
-pub(super) fn handle_disabled_mission_command(app: &mut App, trimmed: &str) -> bool {
-    if slash_command_rest(trimmed, "/mission").is_none()
-        && slash_command_rest(trimmed, "/goal").is_none()
-    {
-        return false;
-    }
-
-    app.push_display_message(DisplayMessage::system(
-        "The /mission and /goal commands are disabled in this build.".to_string(),
-    ));
     true
 }
 
@@ -3157,20 +3009,12 @@ fn handle_alignment_command(app: &mut App, trimmed: &str) -> bool {
 }
 
 fn handle_reasoning_display_command(app: &mut App, trimmed: &str) -> bool {
-    if trimmed != "/reasoning"
-        && !trimmed.starts_with("/reasoning ")
-        && trimmed != "/thinking"
-        && !trimmed.starts_with("/thinking ")
-        && trimmed != "/thinking-display"
-        && !trimmed.starts_with("/thinking-display ")
-    {
+    if trimmed != "/thinking-display" && !trimmed.starts_with("/thinking-display ") {
         return false;
     }
 
     let rest = trimmed
         .strip_prefix("/thinking-display")
-        .or_else(|| trimmed.strip_prefix("/reasoning"))
-        .or_else(|| trimmed.strip_prefix("/thinking"))
         .unwrap_or_default()
         .trim();
 

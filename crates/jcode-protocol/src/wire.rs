@@ -276,10 +276,6 @@ pub enum Request {
     #[serde(rename = "set_transport")]
     SetTransport { id: u64, transport: String },
 
-    /// Set Copilot premium request conservation mode (0=normal, 1=one-per-session, 2=zero)
-    #[serde(rename = "set_premium_mode")]
-    SetPremiumMode { id: u64, mode: u8 },
-
     /// Toggle a runtime feature for this session
     #[serde(rename = "set_feature")]
     SetFeature {
