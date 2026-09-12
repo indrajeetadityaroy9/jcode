@@ -102,6 +102,12 @@ thread_local! {
 /// variables, `JCODE_HOME`-derived paths, and the render-state globals the TUI
 /// keeps between frames.
 ///
+/// Serializing is *not* isolating. Holding this lock does not redirect any
+/// path: a test that wants its own store must still set `JCODE_HOME` itself.
+/// Tests that took the lock and assumed isolation wrote thousands of mock
+/// sessions into the developer's real `~/.jcode`; `session::storage_paths`
+/// now redirects those writes, but the lock never did.
+///
 /// One lock, taken reentrantly, is deliberate. Two locks in this role deadlocked
 /// the `jcode-tui` suite: tests that locked the environment and then built an
 /// app took them in the opposite order from tests that rendered first and then

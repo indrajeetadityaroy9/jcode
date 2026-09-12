@@ -602,7 +602,18 @@ impl Registry {
     }
 
     /// Execute a tool by name
-    pub async fn execute(&self, name: &str, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
+    pub async fn execute(
+        &self,
+        name: &str,
+        mut input: Value,
+        ctx: ToolContext,
+    ) -> Result<ToolOutput> {
+        // Providers fill every schema field, sending `null` where they mean absent.
+        // Serde reads a null as a value, so one on a non-Option field rejects the call.
+        if let Some(object) = input.as_object_mut() {
+            object.retain(|_, value| !value.is_null());
+        }
+
         // Mark this call in-flight for the whole execution so the missing
         // tool-output repair paths do not mistake a slow tool for an
         // interrupted one and inject a duplicate synthetic result. See

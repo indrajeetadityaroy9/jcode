@@ -3,7 +3,7 @@
 use super::{
     CoordinatorSpawnIdentity, ensure_spawn_coordinator_swarm, prepare_visible_spawn_session,
     register_visible_spawned_member, resolve_coordinator_spawn_identity, resolve_spawn_working_dir,
-    resolve_stop_target_session, resolve_swarm_spawn_selection, spawn_admission_lock,
+    resolve_swarm_spawn_selection, resolve_swarm_target_session, spawn_admission_lock,
     swarm_stop_allowed_by_owner,
 };
 use crate::agent::Agent;
@@ -150,7 +150,7 @@ fn stop_permission_defaults_to_sessions_spawned_by_requesting_coordinator() {
 }
 
 #[tokio::test]
-async fn stop_target_resolves_unique_friendly_name_and_suffix() {
+async fn swarm_target_resolves_unique_friendly_name_and_suffix() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
     let (mut worker, _worker_rx) = member("session_jellyfish_1234_abcd", Some("swarm-1"), "agent");
     worker.friendly_name = Some("jellyfish".to_string());
@@ -160,13 +160,13 @@ async fn stop_target_resolves_unique_friendly_name_and_suffix() {
         .insert(worker.session_id.clone(), worker);
 
     assert_eq!(
-        resolve_stop_target_session("swarm-1", "jellyfish", &swarm_members)
+        resolve_swarm_target_session("swarm-1", "jellyfish", &swarm_members)
             .await
             .as_deref(),
         Ok("session_jellyfish_1234_abcd")
     );
     assert_eq!(
-        resolve_stop_target_session("swarm-1", "abcd", &swarm_members)
+        resolve_swarm_target_session("swarm-1", "abcd", &swarm_members)
             .await
             .as_deref(),
         Ok("session_jellyfish_1234_abcd")
@@ -174,7 +174,7 @@ async fn stop_target_resolves_unique_friendly_name_and_suffix() {
 }
 
 #[tokio::test]
-async fn stop_target_rejects_ambiguous_friendly_name() {
+async fn swarm_target_rejects_ambiguous_friendly_name() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));
     let (mut first, _first_rx) = member("session_bear_1", Some("swarm-1"), "agent");
     first.friendly_name = Some("bear".to_string());
@@ -185,10 +185,60 @@ async fn stop_target_rejects_ambiguous_friendly_name() {
     members.insert(second.session_id.clone(), second);
     drop(members);
 
-    let err = resolve_stop_target_session("swarm-1", "bear", &swarm_members)
+    let err = resolve_swarm_target_session("swarm-1", "bear", &swarm_members)
         .await
         .expect_err("ambiguous friendly names should be rejected");
     assert!(err.contains("Ambiguous swarm session 'bear'"));
+}
+
+#[tokio::test]
+async fn summary_target_resolves_friendly_name_within_swarm() {
+    let swarm_members = Arc::new(RwLock::new(HashMap::new()));
+    let (requester, _req_rx) = member("session_panda_1_aaaa", Some("swarm-1"), "coordinator");
+    let (mut worker, _worker_rx) = member("session_penguin_2_bbbb", Some("swarm-1"), "agent");
+    worker.friendly_name = Some("penguin".to_string());
+    let (mut outsider, _outsider_rx) = member("session_otter_3_cccc", Some("swarm-2"), "agent");
+    outsider.friendly_name = Some("otter".to_string());
+    {
+        let mut members = swarm_members.write().await;
+        members.insert(requester.session_id.clone(), requester);
+        members.insert(worker.session_id.clone(), worker);
+        members.insert(outsider.session_id.clone(), outsider);
+    }
+    let (tx, mut rx) = mpsc::unbounded_channel();
+
+    assert_eq!(
+        crate::server::comm_sync::resolve_same_swarm_target(
+            1,
+            "session_panda_1_aaaa",
+            "penguin",
+            &swarm_members,
+            &tx,
+        )
+        .await
+        .as_deref(),
+        Some("session_penguin_2_bbbb")
+    );
+
+    assert!(
+        crate::server::comm_sync::resolve_same_swarm_target(
+            2,
+            "session_panda_1_aaaa",
+            "otter",
+            &swarm_members,
+            &tx,
+        )
+        .await
+        .is_none(),
+        "a member of another swarm must not resolve"
+    );
+    let Ok(ServerEvent::Error { message, .. }) = rx.try_recv() else {
+        panic!("expected an error event for the cross-swarm target");
+    };
+    assert!(
+        message.contains("Unknown swarm session 'otter'"),
+        "the error must name the unresolvable target, not claim swarm mismatch: {message}"
+    );
 }
 
 #[tokio::test]

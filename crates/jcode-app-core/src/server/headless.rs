@@ -127,7 +127,29 @@ pub(super) async fn create_headless_session(
                 "Failed to set headless session model override '{model}' (request '{model_request}'): {error}"
             ));
         }
-        let resolved = new_agent.provider_model();
+        let mut resolved = new_agent.provider_model();
+        if !models_are_equivalent(&resolved, &model)
+            && let Some(alternate) = same_model_alternate_route(
+                new_agent.model_routes(),
+                &model,
+                route_api_method_override.as_deref(),
+            )
+        {
+            // The pinned route cannot serve this model (typically `claude-api`
+            // with no API key while an OAuth login for the same model exists).
+            // Switching credential is not switching model, so it preserves the
+            // caller's intent exactly; the equivalence check below still
+            // rejects anything that resolves to a different model.
+            crate::logging::info(&format!(
+                "Retrying headless model '{model}' on available route '{alternate}'"
+            ));
+            if let Err(error) = new_agent.set_model(&alternate) {
+                crate::logging::warn(&format!(
+                    "Fallback route '{alternate}' for model '{model}' failed: {error}"
+                ));
+            }
+            resolved = new_agent.provider_model();
+        }
         if !models_are_equivalent(&resolved, &model) {
             let detail = switch_error
                 .map(|error| format!(": {error}"))
@@ -327,6 +349,48 @@ fn models_are_equivalent(resolved: &str, requested: &str) -> bool {
     resolved.starts_with(&requested) || requested.starts_with(&resolved)
 }
 
+/// A model-switch request for an available route serving the same model.
+///
+/// Used when a route-pinned spawn cannot authenticate: the agent pins a route
+/// (for example `claude-api:`) that a `list_models` listing offered, but the
+/// credential behind it is absent while another route serves the identical
+/// model. Subscription (OAuth) routes come first, then catalog order, matching
+/// how `pick_next_fallback_route` ranks a same-model credential swap.
+///
+/// Returns `None` when no other available route serves the model, which leaves
+/// the caller's refusal intact.
+fn same_model_alternate_route(
+    routes: Vec<crate::provider::ModelRoute>,
+    model: &str,
+    failed_api_method: Option<&str>,
+) -> Option<String> {
+    let mut candidates: Vec<crate::provider::ModelRoute> = routes
+        .into_iter()
+        .filter(|route| route.available && models_are_equivalent(&route.model, model))
+        .filter(|route| {
+            failed_api_method.is_none_or(|failed| !route.api_method.eq_ignore_ascii_case(failed))
+        })
+        .collect();
+    candidates.sort_by_key(|route| u8::from(!api_method_is_oauth(&route.api_method)));
+    candidates.first().map(|route| {
+        crate::provider::MultiProvider::model_switch_request_for_session_route(
+            &route.model,
+            Some(&route.provider),
+            Some(&route.api_method),
+        )
+    })
+}
+
+fn api_method_is_oauth(api_method: &str) -> bool {
+    use crate::provider::ModelRouteApiMethod;
+    matches!(
+        ModelRouteApiMethod::parse(api_method),
+        ModelRouteApiMethod::ClaudeOAuth
+            | ModelRouteApiMethod::OpenAIOAuth
+            | ModelRouteApiMethod::CodeAssistOAuth
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::models_are_equivalent;
@@ -372,5 +436,52 @@ mod tests {
             "deepseek-v4-flash"
         ));
         assert!(!models_are_equivalent("gpt-5.6-sol", "gpt-5.5"));
+    }
+
+    #[test]
+    fn same_model_alternate_route_prefers_an_available_oauth_route() {
+        // The observed failure: the agent pinned `claude-api` for a model that
+        // is only reachable through the OAuth login on this machine, so the
+        // spawn refused and the worker silently inherited the coordinator's
+        // model instead.
+        let routes = vec![
+            route("claude-fable-5", "Anthropic", "anthropic-api-key", false),
+            route("claude-fable-5", "Anthropic", "claude-oauth", true),
+        ];
+        assert_eq!(
+            super::same_model_alternate_route(routes, "claude-fable-5", Some("anthropic-api-key"))
+                .as_deref(),
+            Some("claude-oauth:claude-fable-5")
+        );
+    }
+
+    #[test]
+    fn same_model_alternate_route_never_substitutes_another_model() {
+        // No usable route for the requested model must leave the caller's
+        // refusal intact rather than quietly running something else.
+        let routes = vec![
+            route("claude-fable-5", "Anthropic", "anthropic-api-key", false),
+            route("claude-opus-5", "Anthropic", "claude-oauth", true),
+        ];
+        assert_eq!(
+            super::same_model_alternate_route(routes, "claude-fable-5", Some("anthropic-api-key")),
+            None
+        );
+    }
+
+    fn route(
+        model: &str,
+        provider: &str,
+        api_method: &str,
+        available: bool,
+    ) -> crate::provider::ModelRoute {
+        crate::provider::ModelRoute {
+            model: model.to_string(),
+            provider: provider.to_string(),
+            api_method: api_method.to_string(),
+            available,
+            detail: String::new(),
+            cheapness: None,
+        }
     }
 }

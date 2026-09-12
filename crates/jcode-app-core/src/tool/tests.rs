@@ -225,6 +225,36 @@ async fn test_batch_resolves_function_namespaced_tools() {
 }
 
 #[tokio::test]
+async fn null_valued_arguments_are_treated_as_absent() {
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let registry = Registry::new(provider).await;
+    let ctx = ToolContext {
+        session_id: "test-null-args".to_string(),
+        message_id: "test".to_string(),
+        tool_call_id: "test".to_string(),
+        working_dir: Some(std::env::temp_dir()),
+        stdin_request_tx: None,
+        graceful_shutdown_signal: None,
+        execution_mode: ToolExecutionMode::Direct,
+    };
+
+    let output = registry
+        .execute(
+            "bash",
+            serde_json::json!({
+                "command": "echo hello",
+                "notify": null,
+                "wake": null,
+                "run_in_background": null
+            }),
+            ctx,
+        )
+        .await
+        .expect("null-valued optional arguments must not reject the call");
+    assert!(output.output.contains("hello"));
+}
+
+#[tokio::test]
 async fn test_batch_rejects_function_namespaced_batch_recursion() {
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;

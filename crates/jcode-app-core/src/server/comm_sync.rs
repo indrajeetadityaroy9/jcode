@@ -141,37 +141,48 @@ pub(super) async fn member_runtime_extras(
     }
 }
 
-async fn ensure_same_swarm_access(
+/// Resolve a read target within the requester's swarm, reporting the failure to
+/// the client. Returns the resolved session id.
+///
+/// Cross-swarm access stays impossible: the resolver only considers members whose
+/// `swarm_id` matches the requester's, so an id belonging to another swarm comes
+/// back as unknown rather than accessible.
+pub(super) async fn resolve_same_swarm_target(
     id: u64,
     req_session_id: &str,
     target_session: &str,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-) -> bool {
-    let (req_swarm, target_swarm) = {
+) -> Option<String> {
+    let req_swarm = {
         let members = swarm_members.read().await;
-        (
-            members
-                .get(req_session_id)
-                .and_then(|member| member.swarm_id.clone()),
-            members
-                .get(target_session)
-                .and_then(|member| member.swarm_id.clone()),
-        )
+        members
+            .get(req_session_id)
+            .and_then(|member| member.swarm_id.clone())
     };
 
-    if req_swarm.is_some() && req_swarm == target_swarm {
-        true
-    } else {
-        let _ = client_event_tx.send(ServerEvent::Error {
-            id,
-            message: format!(
-                "Session '{}' is not in the same swarm as requester '{}'",
-                target_session, req_session_id
-            ),
-            retry_after_secs: None,
-        });
-        false
+    let resolved = match req_swarm {
+        Some(swarm_id) => {
+            super::comm_session::resolve_swarm_target_session(
+                &swarm_id,
+                target_session,
+                swarm_members,
+            )
+            .await
+        }
+        None => Err("Not in a swarm.".to_string()),
+    };
+
+    match resolved {
+        Ok(target) => Some(target),
+        Err(message) => {
+            let _ = client_event_tx.send(ServerEvent::Error {
+                id,
+                message,
+                retry_after_secs: None,
+            });
+            None
+        }
     }
 }
 
@@ -200,7 +211,7 @@ pub(super) async fn handle_comm_summary(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
-    if !ensure_same_swarm_access(
+    let Some(target_session) = resolve_same_swarm_target(
         id,
         &req_session_id,
         &target_session,
@@ -208,9 +219,9 @@ pub(super) async fn handle_comm_summary(
         client_event_tx,
     )
     .await
-    {
+    else {
         return;
-    }
+    };
 
     let limit = limit.unwrap_or(10);
     let agent_sessions = sessions.read().await;
@@ -256,7 +267,7 @@ pub(super) async fn handle_comm_status(
     file_touch: &FileTouchService,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
-    if !ensure_same_swarm_access(
+    let Some(target_session) = resolve_same_swarm_target(
         id,
         &req_session_id,
         &target_session,
@@ -264,9 +275,9 @@ pub(super) async fn handle_comm_status(
         client_event_tx,
     )
     .await
-    {
+    else {
         return;
-    }
+    };
 
     let snapshot = {
         let members = swarm_members.read().await;
@@ -331,7 +342,7 @@ pub(super) async fn handle_comm_read_context(
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
-    if !ensure_same_swarm_access(
+    let Some(target_session) = resolve_same_swarm_target(
         id,
         &req_session_id,
         &target_session,
@@ -339,9 +350,9 @@ pub(super) async fn handle_comm_read_context(
         client_event_tx,
     )
     .await
-    {
+    else {
         return;
-    }
+    };
 
     if !can_read_full_context(&req_session_id, &target_session, swarm_members).await {
         let _ = client_event_tx.send(ServerEvent::Error {

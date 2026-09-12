@@ -11,7 +11,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -177,8 +177,10 @@ fn context_prefix_for(ctx: &LogContext) -> String {
     }
 }
 
-pub struct Logger {
+struct Logger {
     file: File,
+    dir: PathBuf,
+    date: String,
 }
 
 fn log_dir() -> Option<PathBuf> {
@@ -189,22 +191,37 @@ impl Logger {
     fn new() -> Option<Self> {
         let log_dir = log_dir()?;
         jcode_storage::ensure_dir(&log_dir).ok()?;
+        let date = Local::now().format("%Y-%m-%d").to_string();
+        Self::open_in(&log_dir, &date)
+    }
 
-        // Use date-based log file
-        let date = Local::now().format("%Y-%m-%d");
-        let path = log_dir.join(format!("jcode-{}.log", date));
-
+    fn open_in(dir: &Path, date: &str) -> Option<Self> {
         let file = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&path)
+            .open(dir.join(format!("jcode-{date}.log")))
             .ok()?;
-
-        Some(Self { file })
+        Some(Self {
+            file,
+            dir: dir.to_path_buf(),
+            date: date.to_string(),
+        })
     }
 
     fn write(&mut self, level: &str, message: &str) {
-        let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+        self.write_at(Local::now(), level, message);
+    }
+
+    /// One `now` serves both the rollover decision and the timestamp, so a line
+    /// can never be stamped with a date different from the file it lands in.
+    fn write_at(&mut self, now: chrono::DateTime<Local>, level: &str, message: &str) {
+        let date = now.format("%Y-%m-%d").to_string();
+        if date != self.date
+            && let Some(rolled) = Self::open_in(&self.dir, &date)
+        {
+            *self = rolled;
+        }
+        let timestamp = now.format("%Y-%m-%d %H:%M:%S%.3f");
         let ctx = context_prefix();
         let line = format!("[{}] [{}] {}{}\n", timestamp, level, ctx, message);
         if let Err(err) = self.file.write_all(line.as_bytes()) {
@@ -780,11 +797,45 @@ mod tests {
         cleanup_old_logs_in(&dir, Local::now());
 
         assert!(!old_log.exists(), "old jcode log should be deleted");
-        assert!(!old_server.exists(), "old prefixed jcode log should be deleted");
+        assert!(
+            !old_server.exists(),
+            "old prefixed jcode log should be deleted"
+        );
         assert!(new_log.exists(), "recent jcode log must survive");
         assert!(old_memory.exists(), "memory-events jsonl must survive");
         assert!(old_other.exists(), "unrelated files must survive");
         assert!(subdir.is_dir(), "subdirectories must survive");
+
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn logger_rolls_over_to_the_new_date_file() {
+        use chrono::TimeZone;
+
+        let dir = std::env::temp_dir().join(format!("jcode-log-rollover-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("temp log dir");
+        let mut logger = Logger::open_in(&dir, "2026-09-10").expect("logger");
+
+        logger.write_at(
+            Local.with_ymd_and_hms(2026, 9, 10, 23, 59, 59).unwrap(),
+            "INFO",
+            "before midnight",
+        );
+        logger.write_at(
+            Local.with_ymd_and_hms(2026, 9, 11, 0, 0, 1).unwrap(),
+            "INFO",
+            "after midnight",
+        );
+
+        let first = fs::read_to_string(dir.join("jcode-2026-09-10.log")).expect("first file");
+        let second = fs::read_to_string(dir.join("jcode-2026-09-11.log")).expect("second file");
+        assert!(first.contains("before midnight"));
+        assert!(
+            !first.contains("after midnight"),
+            "a line must not land in the previous day's file"
+        );
+        assert!(second.contains("after midnight"));
 
         fs::remove_dir_all(&dir).ok();
     }

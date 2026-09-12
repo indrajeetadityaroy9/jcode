@@ -253,3 +253,75 @@ async fn empty_post_tool_response_is_retried_in_shared_helper() {
             .unwrap()
     );
 }
+
+/// Accepts only bare model ids, the way a provider behaves when a session
+/// persisted a route it can no longer serve (`openai:claude-opus-5`).
+#[derive(Clone)]
+struct RouteRejectingProvider {
+    model: Arc<std::sync::Mutex<String>>,
+}
+
+#[async_trait]
+impl Provider for RouteRejectingProvider {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<EventStream> {
+        unreachable!("RouteRejectingProvider does not complete requests")
+    }
+
+    fn name(&self) -> &str {
+        "openai"
+    }
+
+    fn model(&self) -> String {
+        self.model
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn set_model(&self, request: &str) -> Result<()> {
+        if request.contains(':') {
+            anyhow::bail!("Unsupported OpenAI model '{request}'");
+        }
+        *self
+            .model
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = request.to_string();
+        Ok(())
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(self.clone())
+    }
+}
+
+#[tokio::test]
+async fn session_model_restore_drops_a_route_the_provider_cannot_serve() {
+    let provider: Arc<dyn Provider> = Arc::new(RouteRejectingProvider {
+        model: Arc::new(std::sync::Mutex::new("gpt-5.6-sol".to_string())),
+    });
+    let registry = Registry::new(provider.clone()).await;
+    let _guard = crate::storage::lock_test_env();
+    let mut agent = Agent::new(provider.clone(), registry);
+
+    // The incoherent triple a spawn leaves behind when its model override
+    // fails: an Anthropic model beside an OpenAI provider key, no route. The
+    // route-qualified request `openai:claude-opus-5` cannot resolve, and
+    // continuing silently would run the session on the provider's own model.
+    agent.session.model = Some("claude-opus-5".to_string());
+    agent.session.provider_key = Some("openai".to_string());
+    agent.session.route_api_method = None;
+
+    agent.restore_model_from_session();
+
+    assert_eq!(
+        provider.model(),
+        "claude-opus-5",
+        "restore must keep the session's model when only its persisted route is unusable"
+    );
+}

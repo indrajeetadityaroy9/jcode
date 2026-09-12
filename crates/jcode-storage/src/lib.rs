@@ -20,7 +20,17 @@ pub use active_pids::{
 /// - Fallback: `std::env::temp_dir()`
 ///
 /// Can be overridden with `$JCODE_RUNTIME_DIR`.
+///
+/// The directory is created if it does not exist, so callers can use the
+/// returned path directly. Without this an explicitly configured but missing
+/// directory made the first socket or lock operation fail with a bare `ENOENT`.
 pub fn runtime_dir() -> PathBuf {
+    let dir = runtime_dir_path();
+    let _ = ensure_dir(&dir);
+    dir
+}
+
+fn runtime_dir_path() -> PathBuf {
     if let Ok(dir) = std::env::var("JCODE_RUNTIME_DIR") {
         return PathBuf::from(dir);
     }
@@ -34,9 +44,7 @@ pub fn runtime_dir() -> PathBuf {
         }
     }
 
-    let dir = fallback_runtime_dir();
-    ensure_private_runtime_dir(&dir);
-    dir
+    fallback_runtime_dir()
 }
 
 fn fallback_runtime_dir() -> PathBuf {
@@ -45,11 +53,6 @@ fn fallback_runtime_dir() -> PathBuf {
 
 fn runtime_user_discriminator() -> String {
     unsafe { libc::geteuid() }.to_string()
-}
-
-fn ensure_private_runtime_dir(path: &Path) {
-    let _ = std::fs::create_dir_all(path);
-    let _ = jcode_core::fs::set_directory_permissions_owner_only(path);
 }
 
 pub fn jcode_dir() -> Result<PathBuf> {

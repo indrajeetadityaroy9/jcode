@@ -1,6 +1,50 @@
 use super::*;
 
 impl Agent {
+    /// Put the provider back on the model this session was last using.
+    ///
+    /// A session can persist a model and a `provider_key` that disagree — an
+    /// auth change between runs, or a spawn that recorded the model before its
+    /// route failed. The persisted route is then unusable, and continuing
+    /// silently leaves the session on whatever model the provider happens to
+    /// hold. So when the route-qualified request fails, retry the bare model id
+    /// and let the provider resolve the model's own route.
+    pub(crate) fn restore_model_from_session(&mut self) {
+        let Some(model) = self.session.model.clone() else {
+            self.session.model = Some(self.provider_model());
+            return;
+        };
+
+        let request = crate::provider::MultiProvider::model_switch_request_for_session_route(
+            &model,
+            self.session.provider_key.as_deref(),
+            self.session.route_api_method.as_deref(),
+        );
+        let error =
+            match crate::provider::set_model_with_auth_refresh(self.provider.as_ref(), &request) {
+                Ok(()) => {
+                    self.reconcile_explicit_provider_pin_route();
+                    return;
+                }
+                Err(error) => error,
+            };
+
+        if request != model
+            && crate::provider::set_model_with_auth_refresh(self.provider.as_ref(), &model).is_ok()
+        {
+            crate::logging::warn(&format!(
+                "Restored session model '{model}' without its persisted route \
+                 (request '{request}' failed: {error})"
+            ));
+            self.reconcile_explicit_provider_pin_route();
+            return;
+        }
+
+        crate::logging::error(&format!(
+            "Failed to restore session model '{model}' via '{request}': {error}"
+        ));
+    }
+
     pub fn provider_fork(&self) -> Arc<dyn Provider> {
         self.provider.fork()
     }

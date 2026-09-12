@@ -986,7 +986,7 @@ pub(super) async fn handle_comm_stop(
     };
 
     let target_session =
-        match resolve_stop_target_session(&swarm_id, &target_session, swarm_members).await {
+        match resolve_swarm_target_session(&swarm_id, &target_session, swarm_members).await {
             Ok(target_session) => target_session,
             Err(message) => {
                 let _ = client_event_tx.send(ServerEvent::Error {
@@ -1130,7 +1130,10 @@ fn swarm_stop_allowed_by_owner(
     force || target_member.report_back_to_session_id.as_deref() == Some(req_session_id)
 }
 
-async fn resolve_stop_target_session(
+/// Resolve a swarm target by exact session id, unique friendly name, or unique
+/// session-id prefix/suffix, scoped to one swarm. Shared by `stop` and by the
+/// `summary` / `status` / `read_context` read handlers in `comm_sync`.
+pub(super) async fn resolve_swarm_target_session(
     swarm_id: &str,
     target: &str,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
