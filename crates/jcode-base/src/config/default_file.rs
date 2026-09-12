@@ -261,23 +261,13 @@ persist_memory_injections = false
 kv_cache_miss_notices = true
 
 [websearch]
-# Preferred websearch engine: "duckduckgo", "bing", or "searxng".
-engine = "duckduckgo"
-# Keyless HTML engines to try if the preferred engine fails. Default falls back to Bing HTML.
-fallback_engines = ["bing"]
-# Bring your own Bing Search API key for primary Bing searches. Prefer using an env var.
-# Fallback Bing searches intentionally use keyless HTML search.
-# bing_api_key_env = "JCODE_BING_API_KEY"
-# bing_api_key = ""
-# Bing market/region, for example "en-US" or "zh-CN".
-bing_market = "en-US"
-# SearXNG instance for the "searxng" engine. On some hosts,
-# DuckDuckGo and Bing block scraped requests via TLS fingerprinting / IP
-# reputation and return an anti-bot page with no results. Pointing at a SearXNG
-# instance (self-hosted or trusted public) with the JSON format enabled avoids
-# this. Configure here or via the JCODE_SEARXNG_URL environment variable, then
-# set engine = "searxng" or add it to fallback_engines.
-# searxng_url = "https://searx.example.org"
+# Base URL of the SearXNG instance the websearch tool queries. SearXNG is a
+# metasearch front end: it queries the upstream engines itself and returns
+# their aggregated results as JSON, so it needs no API keys and is not subject
+# to the TLS-fingerprinting / IP-reputation blocks that break direct scraping.
+# The instance must have the JSON format enabled (`formats: [html, json]`).
+# Override with the SEARXNG_URL environment variable.
+url = "http://127.0.0.1:8080"
 
 [tools]
 # Controls which built-in tools are sent to the model.

@@ -359,40 +359,12 @@ impl Config {
             }
         }
 
-        // Web search
-        if let Ok(v) = std::env::var("JCODE_WEBSEARCH_ENGINE")
-            && let Some(engine) = WebSearchEngine::parse(&v)
-        {
-            self.websearch.engine = engine;
-        }
-        if let Ok(v) = std::env::var("JCODE_WEBSEARCH_FALLBACK_ENGINES") {
-            let engines = parse_env_list(&v)
-                .into_iter()
-                .filter_map(|item| WebSearchEngine::parse(&item))
-                .collect::<Vec<_>>();
-            if !engines.is_empty() {
-                self.websearch.fallback_engines = engines;
-            }
-        }
-        if let Ok(v) = std::env::var("JCODE_BING_API_KEY")
+        // Web search. `SEARXNG_URL` is the name SearXNG itself documents, so it
+        // is honoured verbatim rather than mirrored under a `JCODE_` alias.
+        if let Ok(v) = std::env::var("SEARXNG_URL")
             && !v.trim().is_empty()
         {
-            self.websearch.bing_api_key = Some(v);
-        }
-        if let Ok(v) = std::env::var("JCODE_BING_API_KEY_ENV")
-            && !v.trim().is_empty()
-        {
-            self.websearch.bing_api_key_env = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_BING_MARKET")
-            && !v.trim().is_empty()
-        {
-            self.websearch.bing_market = v;
-        }
-        if let Ok(v) = std::env::var("JCODE_SEARXNG_URL")
-            && !v.trim().is_empty()
-        {
-            self.websearch.searxng_url = Some(v);
+            self.websearch.url = v.trim().to_string();
         }
 
         if let Ok(v) = std::env::var("JCODE_TRUSTED_EXTERNAL_AUTH_SOURCES") {

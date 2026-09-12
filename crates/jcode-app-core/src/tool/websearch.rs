@@ -1,11 +1,17 @@
 use super::{Tool, ToolContext, ToolOutput};
-use crate::config::WebSearchEngine;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-/// Web search using DuckDuckGo or Bing (HTML scraping, with optional Bing API)
+/// Web search through a SearXNG instance's JSON API.
+///
+/// SearXNG is a metasearch front end: it queries the upstream engines itself
+/// and returns their aggregated results. One request is therefore the whole
+/// search, which is why this tool has no engine parameter and no fallback
+/// chain - aggregation *and* failover happen inside the instance. It also
+/// sidesteps the TLS-fingerprinting and IP-reputation blocks that made direct
+/// DuckDuckGo/Bing scraping fail: the request goes to a host the user runs.
 pub struct WebSearchTool {
     client: reqwest::Client,
 }
@@ -23,10 +29,6 @@ struct WebSearchInput {
     query: String,
     #[serde(default)]
     num_results: Option<usize>,
-    #[serde(default)]
-    engine: Option<WebSearchEngine>,
-    #[serde(default)]
-    bing_market: Option<String>,
 }
 
 #[derive(Debug)]
@@ -36,11 +38,30 @@ struct SearchResult {
     snippet: String,
 }
 
-#[derive(Clone, Copy)]
-struct BingSearchOptions<'a> {
-    market: &'a str,
-    configured_api_key: Option<&'a str>,
-    api_key_env: &'a str,
+/// The subset of SearXNG's JSON response this tool reads.
+#[derive(Deserialize)]
+struct SearxngResponse {
+    #[serde(default)]
+    results: Vec<SearxngResult>,
+    /// Upstream engines that failed, timed out, served a CAPTCHA or were rate
+    /// limited, as `["engine", "reason"]` pairs. Diagnostic only: individual
+    /// upstream failure is normal for a metasearch engine and never makes a
+    /// search unsuccessful on its own.
+    #[serde(default)]
+    unresponsive_engines: Vec<Value>,
+}
+
+#[derive(Deserialize)]
+struct SearxngResult {
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    content: Option<String>,
+    /// Which upstream engine produced this result.
+    #[serde(default)]
+    engine: Option<String>,
 }
 
 #[async_trait]
@@ -66,15 +87,6 @@ impl Tool for WebSearchTool {
                 "num_results": {
                     "type": "integer",
                     "description": "Max results."
-                },
-                "engine": {
-                    "type": "string",
-                    "enum": ["duckduckgo", "bing", "searxng"],
-                    "description": "Engine. Defaults to duckduckgo; bing uses JCODE_BING_API_KEY, searxng uses JCODE_SEARXNG_URL."
-                },
-                "bing_market": {
-                    "type": "string",
-                    "description": "Optional Bing market, e.g. en-US or zh-CN. Defaults to JCODE_BING_MARKET or en-US."
                 }
             }
         })
@@ -83,66 +95,36 @@ impl Tool for WebSearchTool {
     async fn execute(&self, input: Value, _ctx: ToolContext) -> Result<ToolOutput> {
         let params: WebSearchInput = serde_json::from_value(input)?;
         let num_results = params.num_results.unwrap_or(8).min(20);
+        let endpoint = format!(
+            "{}/search",
+            crate::config::config().websearch.url.trim_end_matches('/')
+        );
 
-        let config = crate::config::config();
-        let mut engines = Vec::new();
-        engines.push(params.engine.unwrap_or(config.websearch.engine));
-        engines.extend(config.websearch.fallback_engines.iter().copied());
-        engines.dedup();
+        let response = self
+            .client
+            .get(&endpoint)
+            .query(&[("q", params.query.as_str()), ("format", "json")])
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await?;
 
-        let market = params
-            .bing_market
-            .as_deref()
-            .unwrap_or(&config.websearch.bing_market);
-        let mut last_error = None;
-        let mut results = Vec::new();
-        for (index, engine) in engines.into_iter().enumerate() {
-            let allow_bing_api = index == 0;
-            match self
-                .search_with_engine(
-                    engine,
-                    &params.query,
-                    num_results,
-                    BingSearchOptions {
-                        market,
-                        configured_api_key: config.websearch.bing_api_key.as_deref(),
-                        api_key_env: &config.websearch.bing_api_key_env,
-                    },
-                    allow_bing_api,
-                )
-                .await
-            {
-                Ok(found) => {
-                    if !found.is_empty() {
-                        results = found;
-                        break;
-                    }
-                }
-                Err(err) => last_error = Some(err),
-            }
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "SearXNG search failed with status {} (endpoint: {endpoint}).",
+                response.status()
+            ));
         }
 
-        if results.is_empty()
-            && let Some(err) = last_error
-        {
-            return Err(err);
-        }
+        let parsed: SearxngResponse = response.json().await.map_err(|err| {
+            anyhow::anyhow!(
+                "SearXNG returned a non-JSON response ({err}). The instance may have \
+                 the JSON format disabled; enable `formats: [html, json]` in its settings."
+            )
+        })?;
 
-        if results.is_empty() {
-            return Ok(ToolOutput::new(format!(
-                "No results found for: {}\n\n\
-                 If results are consistently empty on this machine, the default \
-                 DuckDuckGo/Bing engines may be blocked here by TLS fingerprinting \
-                 or IP reputation (common on Linux/servers). Workarounds:\n\
-                 - Point at a SearXNG instance: set `websearch.searxng_url` (or \
-                 JCODE_SEARXNG_URL) and use engine \"searxng\".\n\
-                 - Or provide a Bing Search API key via JCODE_BING_API_KEY.",
-                params.query
-            )));
-        }
+        let results = accept_response(&params.query, parsed, num_results)?;
 
         let mut output = format!("Search results for: {}\n\n", params.query);
-
         for (i, result) in results.iter().enumerate() {
             output.push_str(&format!(
                 "{}. **{}**\n   {}\n   {}\n\n",
@@ -157,681 +139,221 @@ impl Tool for WebSearchTool {
     }
 }
 
-impl WebSearchTool {
-    async fn search_with_engine(
-        &self,
-        engine: WebSearchEngine,
-        query: &str,
-        num_results: usize,
-        bing: BingSearchOptions<'_>,
-        allow_bing_api: bool,
-    ) -> Result<Vec<SearchResult>> {
-        match engine {
-            WebSearchEngine::Duckduckgo => self.search_duckduckgo(query, num_results).await,
-            WebSearchEngine::Bing => {
-                self.search_bing(query, num_results, bing, allow_bing_api)
-                    .await
-            }
-            WebSearchEngine::Searxng => self.search_searxng(query, num_results).await,
-        }
+/// Apply the success rule: the request succeeded *and* the response carries at
+/// least one usable result. A non-empty `unresponsive_engines` is recorded as a
+/// diagnostic and never fails the search on its own - failing on it would
+/// discard good results whenever any single upstream engine hit a CAPTCHA.
+///
+/// The emptiness check runs on the mapped results rather than the raw list, so
+/// a response whose every entry lacks a URL fails here instead of reporting
+/// success with nothing to show.
+fn accept_response(
+    query: &str,
+    response: SearxngResponse,
+    num_results: usize,
+) -> Result<Vec<SearchResult>> {
+    let unresponsive = describe_engine_entries(&response.unresponsive_engines);
+    let contributing = contributing_engines(&response.results);
+    let results = usable_results(response.results, num_results);
+
+    if results.is_empty() {
+        return Err(anyhow::anyhow!(
+            "SearXNG returned no results for '{query}'; unresponsive engines: {unresponsive}"
+        ));
     }
 
-    async fn search_duckduckgo(
-        &self,
-        query: &str,
-        num_results: usize,
-    ) -> Result<Vec<SearchResult>> {
-        // DuckDuckGo's HTML endpoint now serves an anti-bot "anomaly" challenge
-        // (HTTP 202, no results) for plain GET requests. Submitting the query as
-        // a POST form, the same way the real HTML page does, still returns the
-        // standard results markup with a 200.
-        let response = self
-            .client
-            .post("https://html.duckduckgo.com/html/")
-            .header(
-                reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-                 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            )
-            .header(reqwest::header::ACCEPT, "text/html,application/xhtml+xml")
-            .header(
-                reqwest::header::CONTENT_TYPE,
-                "application/x-www-form-urlencoded",
-            )
-            .form(&[("q", query), ("kl", "us-en")])
-            .send()
-            .await?;
+    crate::logging::info(&format!(
+        "websearch: {} result(s) for '{query}' from [{contributing}]; \
+         unresponsive engines: {unresponsive}",
+        results.len()
+    ));
 
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Search failed with status: {}",
-                response.status()
-            ));
-        }
-
-        let body = response.text().await?;
-        let results = parse_ddg_results(&body, num_results);
-        if results.is_empty()
-            && let Some(reason) = detect_anti_bot_page(&body)
-        {
-            return Err(anyhow::anyhow!(
-                "DuckDuckGo served an anti-bot challenge page ({reason}) instead of \
-                 results. This is commonly caused by TLS fingerprinting or IP \
-                 reputation on Linux. Falling back to another engine if configured."
-            ));
-        }
-
-        Ok(results)
-    }
-
-    async fn search_bing(
-        &self,
-        query: &str,
-        num_results: usize,
-        options: BingSearchOptions<'_>,
-        allow_api: bool,
-    ) -> Result<Vec<SearchResult>> {
-        if allow_api {
-            if let Some(api_key) = options
-                .configured_api_key
-                .filter(|key| !key.trim().is_empty())
-            {
-                return self
-                    .search_bing_api(query, num_results, options.market, api_key)
-                    .await;
-            }
-            if let Ok(api_key) = std::env::var(options.api_key_env)
-                && !api_key.trim().is_empty()
-            {
-                return self
-                    .search_bing_api(query, num_results, options.market, &api_key)
-                    .await;
-            }
-        }
-
-        self.search_bing_html(query, num_results, options.market)
-            .await
-    }
-
-    async fn search_bing_api(
-        &self,
-        query: &str,
-        num_results: usize,
-        market: &str,
-        api_key: &str,
-    ) -> Result<Vec<SearchResult>> {
-        let response = self
-            .client
-            .get("https://api.bing.microsoft.com/v7.0/search")
-            .query(&[
-                ("q", query),
-                ("count", &num_results.to_string()),
-                ("mkt", market),
-            ])
-            .header("Ocp-Apim-Subscription-Key", api_key)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Bing API search failed with status: {}",
-                response.status()
-            ));
-        }
-
-        Ok(parse_bing_api_results(response.json().await?, num_results))
-    }
-
-    async fn search_bing_html(
-        &self,
-        query: &str,
-        num_results: usize,
-        market: &str,
-    ) -> Result<Vec<SearchResult>> {
-        let url = format!(
-            "https://www.bing.com/search?q={}&mkt={}",
-            urlencoding::encode(query),
-            urlencoding::encode(market)
-        );
-
-        let response = self
-            .client
-            .get(&url)
-            .header(
-                reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
-            )
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "Bing search failed with status: {}",
-                response.status()
-            ));
-        }
-
-        let body = response.text().await?;
-        let results = parse_bing_html_results(&body, num_results);
-        if results.is_empty()
-            && let Some(reason) = detect_anti_bot_page(&body)
-        {
-            return Err(anyhow::anyhow!(
-                "Bing served an anti-bot challenge page ({reason}) instead of results."
-            ));
-        }
-
-        Ok(results)
-    }
-
-    /// Query a user-configured SearXNG instance via its JSON API. SearXNG is a
-    /// self-hostable metasearch engine; because the request goes to an instance
-    /// the user controls (or a public one they trust), it sidesteps the TLS
-    /// fingerprinting / IP-reputation blocks that DuckDuckGo and Bing apply to
-    /// scraped requests on some hosts (see issue #270).
-    async fn search_searxng(&self, query: &str, num_results: usize) -> Result<Vec<SearchResult>> {
-        let config = crate::config::config();
-        let base = config
-            .websearch
-            .searxng_url
-            .as_deref()
-            .filter(|u| !u.trim().is_empty())
-            .map(|u| u.to_string())
-            .or_else(|| {
-                std::env::var(&config.websearch.searxng_url_env)
-                    .ok()
-                    .filter(|u| !u.trim().is_empty())
-            })
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "SearXNG engine selected but no instance URL configured. Set \
-                     `websearch.searxng_url` in your config or the {} environment \
-                     variable to a SearXNG base URL (e.g. https://searx.example.org).",
-                    config.websearch.searxng_url_env
-                )
-            })?;
-
-        let endpoint = format!("{}/search", base.trim_end_matches('/'));
-        let response = self
-            .client
-            .get(&endpoint)
-            .query(&[("q", query), ("format", "json")])
-            .header(
-                reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
-            )
-            .header(reqwest::header::ACCEPT, "application/json")
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            return Err(anyhow::anyhow!(
-                "SearXNG search failed with status {} (endpoint: {endpoint}). \
-                 Ensure the instance has the JSON format enabled in its settings.",
-                response.status()
-            ));
-        }
-
-        let parsed: SearxngResponse = response.json().await.map_err(|err| {
-            anyhow::anyhow!(
-                "SearXNG returned a non-JSON response ({err}). The instance may have \
-                 the JSON format disabled; enable `formats: [html, json]` in its settings."
-            )
-        })?;
-
-        Ok(parse_searxng_results(parsed, num_results))
-    }
+    Ok(results)
 }
 
-/// Map a parsed SearXNG JSON response to `SearchResult`s, dropping entries with
-/// empty URLs and capping to `num_results`.
-fn parse_searxng_results(response: SearxngResponse, num_results: usize) -> Vec<SearchResult> {
-    response
-        .results
+/// Drop entries with no URL and cap to `num_results`.
+///
+/// An entry with an empty `title` falls back to its URL: some engines return
+/// untitled hits, and rendering them as `**` would leave the model a bullet it
+/// cannot identify even though the link is good.
+fn usable_results(results: Vec<SearxngResult>, num_results: usize) -> Vec<SearchResult> {
+    results
         .into_iter()
-        .filter(|r| !r.url.trim().is_empty())
+        .filter(|result| !result.url.trim().is_empty())
         .take(num_results)
-        .map(|r| SearchResult {
-            title: if r.title.trim().is_empty() {
-                r.url.clone()
+        .map(|result| SearchResult {
+            title: if result.title.trim().is_empty() {
+                result.url.clone()
             } else {
-                r.title
+                result.title
             },
-            url: r.url,
-            snippet: r.content.unwrap_or_default(),
+            url: result.url,
+            snippet: result.content.unwrap_or_default(),
         })
         .collect()
 }
 
-mod search_regex {
-    use regex::Regex;
-    use std::sync::OnceLock;
-
-    fn compile_regex(pattern: &str, label: &str) -> Option<Regex> {
-        match Regex::new(pattern) {
-            Ok(regex) => Some(regex),
-            Err(err) => {
-                crate::logging::warn(&format!(
-                    "websearch: failed to compile static regex {label}: {}",
-                    err
-                ));
-                None
-            }
-        }
-    }
-
-    macro_rules! static_regex {
-        ($name:ident, $pat:expr_2021) => {
-            pub fn $name() -> Option<&'static Regex> {
-                static RE: OnceLock<Option<Regex>> = OnceLock::new();
-                RE.get_or_init(|| compile_regex($pat, stringify!($name)))
-                    .as_ref()
-            }
-        };
-    }
-
-    static_regex!(
-        result_link,
-        r#"(?s)<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>"#
-    );
-    static_regex!(
-        result_snippet,
-        r#"(?s)<a[^>]*class="result__snippet"[^>]*>(.*?)</a>"#
-    );
-    static_regex!(tag, r"<[^>]+>");
-    static_regex!(
-        bing_result_block,
-        r#"(?s)<li[^>]*class="[^"]*\bb_algo\b[^"]*"[^>]*>(.*?)</li>"#
-    );
-    static_regex!(
-        bing_link,
-        r#"(?s)<h2[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>\s*</h2>"#
-    );
-    static_regex!(
-        bing_caption,
-        r#"(?s)<div[^>]*class="[^"]*\bb_caption\b[^"]*"[^>]*>.*?<p[^>]*>(.*?)</p>"#
-    );
-}
-
-#[derive(Deserialize)]
-struct SearxngResponse {
-    #[serde(default)]
-    results: Vec<SearxngResult>,
-}
-
-#[derive(Deserialize)]
-struct SearxngResult {
-    #[serde(default)]
-    title: String,
-    #[serde(default)]
-    url: String,
-    #[serde(default)]
-    content: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct BingApiResponse {
-    #[serde(rename = "webPages")]
-    web_pages: Option<BingWebPages>,
-}
-
-#[derive(Deserialize)]
-struct BingWebPages {
-    value: Vec<BingWebPage>,
-}
-
-#[derive(Deserialize)]
-struct BingWebPage {
-    name: String,
-    url: String,
-    #[serde(default)]
-    snippet: String,
-}
-
-fn parse_bing_api_results(response: BingApiResponse, max_results: usize) -> Vec<SearchResult> {
-    response
-        .web_pages
-        .map(|pages| {
-            pages
-                .value
-                .into_iter()
-                .take(max_results)
-                .map(|page| SearchResult {
-                    title: page.name,
-                    url: page.url,
-                    snippet: page.snippet,
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn parse_bing_html_results(html: &str, max_results: usize) -> Vec<SearchResult> {
-    let mut results = Vec::new();
-    let (Some(block_re), Some(link_re), Some(caption_re), Some(tag_re)) = (
-        search_regex::bing_result_block(),
-        search_regex::bing_link(),
-        search_regex::bing_caption(),
-        search_regex::tag(),
-    ) else {
-        return results;
-    };
-
-    for block in block_re.captures_iter(html) {
-        if results.len() >= max_results {
-            break;
-        }
-        let Some(link) = link_re.captures(&block[1]) else {
-            continue;
-        };
-        let url = html_decode(&link[1]);
-        if !url.starts_with("http") || url.contains("bing.com") {
-            continue;
-        }
-        let title = html_decode(&tag_re.replace_all(&link[2], ""));
-        let snippet = caption_re
-            .captures(&block[1])
-            .map(|cap| html_decode(&tag_re.replace_all(&cap[1], "")))
-            .unwrap_or_default();
-        results.push(SearchResult {
-            title,
-            url,
-            snippet,
-        });
-    }
-
-    results
-}
-
-fn parse_ddg_results(html: &str, max_results: usize) -> Vec<SearchResult> {
-    let mut results = Vec::new();
-
-    let (Some(result_link), Some(result_snippet), Some(tag)) = (
-        search_regex::result_link(),
-        search_regex::result_snippet(),
-        search_regex::tag(),
-    ) else {
-        return results;
-    };
-
-    let links: Vec<_> = result_link.captures_iter(html).collect();
-    let snippets: Vec<_> = result_snippet.captures_iter(html).collect();
-
-    for (i, link_cap) in links.iter().enumerate() {
-        if results.len() >= max_results {
-            break;
-        }
-
-        let url = decode_ddg_url(&link_cap[1]);
-        let title = html_decode(&tag.replace_all(&link_cap[2], ""));
-
-        if !url.starts_with("http") || url.contains("duckduckgo.com") {
-            continue;
-        }
-
-        let snippet = if i < snippets.len() {
-            let raw = &snippets[i][1];
-            html_decode(&tag.replace_all(raw, ""))
-        } else {
-            String::new()
-        };
-
-        results.push(SearchResult {
-            title,
-            url,
-            snippet,
-        });
-    }
-
-    results
-}
-
-/// Detect whether an HTML body is an anti-bot/captcha challenge rather than a
-/// real results page. DuckDuckGo (and similar) serve these with HTTP 200, so a
-/// successful status plus zero parsed results is ambiguous without this check.
+/// The engines that produced at least one result, in first-seen order.
 ///
-/// Returns a short human-readable reason when a challenge page is detected.
-fn detect_anti_bot_page(html: &str) -> Option<&'static str> {
-    let lowered = html.to_ascii_lowercase();
-    const MARKERS: &[(&str, &str)] = &[
-        ("anomaly-modal", "anomaly challenge"),
-        ("anomaly.js", "anomaly challenge"),
-        ("dpn=1", "anomaly challenge"),
-        ("captcha", "captcha"),
-        ("g-recaptcha", "recaptcha"),
-        ("are you a robot", "bot check"),
-        ("unusual traffic", "bot check"),
-        ("verify you are human", "human verification"),
-        ("challenge-platform", "cloudflare challenge"),
-        ("cf-challenge", "cloudflare challenge"),
-    ];
-    for (needle, reason) in MARKERS {
-        if lowered.contains(needle) {
-            return Some(reason);
+/// SearXNG's top-level `engines` field is `null` on some instances, so this
+/// derives the same information - engines that contributed a returned result -
+/// from the results themselves, which always carry their origin.
+fn contributing_engines(results: &[SearxngResult]) -> String {
+    let mut seen: Vec<&str> = Vec::new();
+    for engine in results.iter().filter_map(|result| result.engine.as_deref()) {
+        let engine = engine.trim();
+        if !engine.is_empty() && !seen.contains(&engine) {
+            seen.push(engine);
         }
     }
-    None
-}
-
-fn decode_ddg_url(url: &str) -> String {
-    // DDG wraps URLs like //duckduckgo.com/l/?uddg=ACTUAL_URL&...
-    if let Some(uddg_start) = url.find("uddg=") {
-        let start = uddg_start + 5;
-        let end = url[start..]
-            .find('&')
-            .map(|i| start + i)
-            .unwrap_or(url.len());
-        let encoded = &url[start..end];
-        urlencoding::decode(encoded)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|_| encoded.to_string())
+    if seen.is_empty() {
+        "unknown".to_string()
     } else {
-        url.to_string()
+        seen.join(", ")
     }
 }
 
-fn html_decode(s: &str) -> String {
-    s.replace("&nbsp;", " ")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&amp;", "&")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&#x27;", "'")
-        .replace("&apos;", "'")
-        .trim()
-        .to_string()
+/// Render `unresponsive_engines` for diagnostics. Entries arrive as
+/// `["engine", "reason"]` pairs; anything else is rendered verbatim rather than
+/// dropped, so an unexpected shape still reaches the log.
+fn describe_engine_entries(entries: &[Value]) -> String {
+    if entries.is_empty() {
+        return "none".to_string();
+    }
+    entries
+        .iter()
+        .map(|entry| match entry.as_array() {
+            Some(fields) => fields.iter().map(value_text).collect::<Vec<_>>().join(": "),
+            None => value_text(entry),
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn value_text(value: &Value) -> String {
+    value
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| value.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn parses_bing_html_results() {
-        let html = r#"
-            <li class="b_algo">
-              <h2><a href="https://example.com/rust">Rust &amp; Cargo</a></h2>
-              <div class="b_caption"><p>A <strong>systems</strong> language.</p></div>
-            </li>
-            <li class="b_algo"><h2><a href="https://www.bing.com/aclk">ad</a></h2></li>
-            <li class="b_algo">
-              <h2><a href="https://example.org/jcode">Jcode</a></h2>
-              <div class="b_caption"><p>Agentic coding.</p></div>
-            </li>
-        "#;
-
-        let results = parse_bing_html_results(html, 10);
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].title, "Rust & Cargo");
-        assert_eq!(results[0].url, "https://example.com/rust");
-        assert_eq!(results[0].snippet, "A systems language.");
-        assert_eq!(results[1].title, "Jcode");
+    fn parse(body: &str) -> SearxngResponse {
+        serde_json::from_str(body).expect("searxng response")
     }
 
     #[test]
-    fn parses_bing_api_results() {
-        let response: BingApiResponse = serde_json::from_value(json!({
-            "webPages": {
-                "value": [
-                    {"name": "One", "url": "https://one.test", "snippet": "first"},
-                    {"name": "Two", "url": "https://two.test", "snippet": "second"}
-                ]
-            }
-        }))
-        .unwrap();
+    fn maps_titles_urls_and_snippets() {
+        let response = parse(
+            r#"{"results":[
+                {"title":"Rust","url":"https://rust-lang.org","content":"Systems language","engine":"brave"},
+                {"title":"Docs","url":"https://docs.rs","content":null,"engine":"google cse"}
+            ]}"#,
+        );
 
-        let results = parse_bing_api_results(response, 1);
+        let results = accept_response("rust", response, 8).expect("results");
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].title, "Rust");
+        assert_eq!(results[0].url, "https://rust-lang.org");
+        assert_eq!(results[0].snippet, "Systems language");
+        // A null `content` becomes an empty snippet, not a dropped result.
+        assert_eq!(results[1].snippet, "");
+    }
+
+    /// An untitled hit is still a usable link, so it keeps its place in the
+    /// list under its URL rather than rendering as an empty bold span.
+    #[test]
+    fn an_empty_title_falls_back_to_the_url() {
+        let response = parse(r#"{"results":[{"title":"  ","url":"https://example.org/page"}]}"#);
+
+        let results = accept_response("q", response, 8).expect("results");
+
+        assert_eq!(results[0].title, "https://example.org/page");
+    }
+
+    /// The rule that matters: partial upstream failure is normal metasearch
+    /// behaviour, so results still win. Failing on `unresponsive_engines`
+    /// would throw away every result whenever one engine hit a CAPTCHA.
+    #[test]
+    fn unresponsive_engines_do_not_fail_a_search_that_returned_results() {
+        let response = parse(
+            r#"{"results":[
+                {"title":"Hit","url":"https://example.org","content":"c","engine":"brave"}
+            ],"unresponsive_engines":[["duckduckgo","CAPTCHA"],["startpage","timeout"]]}"#,
+        );
+
+        let results = accept_response("q", response, 8).expect("results survive engine failures");
+
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].title, "One");
-        assert_eq!(results[0].url, "https://one.test");
+        assert_eq!(results[0].url, "https://example.org");
     }
 
     #[test]
-    fn parses_ddg_html_results() {
-        // Mirrors the markup html.duckduckgo.com returns for the POST form,
-        // where titles and snippets contain inline <b> highlight tags.
-        let html = r#"
-            <div class="result results_links results_links_deep web-result">
-              <a class="result__a" href="https://rust-lang.org/"><b>Rust</b> Language</a>
-              <a class="result__snippet" href="https://rust-lang.org/">A <b>systems</b> programming language.</a>
-            </div>
-            <div class="result results_links results_links_deep web-result">
-              <a class="result__a" href="https://en.wikipedia.org/wiki/Rust">Rust on Wikipedia</a>
-              <a class="result__snippet" href="https://en.wikipedia.org/wiki/Rust">Encyclopedia <b>entry</b>.</a>
-            </div>
-        "#;
+    fn empty_results_fail_and_name_the_unresponsive_engines() {
+        let response = parse(r#"{"results":[],"unresponsive_engines":[["duckduckgo","CAPTCHA"]]}"#);
 
-        let results = parse_ddg_results(html, 10);
+        let err = accept_response("q", response, 8).expect_err("no results is a failure");
+        let message = err.to_string();
+
+        assert!(message.contains("no results for 'q'"), "{message}");
+        assert!(message.contains("duckduckgo: CAPTCHA"), "{message}");
+    }
+
+    /// A response can be non-empty yet unusable; reporting success with nothing
+    /// to show would leave the caller unable to tell search from silence.
+    #[test]
+    fn results_without_urls_are_treated_as_no_results() {
+        let response = parse(r#"{"results":[{"title":"No link","url":"  ","content":"x"}]}"#);
+
+        assert!(accept_response("q", response, 8).is_err());
+    }
+
+    #[test]
+    fn results_respect_the_requested_limit() {
+        let response = parse(
+            r#"{"results":[
+                {"title":"1","url":"https://a.example"},
+                {"title":"2","url":"https://b.example"},
+                {"title":"3","url":"https://c.example"}
+            ]}"#,
+        );
+
+        let results = accept_response("q", response, 2).expect("results");
+
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].title, "Rust Language");
-        assert_eq!(results[0].url, "https://rust-lang.org/");
-        assert_eq!(results[0].snippet, "A systems programming language.");
-        assert_eq!(results[1].url, "https://en.wikipedia.org/wiki/Rust");
-        assert_eq!(results[1].snippet, "Encyclopedia entry.");
+        assert_eq!(results[1].url, "https://b.example");
     }
 
     #[test]
-    fn websearch_engine_accepts_aliases() {
+    fn diagnostics_name_contributing_engines_without_repeating_them() {
+        let response = parse(
+            r#"{"results":[
+                {"title":"1","url":"https://a.example","engine":"google cse"},
+                {"title":"2","url":"https://b.example","engine":"brave"},
+                {"title":"3","url":"https://c.example","engine":"google cse"}
+            ]}"#,
+        );
+
+        assert_eq!(contributing_engines(&response.results), "google cse, brave");
+        assert!(accept_response("q", response, 8).is_ok());
+    }
+
+    #[test]
+    fn engine_diagnostics_render_missing_and_unexpected_shapes() {
+        assert_eq!(describe_engine_entries(&[]), "none");
         assert_eq!(
-            WebSearchEngine::parse("ddg"),
-            Some(WebSearchEngine::Duckduckgo)
+            describe_engine_entries(&[json!(["duckduckgo", "CAPTCHA"])]),
+            "duckduckgo: CAPTCHA"
         );
-        assert_eq!(WebSearchEngine::parse("bing"), Some(WebSearchEngine::Bing));
-        assert_eq!(WebSearchEngine::parse("google"), None);
-    }
-
-    #[test]
-    fn detects_ddg_anomaly_challenge_page() {
-        // Shape of the anti-bot challenge DDG serves (HTTP 200) instead of
-        // results when a request is flagged (e.g. TLS fingerprint on Linux).
-        let html = r#"<!DOCTYPE html><html><head>
-            <script src="/dist/anomaly.js"></script></head>
-            <body><div class="anomaly-modal__title">Unfortunately, bots use DuckDuckGo too.</div>
-            </body></html>"#;
-        assert_eq!(detect_anti_bot_page(html), Some("anomaly challenge"));
-        // And it should parse to zero real results.
-        assert!(parse_ddg_results(html, 10).is_empty());
-    }
-
-    #[test]
-    fn detects_generic_captcha_page() {
-        let html = r#"<html><body><div class="g-recaptcha"></div>
-            Please verify you are human.</body></html>"#;
-        assert!(detect_anti_bot_page(html).is_some());
-    }
-
-    #[test]
-    fn real_results_are_not_flagged_as_anti_bot() {
-        let html = r#"
-            <div class="result results_links web-result">
-              <a class="result__a" href="https://rust-lang.org/">Rust</a>
-              <a class="result__snippet" href="https://rust-lang.org/">A language.</a>
-            </div>
-        "#;
-        assert_eq!(detect_anti_bot_page(html), None);
-        assert_eq!(parse_ddg_results(html, 10).len(), 1);
-    }
-
-    // Captured from a live DuckDuckGo request that was flagged on Linux (GH #270):
-    // the HTML endpoint returns HTTP 202 with an "anomaly" challenge page and no
-    // results. These fixtures pin the real-world shapes so the fix stays honest.
-    #[test]
-    fn real_captured_ddg_anomaly_fixture_is_detected() {
-        let html = include_str!("testdata/ddg_anomaly.html");
-        // The bug: this page parses to zero real results...
-        assert!(
-            parse_ddg_results(html, 10).is_empty(),
-            "anomaly page should yield no results"
-        );
-        // ...but the fix now recognizes it as a challenge instead of a silent
-        // "no results found".
-        assert_eq!(detect_anti_bot_page(html), Some("anomaly challenge"));
-    }
-
-    #[test]
-    fn real_captured_ddg_results_fixture_parses() {
-        let html = include_str!("testdata/ddg_results.html");
-        assert_eq!(detect_anti_bot_page(html), None);
-        assert!(
-            !parse_ddg_results(html, 10).is_empty(),
-            "real results page should yield results"
-        );
-    }
-
-    #[test]
-    fn parses_searxng_json_results() {
-        // Shape of a real SearXNG /search?format=json response (#270).
-        let body = serde_json::json!({
-            "query": "rust",
-            "results": [
-                {
-                    "url": "https://www.rust-lang.org/",
-                    "title": "Rust Programming Language",
-                    "content": "A language empowering everyone."
-                },
-                {
-                    "url": "https://doc.rust-lang.org/book/",
-                    "title": "The Rust Book",
-                    "content": "Learn Rust."
-                },
-                // Entry with empty url is dropped; missing content tolerated.
-                { "url": "", "title": "junk" },
-                { "url": "https://crates.io", "title": "" }
-            ]
-        });
-        let parsed: SearxngResponse = serde_json::from_value(body).unwrap();
-        let results = parse_searxng_results(parsed, 10);
-        assert_eq!(results.len(), 3, "empty-url entry should be dropped");
-        assert_eq!(results[0].url, "https://www.rust-lang.org/");
-        assert_eq!(results[0].title, "Rust Programming Language");
-        assert_eq!(results[0].snippet, "A language empowering everyone.");
-        // Missing title falls back to the URL.
-        assert_eq!(results[2].title, "https://crates.io");
-        assert_eq!(results[2].snippet, "");
-    }
-
-    #[test]
-    fn searxng_results_respect_limit() {
-        let body = serde_json::json!({
-            "results": (0..10)
-                .map(|i| serde_json::json!({"url": format!("https://x/{i}"), "title": "t"}))
-                .collect::<Vec<_>>()
-        });
-        let parsed: SearxngResponse = serde_json::from_value(body).unwrap();
-        assert_eq!(parse_searxng_results(parsed, 3).len(), 3);
-    }
-
-    #[test]
-    fn websearch_engine_parses_searxng_aliases() {
+        // An unexpected shape is rendered rather than silently dropped.
+        assert_eq!(describe_engine_entries(&[json!("bare")]), "bare");
         assert_eq!(
-            WebSearchEngine::parse("searxng"),
-            Some(WebSearchEngine::Searxng)
+            describe_engine_entries(&[json!({"engine": "x"})]),
+            "{\"engine\":\"x\"}"
         );
-        assert_eq!(
-            WebSearchEngine::parse("searx"),
-            Some(WebSearchEngine::Searxng)
-        );
-        assert_eq!(WebSearchEngine::Searxng.as_str(), "searxng");
     }
 }

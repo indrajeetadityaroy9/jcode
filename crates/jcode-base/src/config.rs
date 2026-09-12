@@ -11,7 +11,6 @@ pub use jcode_config_types::{
     NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig, NotificationsConfig,
     OverscrollStatusMode, PowerConfig, ProviderConfig, ReasoningDisplayMode, SafetyConfig,
     SessionPickerResumeAction, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, WebSearchConfig,
-    WebSearchEngine,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -44,9 +43,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_AUTOREVIEW_ENABLED",
     "JCODE_AUTOREVIEW_MODEL",
     "JCODE_AUTO_SERVER_RELOAD",
-    "JCODE_BING_API_KEY",
-    "JCODE_BING_API_KEY_ENV",
-    "JCODE_BING_MARKET",
     "JCODE_CHAT_NATIVE_SCROLLBAR",
     "JCODE_COMPACT_NOTIFICATIONS",
     "JCODE_COPY_BADGE_ALT_LABEL",
@@ -109,7 +105,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_REASONING_DISPLAY",
     "JCODE_REDRAW_FPS",
     "JCODE_SAME_PROVIDER_ACCOUNT_FAILOVER",
-    "JCODE_SEARXNG_URL",
     "JCODE_SHOW_AGENTGREP_OUTPUT",
     "JCODE_SHOW_DIFFS",
     "JCODE_SHOW_THINKING",
@@ -130,8 +125,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_TOOL_PROFILE",
     "JCODE_TOOLS",
     "JCODE_TRUSTED_EXTERNAL_AUTH_SOURCES",
-    "JCODE_WEBSEARCH_ENGINE",
-    "JCODE_WEBSEARCH_FALLBACK_ENGINES",
+    "SEARXNG_URL",
     "XDG_CONFIG_HOME",
 ];
 
