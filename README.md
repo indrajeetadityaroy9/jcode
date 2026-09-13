@@ -1,28 +1,12 @@
-<div align="center">
-
 # jcode
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
-[![Platforms](https://img.shields.io/badge/platforms-macOS-blue?style=flat-square)](#installation)
+A personal, macOS-only fork of [jcode](https://github.com/1jehuang/jcode).
 
-The most RAM efficient harness <br>
-The most intelligent harness
+Builds from source only — no prebuilt releases, no package-manager channel. See
+[docs/FORK_WORKFLOW.md](docs/FORK_WORKFLOW.md) for what this fork removes and how
+it tracks upstream.
 
-A personal macOS-only fork of [jcode](https://github.com/1jehuang/jcode). See
-[docs/FORK_WORKFLOW.md](docs/FORK_WORKFLOW.md) for what this fork removes and how it
-tracks upstream.
-
-[Features](#features) · [Install](#installation) · [Quick Start](#quick-start) · [Further Reading](#further-reading)
-
-</div>
-
----
-
-<div align="center">
-
-## Installation
-
-</div>
+## Install
 
 ```bash
 git clone https://github.com/indrajeetadityaroy9/jcode.git
@@ -31,718 +15,83 @@ cargo build --release
 scripts/install_release.sh
 ```
 
-This fork builds from source; there are no prebuilt releases. See
-[docs/FORK_WORKFLOW.md](docs/FORK_WORKFLOW.md) §4-§5 for the build and install
-procedure used to produce the installed binary.
-
----
-
-
-<div align="center">
-
-## Performance & Resource Efficiency
-
-</div>
-
-jcode is built to be as performant and resource efficient as possible. Every metric is optimized to the bone, which is important for scaling multi-session workflows. Here we sample a few metrics to show the difference: RAM usage and boot up.
-
-### RAM comparison
-
-<div align="center">
-
-<table>
-  <tr>
-    <td valign="top" align="center" width="50%">
-      <strong>1 active session</strong>
-      <table>
-        <thead>
-          <tr>
-            <th>Tool</th>
-            <th>PSS</th>
-            <th>Comparison</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>jcode (local embedding off)</strong></td>
-            <td align="right"><strong>27.8 MB</strong></td>
-            <td align="right">baseline</td>
-          </tr>
-          <tr>
-            <td><strong>jcode</strong></td>
-            <td align="right"><strong>167.1 MB</strong></td>
-            <td align="right"><strong>6.0× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>pi</strong></td>
-            <td align="right"><strong>144.4 MB</strong></td>
-            <td align="right"><strong>5.2× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>Codex CLI</strong></td>
-            <td align="right"><strong>140.0 MB</strong></td>
-            <td align="right"><strong>5.0× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>OpenCode</strong></td>
-            <td align="right"><strong>371.5 MB</strong></td>
-            <td align="right"><strong>13.4× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>GitHub Copilot CLI</strong></td>
-            <td align="right"><strong>333.3 MB</strong></td>
-            <td align="right"><strong>12.0× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>Cursor Agent</strong></td>
-            <td align="right"><strong>214.9 MB</strong></td>
-            <td align="right"><strong>7.7× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>Claude Code</strong></td>
-            <td align="right"><strong>386.6 MB</strong></td>
-            <td align="right"><strong>13.9× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>Antigravity CLI</strong></td>
-            <td align="right"><strong>243.7 MB</strong></td>
-            <td align="right"><strong>8.8× more RAM</strong></td>
-          </tr>
-        </tbody>
-      </table>
-    </td>
-    <td width="24"></td>
-    <td valign="top" align="center" width="50%">
-      <strong>10 active sessions</strong>
-      <table>
-        <thead>
-          <tr>
-            <th>Tool</th>
-            <th>PSS</th>
-            <th>Comparison</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>jcode (local embedding off)</strong></td>
-            <td align="right"><strong>117.0 MB</strong></td>
-            <td align="right">baseline</td>
-          </tr>
-          <tr>
-            <td><strong>jcode</strong></td>
-            <td align="right"><strong>260.8 MB</strong></td>
-            <td align="right"><strong>2.2× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>pi</strong></td>
-            <td align="right"><strong>833.0 MB</strong></td>
-            <td align="right"><strong>7.1× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>Codex CLI</strong></td>
-            <td align="right"><strong>334.8 MB</strong></td>
-            <td align="right"><strong>2.9× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>OpenCode</strong></td>
-            <td align="right"><strong>3237.2 MB</strong></td>
-            <td align="right"><strong>27.7× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>GitHub Copilot CLI</strong></td>
-            <td align="right"><strong>1756.5 MB</strong></td>
-            <td align="right"><strong>15.0× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>Cursor Agent</strong></td>
-            <td align="right"><strong>1632.4 MB</strong></td>
-            <td align="right"><strong>14.0× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>Claude Code</strong></td>
-            <td align="right"><strong>2300.6 MB</strong></td>
-            <td align="right"><strong>19.7× more RAM</strong></td>
-          </tr>
-          <tr>
-            <td><strong>Antigravity CLI</strong></td>
-            <td align="right"><strong>1021.2 MB</strong></td>
-            <td align="right"><strong>8.7× more RAM</strong></td>
-          </tr>
-        </tbody>
-      </table>
-    </td>
-  </tr>
-</table>
-
-</div>
-
-### Time to first frame
-
-<div align="center">
-
-| Tool | Time to first frame | Range | Comparison |
-|---|---:|---:|---:|
-| **jcode** | **14.0 ms** | 10.1–19.3 ms | baseline |
-| **Antigravity CLI** | **383.5 ms** | 363.1–415.4 ms | **27.4× slower** |
-| **pi** | **590.7 ms** | 369.6–934.8 ms | **42.2× slower** |
-| **Codex CLI** | **882.8 ms** | 742.3–1640.9 ms | **63.1× slower** |
-| **OpenCode** | **1035.9 ms** | 922.5–1104.4 ms | **74.0× slower** |
-| **GitHub Copilot CLI** | **1518.6 ms** | 1357.4–1826.8 ms | **108.5× slower** |
-| **Cursor Agent** | **1949.7 ms** | 1711.0–2104.8 ms | **139.3× slower** |
-| **Claude Code** | **3436.9 ms** | 2032.7–8927.2 ms | **245.5× slower** |
-
-</div>
-
-Measured on this Linux machine across 10 interactive PTY launches.
-
-### Time to first input
-(time until typed probe text appears on the rendered screen; Antigravity uses its internal input-ready log marker because the sign-in screen suppresses probe echo.)
-<div align="center">
-
-| Tool | Time to first input | Range | Comparison |
-|---|---:|---:|---:|
-| **jcode** | **48.7 ms** | 30.3–62.7 ms | baseline |
-| **Antigravity CLI** | **383.7 ms** | 363.4–415.7 ms | **7.9× slower** |
-| **pi** | **596.4 ms** | 373.9–955.2 ms | **12.2× slower** |
-| **Codex CLI** | **905.8 ms** | 760.1–1675.7 ms | **18.6× slower** |
-| **OpenCode** | **1047.9 ms** | 931.1–1116.9 ms | **21.5× slower** |
-| **GitHub Copilot CLI** | **1583.4 ms** | 1422.8–1880.0 ms | **32.5× slower** |
-| **Cursor Agent** | **1978.7 ms** | 1727.3–2130.0 ms | **40.6× slower** |
-| **Claude Code** | **3512.8 ms** | 2137.4–9002.0 ms | **72.2× slower** |
-
-</div>
-
-Measured on this Linux machine across 10 interactive PTY launches. Antigravity CLI was unauthenticated for this run; its sign-in screen rendered normally and emitted an internal `CLI ready for user input` marker, but did not echo the typed probe.
-
-### Additional clients / memory scaling
-
-<div align="center">
-
-| Tool | Extra PSS per added session | Comparison |
-|---|---:|---:|
-| **jcode (local embedding off)** | **~9.9 MB** | baseline |
-| **jcode** | **~10.4 MB** | **1.1× more RAM** |
-| **pi** | **~76.5 MB** | **7.7× more RAM** |
-| **Codex CLI** | **~21.6 MB** | **2.2× more RAM** |
-| **OpenCode** | **~318.4 MB** | **32.2× more RAM** |
-| **GitHub Copilot CLI** | **~158.1 MB** | **16.0× more RAM** |
-| **Cursor Agent** | **~157.5 MB** | **15.9× more RAM** |
-| **Claude Code** | **~212.7 MB** | **21.5× more RAM** |
-| **Antigravity CLI** | **~86.4 MB** | **8.7× more RAM** |
-
-</div>
-versions tested for this corrected memory rerun:
-
-- `jcode v0.9.1888-dev (be386f2)`
-- `pi 0.62.0`
-- `codex-cli 0.120.0`
-- `opencode 1.0.203`
-- `GitHub Copilot CLI 1.0.24` for the 1-session rerun, `GitHub Copilot CLI 1.0.27` for the 10-session rerun
-- `Cursor Agent 2026.04.08-a41fba1`
-- `Claude Code 2.1.86 (Claude Code)`
-- `Antigravity CLI 1.0.0`
-
-
----
-
-## Memory (Agent memory)
-
-Jcode embeds each turn/response as a semantic vector. Every turn does queries a graph of memories to efficiently find related memory entries via a cosine similarity check. The embedding hits are fed into the conversation, or optionally uses a memory sideagent which verifies the memories are relevant, and potentially does more work for information retreival before injecting into the conversation. This results in a human like memory system which allows the agent to automatically recall relevant information to the conversation without actively calling memory tools or being a token burner. 
-ot 
-To have memories which are retrieved, they must also be extracted and stored. Every so often (semantic drift, K turns since last extraction, session end, etc), memories are extracted via a memory sideagent, and put into the memory graph. 
-
-The harness also provides explicit memory tools to allow the agent to actively search or store the memory without relying on a passive background process. The harness also provides session search for traditional RAG on previous sessions. 
-
-Memories are automatically consolidated every so often via the ambient mode. This reorganizes, checks for staleness and conflicts, etc
-
-
----
-
-## UI: Side panels, Diagrams, Info Widgets, rendering, scrolling, alignment
-
-The side panel is a place for auxiliary information. Tell your jcode agent to load a file into the side panel and see it update in real time, or tell your agent to write directly to the side panel, or use it as a diff viewer. The side panel (and chat) is able to render mermaid diagrams inline. 
-<img width="2877" height="1762" alt="image" src="https://github.com/user-attachments/assets/6c7bec81-ef3f-434d-8a7b-d55f8a54e5cf" />
-
-This is backed by a dedicated mermaid rendering library that renders diagrams 1800x faster, with no browser or TypeScript dependency: https://github.com/1jehuang/mermaid-rs-renderer
-
-Info widgets show important information without taking space away from responses. They only ever occupy the negative space on the screen, and get out of the way when there isn't any. 
-
-Jcode can render at over a thousand fps. Your monitor will not have the refresh rate to show you, but this means you will not have silly flicker problems. 
-
-The custom scrollback implementation allows jcode to do much more than a native scrollback. Smooth, partial-line scrolling is a terminal-level limitation of any custom scrollback, so a companion terminal exists to address it: Handterm https://github.com/1jehuang/handterm implements a native scroll API and is very efficient. That work is ongoing; scrolling is still well implemented for normal terminals.
-
-Jcode is left-aligned by default. You can switch to centered mode with the `Alt+C` hotkey, with the `/alignment` command, or in the config.
-
-To disable emoji globally in TUI and CLI output, set `emoji = false` under `[display]` in `~/.jcode/config.toml`, or launch with `JCODE_NO_EMOJI=1`. Jcode replaces emoji with compact ASCII markers while preserving other Unicode text.
-
----
-
-## Swarm
-
-Spawn two or more agents in the same repo, and they will automatically be managed by the server to allow native collaboration. When agent A edits a file that agent B has read (code shifting under its feet), the server notifies agent B. Agent B can ignore it if it is not relevant, or it can check the diff to make sure that it doesn't conflict. Each agent has messaging abilities, capable of DMing just one agent, broadcasting to all other agents hosted by the server, or just agents working in that repo. This allows you to spawn multiple sessions in the same repo, and have all conflicts automatically resolved.
-
-Agents are also able to spawn their own swarms autonomously. They have a swarm tool which allows them to spawn in their own teamates to accomplish tasks in parallel. Doing so turns the main agent into a coordinator and the spawned agents into workers. Groups of agents, their messaging channels, their completion statuses, etc are all automatically managed. This can be done headlessly or headed.
-
----
-
-## OAuth and Providers
-
-jcode works with subscription-backed OAuth flows and many provider integrations, so you can use the models you already pay for and still fall back to direct API providers when needed.
-
-### Supported built-in login flows
-
-- **Claude** (`jcode login --provider claude`)
-- **OpenAI / ChatGPT / Codex** (`jcode login --provider openai`)
-- **Google Gemini** (`jcode login --provider gemini`)
-- **GitHub Copilot** (`jcode login --provider copilot`)
-- **Azure OpenAI** (`jcode login --provider azure`)
-- **Alibaba Cloud Coding Plan** (`jcode login --provider alibaba-coding-plan`)
-- **Fireworks** (`jcode login --provider fireworks`)
-- **MiniMax** (`jcode login --provider minimax`)
-- **Meta Model API / Muse** (`jcode login --provider meta-muse`)
-- **LM Studio** (`jcode login --provider lmstudio`)
-- **Ollama** (`jcode login --provider ollama`)
-- **Custom OpenAI-compatible endpoint** (`jcode login --provider openai-compatible`)
-
-For custom OpenAI-compatible endpoints, jcode now prompts for the API base and supports local localhost servers without requiring an API key.
-
-### Config-file setup for self-hosted endpoints and MCP
-
-If you prefer to configure things by editing files instead of using the login UI, jcode supports both a custom OpenAI-compatible endpoint config and MCP config files.
-
-#### OpenAI-compatible providers
-
-Many hosted services speak the standard OpenAI `/v1/chat/completions` API. jcode talks to them through one shared OpenAI-compatible provider, so you can use almost any such endpoint without waiting for a dedicated integration.
-
-There are two ways to set one up:
-
-- **Built-in named profiles** — jcode ships ready-made profiles for several popular OpenAI-compatible services. Log in by id and jcode fills in the base URL and key environment variable for you:
-
-  ```bash
-  jcode login --provider <profile-id>
-  # for example:
-  jcode login --provider openrouter
-  jcode login --provider deepseek
-  jcode login --provider opencode      # OpenCode Zen
-  jcode login --provider moonshotai
-  jcode login --provider meta-muse     # Meta Model API / Muse Spark
-  ```
-
-  Built-in OpenAI-compatible profile ids include: `openrouter`, `deepseek`, `zai`, `kimi`, `moonshotai`, `meta-muse` (Meta Model API / Muse Spark), `opencode` (OpenCode Zen), `opencode-go`, `302ai`, `baseten`, `cortecs`, `huggingface`, `nebius`, `scaleway`, `stackit`, and `firmware`. Each profile only sets the endpoint and key variable; you still pick the model with `/model` (or `--model`). Run `jcode login` with no provider to see the interactive list.
-
-- **Any other endpoint** — point jcode at an arbitrary OpenAI-compatible API (hosted or local) with `jcode login --provider openai-compatible` or the scriptable `jcode provider add` command described below.
-
-Useful environment overrides for these endpoints:
-
-- `JCODE_STREAM_IDLE_TIMEOUT_SECS` — raise the base streaming idle timeout (default 180s) for slow reasoning models that think silently before emitting tokens. High reasoning efforts scale this automatically (high 2x, xhigh 3x, max 4x). Also settable as `[provider] stream_idle_timeout_secs` in `config.toml`.
-- Per-model `context_window` (alias `context_limit`) in a `[[providers.<name>.models]]` entry — set the context window when the endpoint has no usable `/v1/models` response, so jcode does not fall back to the generic 200k default.
-- `extra_body` — inject non-standard top-level fields into every chat/completions request body for backends that require them. See [Extra request-body fields](#extra-request-body-fields-extra_body) below.
-
-For details on self-hosting, local runtimes, and the exact config file shape, see below.
-
-#### Self-hosted OpenAI-compatible endpoints, including vLLM
-
-For agents and scripts, the preferred path is the one-shot provider profile command. It writes a named profile to `~/.jcode/config.toml`, stores secrets in jcode's private app config directory when requested, and prints exact run/validation commands:
+`scripts/install_release.sh` stores the binary under
+`~/.jcode/builds/versions/<version>/` and repoints the `~/.local/bin/jcode`
+launcher at it. `~/.local/bin` must precede `~/.cargo/bin` on `PATH`.
+
+## Quick start
 
 ```bash
-# Secret-safe setup for a hosted OpenAI-compatible API.
-printf '%s' "$MY_API_KEY" | jcode provider add my-api \
-  --base-url https://llm.example.com/v1 \
-  --model my-model-id \
-  --api-key-stdin \
-  --set-default \
-  --json
-
-# Smoke test the profile.
-jcode --provider-profile my-api auth-test --prompt 'Reply exactly JCODE_PROVIDER_SETUP_OK'
-
-# Use it directly.
-jcode --provider-profile my-api run 'hello'
+jcode                              # TUI
+jcode run "say hello"              # one-shot, non-interactive
+jcode --resume fox                 # resume by memorable name or session id
+jcode serve                        # persistent background daemon
+jcode connect                      # attach another client to it
+jcode transcript "run the tests"   # inject text into the active TUI
 ```
 
-For local servers that do not require auth:
+## Providers
+
+`jcode login` with no arguments lists the built-in flows interactively;
+`jcode login --provider <id>` picks one directly. `jcode auth-test
+--all-configured` reports what is already usable without prompting. `/account`
+switches between accounts of the same provider.
+
+Credential resolution order, OAuth details, and per-provider environment
+variables are documented in [OAUTH.md](OAUTH.md).
+
+## Configuration
+
+`~/.jcode/config.toml` holds everything; every key is optional and the generated
+file documents its own defaults. Sessions, auth, logs, and memory also live under
+`~/.jcode/`, relocatable with `$JCODE_HOME`.
+
+Fork-specific behavior worth knowing:
+
+- **Web search** queries a SearXNG instance and nothing else. `[websearch] url`
+  defaults to `http://127.0.0.1:8080`; `SEARXNG_URL` overrides it. The instance
+  needs the JSON format enabled (`formats: [html, json]`).
+- **Swarm workers** inherit the coordinator's model unless a spawn passes `model`
+  explicitly. `[agents] swarm_model` pins every worker instead; `"inherit"` is
+  the default behavior. Routing guidance for spawns is read from
+  `./.jcode/swarm-prompt.md`, then `~/.jcode/swarm-prompt.md`, then the built-in
+  `crates/jcode-base/src/prompt/swarm_prompt.md`.
+
+## Development
+
+`jcode run` and interactive sessions are served by the long-lived daemon, so a
+freshly built binary is inert until the launcher is repointed. To exercise a
+build without disturbing the installed daemon, give it its own runtime directory:
 
 ```bash
-jcode provider add local-vllm \
-  --base-url http://localhost:8000/v1 \
-  --model Qwen/Qwen3-Coder-30B-A3B-Instruct \
-  --no-api-key \
-  --set-default
+cargo build --profile selfdev
+JCODE_RUNTIME_DIR=/tmp/jcode-dev ./target/selfdev/jcode --no-update run 'say hello'
 ```
 
-Built-in local profiles are available for the common desktop/local runtimes:
+[AGENTS.md](AGENTS.md) covers the rest of the runtime-verification procedure and
+the repo conventions.
+
+## Uninstall
 
 ```bash
-# Ollama: start the local server and install a model first.
-ollama pull llama3.2
-jcode login --provider ollama
-jcode --provider ollama --model llama3.2 run 'hello'
-
-# LM Studio: start the Local Server, load a chat model, then use the exact
-# model identifier shown by LM Studio or by curl http://localhost:1234/v1/models.
-jcode login --provider lmstudio
-jcode --provider lmstudio --model '<model-id>' run 'hello'
+scripts/uninstall.sh --yes           # keep config, auth, and sessions
+scripts/uninstall.sh --purge --yes   # wipe config, auth, sessions, logs, memory
 ```
 
-Ollama and LM Studio both expose OpenAI-compatible `/v1/models` and `/v1/chat/completions` endpoints. jcode uses streaming chat completions, function/tool calling, and OpenAI-style image content for vision-capable local models. If a local server requires a token, enter it during `jcode login` or create a named profile with `--api-key-stdin`.
+`--dry-run` previews the removals without deleting anything.
 
-Useful flags:
+## Platform
 
-- `--api-key-env NAME`: reference an existing environment variable instead of storing a key.
-- `--api-key-stdin`: read and store a key without putting it in shell history.
-- `--context-window TOKENS`: persist the model context window for model selection and routing.
-- `--overwrite`: replace an existing profile of the same name.
-- `--model-catalog`: use the endpoint's `/models` response in addition to configured models.
+macOS on Apple Silicon and Intel is the only supported platform; all non-macOS
+code paths are deleted from this fork (see
+[docs/FORK_WORKFLOW.md](docs/FORK_WORKFLOW.md) §1).
 
-The generated profile can also be edited manually in `~/.jcode/config.toml`:
+## Further reading
 
-```toml
-[provider]
-default_provider = "my-api"
-default_model = "my-model-id"
-
-[providers.my-api]
-type = "openai-compatible"
-base_url = "https://llm.example.com/v1"
-api_key_env = "JCODE_PROVIDER_MY_API_API_KEY"
-env_file = "provider-my-api.env"
-default_model = "my-model-id"
-
-[[providers.my-api.models]]
-id = "my-model-id"
-context_window = 128000
-```
-
-Anthropic Messages-compatible gateways use the same named-profile surface with
-`type = "anthropic-compatible"`. The profile can select bearer, custom-header,
-or no authentication and attach gateway-specific headers to every request:
-
-```toml
-[provider]
-default_provider = "corp-claude"
-default_model = "claude-sonnet-4-6"
-
-[providers.corp-claude]
-type = "anthropic-compatible"
-base_url = "https://gateway.example.com/anthropic/v1"
-auth = "bearer"
-api_key_env = "CORP_CLAUDE_TOKEN"
-default_model = "claude-sonnet-4-6"
-
-[providers.corp-claude.headers]
-x-tenant-id = "tenant-42"
-
-[[providers.corp-claude.models]]
-id = "claude-sonnet-4-6"
-context_window = 200000
-```
-
-For direct environment-based configuration, `ANTHROPIC_BASE_URL` overrides the
-non-OAuth Messages endpoint and `ANTHROPIC_AUTH_TOKEN` is sent as a bearer token.
-Claude OAuth traffic always continues to use Anthropic's official endpoints.
-
-##### Extra request-body fields (`extra_body`)
-
-Some OpenAI-compatible backends require non-standard top-level request fields. For example, NVIDIA NIM DeepSeek-V4 reasoning models (`deepseek-ai/deepseek-v4-flash`, `deepseek-ai/deepseek-v4-pro`) only enable thinking when the request includes `chat_template_kwargs`; without it they reply without reasoning (or, for some deployments, hang). jcode lets you inject arbitrary top-level fields two ways.
-
-1. Per named profile, via `extra_body` in `config.toml` (a TOML table merged verbatim into the JSON body):
-
-   ```toml
-   [providers.my-nim]
-   type = "openai-compatible"
-   base_url = "https://integrate.api.nvidia.com/v1"
-   api_key_env = "NVIDIA_API_KEY"
-   default_model = "deepseek-ai/deepseek-v4-flash"
-
-   [providers.my-nim.extra_body.chat_template_kwargs]
-   thinking = true
-   reasoning_effort = "high"
-   ```
-
-2. For built-in profiles (e.g. `nvidia-nim`) or any endpoint, via the `JCODE_OPENAI_EXTRA_BODY` environment variable (a JSON object string). It can live in the provider's env file (`~/.config/jcode/nvidia-nim.env`) next to the API key:
-
-   ```bash
-   JCODE_OPENAI_EXTRA_BODY={"chat_template_kwargs":{"thinking":true,"reasoning_effort":"high"}}
-   ```
-
-Keys from `extra_body` are merged last and override any jcode-generated body field with the same name (`JCODE_OPENAI_EXTRA_BODY` wins over the config `extra_body` on key collisions). Invalid values are logged and ignored rather than failing the request.
-
-The custom OpenAI-compatible provider reads overrides from environment variables or from an env file in jcode's app config directory. On macOS that is `~/Library/Application Support/jcode/`, so the default file is:
-
-```text
-~/Library/Application Support/jcode/openai-compatible.env
-```
-
-Example for a local or LAN vLLM server:
-
-```bash
-JCODE_OPENAI_COMPAT_API_BASE=http://192.168.1.50:8000/v1
-JCODE_OPENAI_COMPAT_DEFAULT_MODEL=Qwen/Qwen3-Coder-30B-A3B-Instruct
-# Optional if your server expects auth
-OPENAI_COMPAT_API_KEY=your-token-here
-```
-
-Notes:
-
-- `jcode login --provider openai-compatible` can create or update this for you.
-- Plain `http://` is accepted for `localhost` and private LAN IPs. Public remote HTTP is still rejected.
-- HTTPS endpoints work as usual.
-
-#### MCP config files
-
-MCP config is separate from `config.toml`.
-
-Primary config files:
-
-- `~/.jcode/mcp.json` for global MCP servers
-- `.jcode/mcp.json` for project-local MCP servers
-
-Claude Code compatibility:
-
-- `~/.claude.json` (Claude Code's user config): top-level `mcpServers`, plus per-project servers under `projects.<abs_path>.mcpServers` for the current directory
-- `.mcp.json` at the repo root (Claude Code's project config)
-- `.claude/mcp.json` (legacy fallback)
-
-Claude Code config is read live on every load rather than copied into jcode's
-global config. Additions, edits, and deletions therefore take effect without
-leaving a stale snapshot (and inline environment values are not duplicated).
-For migration from Codex CLI, jcode still performs a one-time import from
-`~/.codex/config.toml` into `~/.jcode/mcp.json` when the latter does not exist.
-That imported file is then jcode-owned; later Codex changes are not synced
-automatically. Imported environment values are copied too and may contain
-secrets.
-
-Both the canonical `mcpServers` key and jcode's historical `servers` key are accepted. jcode currently supports stdio (command-based) servers only; HTTP/SSE entries (`"type": "http"`/`"sse"`) are recognized and skipped with a log line.
-
-Example MCP config:
-
-```json
-{
-  "mcpServers": {
-    "filesystem": {
-      "command": "/path/to/mcp-server",
-      "args": ["--root", "/workspace"],
-      "env": {},
-      "shared": true
-    }
-  }
-}
-```
-
-For headless or SSH sessions, OAuth-style providers support `jcode login --provider <provider> --no-browser` (alias: `--headless`) so jcode prints the auth URL/QR and falls back to manual code or callback paste instead of trying to launch a local browser.
-
-For more scriptable remote flows, `claude`, `openai`, `gemini`, and `antigravity` also support a two-step pattern:
-
-```bash
-# Step 1: print a resumable auth URL
-jcode login --provider openai --print-auth-url --json
-
-# Step 2: complete later with the callback URL or auth code
-jcode login --provider openai --callback-url 'http://localhost:1455/auth/callback?...'
-jcode login --provider gemini --auth-code '...'
-```
-
-Additional scriptable cases:
-
-```bash
-# Copilot device flow: print URL + user code, then complete later
-jcode login --provider copilot --print-auth-url --json
-jcode login --provider copilot --complete
-```
-
-Pending scriptable login state is stored under `~/.jcode/pending-login/`, automatically expires, and stale entries are cleaned up when new scriptable logins start or resume.
-
-For the built-in OpenAI login flow, jcode opens a local callback on
-`http://localhost:1455/auth/callback` by default.
-
-<img width="2877" height="1762" alt="Screenshot from 2026-04-02 14-28-51" src="https://github.com/user-attachments/assets/530684c0-9d12-4363-aa0e-1b39a0d4e1be" />
-The above image is the first page of provider logins
-
-### Supported provider
-
-- **Native / first-party style providers:** `claude`, `openai`, `copilot`, `gemini`, `azure`, `alibaba-coding-plan`
-- **Aggregator / compatibility providers:** `openrouter`, `openai-compatible`
-- **Additional provider integrations:** `opencode`, `opencode-go`, `zai` / `kimi`, `302ai`, `baseten`, `cortecs`, `deepseek`, `firmware`, `huggingface`, `moonshotai`, `nebius`, `scaleway`, `stackit`, `groq`, `mistral`, `perplexity`, `togetherai`, `deepinfra`, `fireworks`, `minimax`, `lmstudio`, `ollama`, `chutes`, `cerebras`, `cursor`, `antigravity`, `google`
-
-Jcode also supports easy multi-account switching. Ran out of tokens on your first ChatGPT Pro subscription? /account and quickly switch to your second. 
-
----
-
-## Misc.
-
-The devil is in the details. There are many undocumented optimizations and niceties that jcode implements. Some examples: 
-
-Anthropic's Claude cache goes cold after 5 minutes. If you initiate Claude after these 5 minutes, you have a cache miss, potentially costing you lots of tokens. The ui warns you when the cache went cold, and notfies you if there was an unexpected cache miss. 
-
-Agent grep is a grep tool I made for the jcode agent. It adds file strucuture information (ie the list of functions, their displacement, etc) to the grep return, so that the agent can infer more of what the file doesn without actually reading the file. It also implements a harness-level integration that adaptively truncates returns based on what the agent has already seen. This saves on context a lot. 
-
-Inputs are by default interleaved with the working agent. It sends the input as soon as it safely can without breaking the KV cache. Submit with shift enter instead, and it will send a queue send, and wait for the agent to fully finish its turn before sending.
-
-Resume sessions from different harnesses. Claude code broke on you? Resume the session from jcode and continue where you left off. Session resume is supported for codex, claude code, opencode, and pi. 
-
-<img width="2877" height="1762" alt="Screenshot from 2026-04-11 16-28-52" src="https://github.com/user-attachments/assets/c2b383cf-2531-4217-85ae-6a863354dc97" />
-image of /Resume for codex sessions
-
-
-Skills are not all loaded on startup. The conversation is embedded as a semantic vector, and will automatically inject a skill if there is an embedding hit similar to memories. The agent has a skill tool for you to manually activate a skill at anytime. You may also activate via slash commands. 
-
----
-
-## Other planned features
-
-Agents dont like to commit in dirty git state with active changes. Git was clearly not built for multi-agent workflows, and git worktrees is not a good solution. Given this, I believe that is an opporunity for a new git like primitive to be born. 
-
-Build speed improvements: An incremental debug cargo build with cache enabled takes about 1 minute on my machine. The goal is 5-20 seconds. Refactors and crates seams should be able to make this happen. 
-
----
-
-<div align="center">
-
-## Quick Start
-
-</div>
-
-```bash
-# Launch the TUI
-jcode
-
-# Run a single command non-interactively
-jcode run "say hello"
-
-# Resume a previous session by memorable name
-jcode --resume fox
-
-# Run as a persistent background server, then attach more clients
-jcode serve
-jcode connect
-
-# Inject externally transcribed text into the active TUI
-jcode transcript "run the test suite"
-```
-
-jcode supports interactive TUI use, non-interactive runs, and persistent server/client
-workflows.
-
----
-
-## Further Reading
-
-- [Ambient Mode / OpenClaw](docs/AMBIENT_MODE.md)
-- [Memory Architecture](docs/MEMORY_ARCHITECTURE.md)
-- [Swarm Architecture](docs/SWARM_ARCHITECTURE.md)
+- [Fork Maintenance Runbook](docs/FORK_WORKFLOW.md)
+- [Provider and OAuth reference](OAUTH.md)
 - [Server Architecture](docs/SERVER_ARCHITECTURE.md)
+- [Swarm Architecture](docs/SWARM_ARCHITECTURE.md)
+- [Memory Architecture](docs/MEMORY_ARCHITECTURE.md)
+- [Ambient Mode](docs/AMBIENT_MODE.md)
 - [Wrappers and Shell Integration](docs/WRAPPERS.md)
-- [Refactoring Notes](docs/REFACTORING.md)
-
----
-
-## Detailed Installation
-
-### Setup
-
-If you want another agent to set up jcode for you, give it this prompt:
-
-```text
-Set up jcode on this machine for me.
-
-1. Detect the operating system, available package managers, and shell environment, then install jcode using the best matching command below instead of referring me somewhere else:
-
-   - From source (this fork has no prebuilt releases or package-manager channel):
-     git clone https://github.com/indrajeetadityaroy9/jcode.git
-     cd jcode
-     cargo build --release
-     scripts/install_release.sh
-
-   - For local development / refactor work on Linux x86_64, prefer:
-     scripts/dev_cargo.sh build --release -p jcode --bin jcode
-     scripts/dev_cargo.sh --print-setup
-     scripts/install_release.sh
-
-2. Verify that `jcode` is on my `PATH`.
-3. Launch `jcode` once in a new terminal window/session to confirm it starts successfully.
-4. Before attempting any interactive login flow, assess which providers are already available non-interactively and prefer those first. Check existing local credentials, config files, CLI sessions, and environment variables such as:
-   - Claude: `~/.jcode/auth.json`, `~/.claude/.credentials.json`, `~/.local/share/opencode/auth.json`, `ANTHROPIC_API_KEY`
-   - OpenAI: `~/.jcode/openai-auth.json`, `~/.codex/auth.json`, `OPENAI_API_KEY`
-   - Gemini: `~/.jcode/gemini_oauth.json`, `~/.gemini/oauth_creds.json`
-   - GitHub Copilot: existing auth under `~/.config/github-copilot/`
-   - Azure OpenAI: `~/.config/jcode/azure-openai.env`, `AZURE_OPENAI_*`, or an existing `az login`
-   - OpenRouter: `OPENROUTER_API_KEY`
-   - Fireworks: `~/.config/jcode/fireworks.env`, `FIREWORKS_API_KEY`
-   - MiniMax: `~/.config/jcode/minimax.env`, `MINIMAX_API_KEY`
-   - NVIDIA NIM: `~/.config/jcode/nvidia-nim.env`, `NVIDIA_API_KEY`
-   - Alibaba Cloud Coding Plan: existing jcode config/env if present
-5. Prefer whichever provider is already configured and verify it with `jcode auth-test --all-configured` or a provider-specific auth test when appropriate.
-6. Only if no usable provider is already configured, guide me through the minimal manual step needed:
-   - Claude: `jcode login --provider claude`
-   - GitHub Copilot: `jcode login --provider copilot`
-   - OpenAI: `jcode login --provider openai`
-   - Gemini: `jcode login --provider gemini`
-   - Azure OpenAI: `jcode login --provider azure`
-   - Fireworks: `jcode login --provider fireworks`
-   - MiniMax: `jcode login --provider minimax`
-   - NVIDIA NIM: `jcode login --provider nvidia-nim`
-   - Alibaba Cloud Coding Plan: `jcode login --provider alibaba-coding-plan`
-   - OpenRouter: help me set `OPENROUTER_API_KEY`
-   - Anthropic direct API: help me set `ANTHROPIC_API_KEY`
-7. After setup, run a simple smoke test with `jcode run "say hello"` and confirm it works.
-8. Explain any manual step that still needs me, especially browser OAuth, device login, or API key entry.
-```
-
-This is intended to be a copy-paste bootstrap prompt for jcode itself or any other coding agent.
-
-### From Source
-
-This fork publishes no release binaries and is not in any package-manager
-channel, so building from source is the only install path:
-
-```bash
-git clone https://github.com/indrajeetadityaroy9/jcode.git
-cd jcode
-cargo build --release
-scripts/install_release.sh
-```
-
-For local development / refactor work on Linux x86_64, prefer:
-
-```bash
-scripts/dev_cargo.sh build --release -p jcode --bin jcode
-scripts/dev_cargo.sh --print-setup
-```
-
-That wrapper automatically uses `sccache` when available, prefers a fast
-working local linker setup (`clang + lld`) instead of assuming every machine's
-`mold` configuration is valid, and can print the active linker/cache setup via
-`--print-setup` so slow-path builds are easier to diagnose.
-
-Then symlink to your PATH:
-
-```bash
-scripts/install_release.sh
-```
-
-### Uninstall
-
-Removes installed binaries and the launcher but keeps your config, auth, and
-sessions so a clean reinstall picks up where you left off:
-
-```bash
-scripts/uninstall.sh --yes
-```
-
-For a full wipe of everything including config, auth, sessions, logs, and
-memory (useful for recovering from a broken install):
-
-```bash
-scripts/uninstall.sh --purge --yes
-```
-
-Add `--dry-run` to preview what would be removed without deleting anything.
-
-### Platform Support
-
-| Platform | Status |
-|---|---|
-| **macOS** Apple Silicon & Intel | The only supported platform |
-| Linux / Windows / Termux | Not supported — this fork deleted all non-macOS code paths (see [docs/FORK_WORKFLOW.md](docs/FORK_WORKFLOW.md) §1) |
-
-</div>
