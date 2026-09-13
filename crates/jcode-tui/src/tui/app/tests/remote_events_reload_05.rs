@@ -202,17 +202,177 @@ fn test_completion_gate_nudges_stop_after_budget_exhausted() {
             app.pending_queued_dispatch = false;
         }
 
-        // Budget exhausted: the gate must stop scheduling and disarm auto-poke
+        // Budget exhausted: the gate must stop scheduling for *this* state
         // instead of looping forever (observed live as one API call per ~5s).
         assert!(
             !app.schedule_auto_poke_followup_if_needed(),
             "exhausted gate must not schedule another nudge"
         );
-        assert!(!app.auto_poke_incomplete_todos);
+        // Auto-poke stays armed. Disarming it stopped the whole workflow: later
+        // batches of incomplete todos went unpoked for the rest of the session.
+        assert!(
+            app.auto_poke_incomplete_todos,
+            "a stalled gate must not disarm auto-poke for the session"
+        );
+        assert!(
+            app.todo_gate_stall_fingerprint.is_some(),
+            "the stalled state must be recorded so only it is skipped"
+        );
         assert!(!app.pending_queued_dispatch);
         assert!(app.queued_messages.is_empty());
         assert!(app.hidden_queued_system_messages.is_empty());
         assert_eq!(app.todo_completion_gate_attempts, 0);
+
+        // Re-checking the same stalled state stays idle rather than re-opening
+        // the gate with a fresh budget.
+        assert!(!app.schedule_auto_poke_followup_if_needed());
+
+        // New work is a new cycle: the gate must engage again.
+        crate::todo::save_todos(
+            &app.session.id,
+            &[crate::todo::TodoItem {
+                id: "todo-2".to_string(),
+                content: "Handle the follow-up".to_string(),
+                status: "pending".to_string(),
+                priority: "high".to_string(),
+                ..Default::default()
+            }],
+        )
+        .expect("save follow-up todo");
+        assert!(
+            app.schedule_auto_poke_followup_if_needed(),
+            "a stalled gate must not stop poking work that appears later"
+        );
+    });
+}
+
+/// A list whose items were all cancelled/deferred is a legitimate end state.
+/// It has no completed todo to carry a confidence, so demanding a confidence
+/// average for it is unsatisfiable: the gate used to nudge until its budget ran
+/// out and then gave up, costing five API turns and disarming auto-poke.
+#[test]
+fn all_cancelled_todos_finish_the_gate_without_nudging() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.auto_poke_incomplete_todos = true;
+        app.auto_poke_default_on = true;
+
+        crate::todo::save_todos(
+            &app.session.id,
+            &(1..=3)
+                .map(|index| crate::todo::TodoItem {
+                    id: format!("todo-{index}"),
+                    content: format!("[Deferred after planning] {index}. Ranked improvement"),
+                    status: "cancelled".to_string(),
+                    priority: "medium".to_string(),
+                    group: Some("Ranked improvement plan".to_string()),
+                    completion_confidence: Some(crate::todo::ConfidenceState::Speculative),
+                    ..Default::default()
+                })
+                .collect::<Vec<_>>(),
+        )
+        .expect("save cancelled todos");
+
+        assert!(
+            !app.schedule_auto_poke_followup_if_needed(),
+            "an all-cancelled list must not be nudged"
+        );
+        assert_eq!(
+            app.todo_completion_gate_attempts, 0,
+            "no gate budget should be spent on an unsatisfiable state"
+        );
+        assert!(app.queued_messages.is_empty());
+        assert!(app.auto_poke_incomplete_todos);
+        assert!(
+            !app.display_messages()
+                .iter()
+                .any(|m| m.content.contains("isn't holding up")),
+            "the give-up notice must not appear for a legitimately deferred list"
+        );
+    });
+}
+
+/// A repeated gate nudge used to be byte-identical every time, so the model had
+/// nothing new to act on and answered in prose until the budget ran out. Each
+/// attempt must name the unmet field, the state it has to reach, the actions
+/// that record it, and - on the last try - that reopening the item is the
+/// expected alternative to abandoning the check.
+#[test]
+fn gate_nudges_escalate_with_actionable_detail() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.auto_poke_incomplete_todos = true;
+        app.auto_poke_default_on = true;
+
+        crate::todo::save_todos(
+            &app.session.id,
+            &[crate::todo::TodoItem {
+                id: "todo-1".to_string(),
+                content: "Ship the fix".to_string(),
+                status: "completed".to_string(),
+                priority: "high".to_string(),
+                group: Some("release".to_string()),
+                completion_confidence: Some(crate::todo::ConfidenceState::Speculative),
+                ..Default::default()
+            }],
+        )
+        .expect("save weak completed todo");
+
+        // Ownership must pass so the *confidence* gate is the one under test;
+        // otherwise the ownership nudge fires first and these assertions would
+        // hold for the wrong path.
+        crate::todo::save_goals(
+            &app.session.id,
+            &[crate::todo::TodoGoal {
+                group: Some("release".to_string()),
+                delivery_state: Some(crate::todo::DeliveryState::WorkflowValidated),
+                autonomy: Some(crate::todo::Autonomy::NecessaryFollowthrough),
+                iteration_maturity: Some(crate::todo::IterationMaturity::OutcomeReached),
+                closed_feedback_loop: Some(crate::todo::FeedbackLoopState::from_legacy_score(100)),
+                feedback_loop: Some("run the release check".to_string()),
+                feedback_loop_relevance: Some(crate::todo::FeedbackLoopRelevance::Representative),
+                feedback_loop_coverage: Some(crate::todo::FeedbackLoopCoverage::MainPaths),
+                feedback_loop_traceability: Some(crate::todo::FeedbackLoopTraceability::Complete),
+                ..Default::default()
+            }],
+        )
+        .expect("save passing goal");
+
+        let mut nudges: Vec<String> = Vec::new();
+        for _ in 0..App::TODO_COMPLETION_GATE_MAX_ATTEMPTS {
+            assert!(app.schedule_auto_poke_followup_if_needed());
+            nudges.push(app.queued_messages[0].clone());
+            app.queued_messages.clear();
+            app.pending_queued_dispatch = false;
+        }
+
+        let first = &nudges[0];
+        assert!(
+            first.contains("Ship the fix") && first.contains("speculative"),
+            "the nudge must name the todo and its current state: {first}"
+        );
+        assert!(
+            first.contains("validated"),
+            "the nudge must name the state to reach: {first}"
+        );
+        assert!(
+            first.contains("pending/cancelled"),
+            "the nudge must offer reopening as an action: {first}"
+        );
+        assert!(
+            first.contains("1 of 5"),
+            "the nudge must state the remaining budget: {first}"
+        );
+
+        let last = nudges.last().expect("a final nudge");
+        assert!(
+            last.contains("5 of 5") && last.contains("final automated follow-up"),
+            "the last attempt must say it is final: {last}"
+        );
+        assert!(
+            nudges[0] != *last,
+            "attempts must differ; an identical resend gives the model nothing to act on"
+        );
     });
 }
 

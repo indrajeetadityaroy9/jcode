@@ -229,15 +229,30 @@ pub(super) async fn handle_comm_summary(
         let tool_calls = if let Ok(agent) = agent.try_lock() {
             agent.get_tool_call_summaries(limit)
         } else {
-            let _ = client_event_tx.send(ServerEvent::Error {
-                id,
-                message: format!(
-                    "Session '{}' is busy; try summary again shortly",
-                    target_session
-                ),
-                retry_after_secs: Some(1),
-            });
-            return;
+            // A worker holds its agent lock for the whole turn, so requiring it
+            // made a coordinator unable to summarise a worker exactly while it
+            // was working - the one moment the summary is worth asking for. The
+            // summary is a pure function of the transcript, so read the
+            // persisted one instead of refusing. Same persisted-fallback shape
+            // as `resolve_coordinator_spawn_identity`, and the same graceful
+            // degradation `status` already does below on this lock.
+            //
+            // The in-flight turn's calls may not be journaled yet, so this can
+            // trail the live agent by one turn; `status` reports what it is
+            // doing right now.
+            match crate::session::Session::load(&target_session) {
+                Ok(session) => crate::session::summarize_tool_calls(&session, limit),
+                Err(error) => {
+                    let _ = client_event_tx.send(ServerEvent::Error {
+                        id,
+                        message: format!(
+                            "Session '{target_session}' is mid-turn and its transcript could not be read: {error}"
+                        ),
+                        retry_after_secs: None,
+                    });
+                    return;
+                }
+            }
         };
         let _ = client_event_tx.send(ServerEvent::CommSummaryResponse {
             id,
@@ -368,15 +383,21 @@ pub(super) async fn handle_comm_read_context(
         let messages = if let Ok(agent) = agent.try_lock() {
             agent.get_history()
         } else {
-            let _ = client_event_tx.send(ServerEvent::Error {
-                id,
-                message: format!(
-                    "Session '{}' is busy; try read_context again shortly",
-                    target_session
-                ),
-                retry_after_secs: Some(1),
-            });
-            return;
+            // Same lock contention as `summary` above: read the persisted
+            // transcript rather than refusing the read outright.
+            match crate::session::Session::load(&target_session) {
+                Ok(session) => crate::agent::history_from_session(&session),
+                Err(error) => {
+                    let _ = client_event_tx.send(ServerEvent::Error {
+                        id,
+                        message: format!(
+                            "Session '{target_session}' is mid-turn and its transcript could not be read: {error}"
+                        ),
+                        retry_after_secs: None,
+                    });
+                    return;
+                }
+            }
         };
         let _ = client_event_tx.send(ServerEvent::CommContextHistory {
             id,

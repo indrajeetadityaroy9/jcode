@@ -650,22 +650,32 @@ impl Agent {
         ));
         Ok(previous_status)
     }
+}
 
+/// Conversation history for sync, derived purely from a persisted or live
+/// session. Free-standing so a caller holding only a loaded `Session` - a swarm
+/// read that lost the race for the agent lock - produces the identical shape
+/// without duplicating the mapping.
+pub(crate) fn history_from_session(session: &crate::session::Session) -> Vec<HistoryMessage> {
+    crate::session::render_messages(session)
+        .into_iter()
+        .map(|msg| HistoryMessage {
+            role: msg.role,
+            content: msg.content,
+            tool_calls: if msg.tool_calls.is_empty() {
+                None
+            } else {
+                Some(msg.tool_calls)
+            },
+            tool_data: msg.tool_data,
+        })
+        .collect()
+}
+
+impl Agent {
     /// Get conversation history for sync
     pub fn get_history(&self) -> Vec<HistoryMessage> {
-        crate::session::render_messages(&self.session)
-            .into_iter()
-            .map(|msg| HistoryMessage {
-                role: msg.role,
-                content: msg.content,
-                tool_calls: if msg.tool_calls.is_empty() {
-                    None
-                } else {
-                    Some(msg.tool_calls)
-                },
-                tool_data: msg.tool_data,
-            })
-            .collect()
+        history_from_session(&self.session)
     }
 
     pub fn get_history_and_rendered_images(

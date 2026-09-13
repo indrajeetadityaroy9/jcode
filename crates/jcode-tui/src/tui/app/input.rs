@@ -1574,6 +1574,19 @@ impl App {
                 return true;
             }
             let goals = crate::todo::load_goals(&todo_session_id).unwrap_or_default();
+            // A gate that already exhausted its budget on exactly this state
+            // must not re-open: nudging again cannot move it. Auto-poke stays
+            // armed, so the next distinct state gets a fresh budget.
+            let gate_fingerprint = serde_json::to_string(&(&todos, &goals))
+                .unwrap_or_else(|_| format!("{}:{}", todos.len(), goals.len()));
+            if self.todo_gate_stall_fingerprint.as_deref() == Some(gate_fingerprint.as_str()) {
+                crate::logging::info(&format!(
+                    "AUTO_POKE_DECISION action=idle reason=gate_stalled todos={}",
+                    todos.len()
+                ));
+                return false;
+            }
+            self.todo_gate_stall_fingerprint = None;
             let ownership_needs_followup =
                 !crate::todo::completed_groups_have_sufficient_delivery(&todos, &goals);
             let gate_budget_left =
@@ -1584,10 +1597,14 @@ impl App {
                 self.push_display_message(DisplayMessage::system(
                     "🔍 Checking end-to-end ownership before finishing...",
                 ));
-                self.queued_messages
-                    .push(crate::todo::build_todo_ownership_continuation_message(
-                        &todos, &goals,
-                    ));
+                let mut ownership =
+                    crate::todo::build_todo_ownership_continuation_message(&todos, &goals);
+                ownership.push_str(&super::commands::build_todo_gate_escalation_suffix(
+                    &todos,
+                    self.todo_completion_gate_attempts,
+                    Self::TODO_COMPLETION_GATE_MAX_ATTEMPTS,
+                ));
+                self.queued_messages.push(ownership);
                 self.pending_queued_dispatch = true;
                 return true;
             }
@@ -1610,7 +1627,12 @@ impl App {
                 self.push_display_message(DisplayMessage::system(notice));
                 // User-role content: reminder-only turns read as empty user
                 // messages and models answer instead of re-validating.
-                let summary = super::commands::build_todo_confidence_summary_message(&todos);
+                let mut summary = super::commands::build_todo_confidence_summary_message(&todos);
+                summary.push_str(&super::commands::build_todo_gate_escalation_suffix(
+                    &todos,
+                    self.todo_completion_gate_attempts,
+                    Self::TODO_COMPLETION_GATE_MAX_ATTEMPTS,
+                ));
                 self.queued_messages.push(summary);
                 self.pending_queued_dispatch = true;
                 return true;
@@ -1623,16 +1645,23 @@ impl App {
                 // The gate keeps failing but the model is no longer making
                 // progress on it. Nudging again would loop forever, burning an
                 // API call per turn (observed live: an unattended session
-                // resent the same continuation every ~5s). Stop the cycle and
-                // surface the stall instead.
+                // resent the same continuation every ~5s). Stall *this* state
+                // and surface it.
+                //
+                // Auto-poke itself stays armed. Disarming it here stopped the
+                // whole workflow: every later batch of incomplete todos went
+                // unpoked for the rest of the session, even though the stall
+                // said nothing about that new work. The fingerprint scopes the
+                // give-up to the state that actually stalled.
                 crate::logging::warn(&format!(
-                    "Todo completion gate exhausted after {} attempts; stopping auto-poke to avoid an infinite continuation loop",
+                    "Todo completion gate exhausted after {} attempts; stalling this todo state to avoid an infinite continuation loop (auto-poke stays armed for new work)",
                     self.todo_completion_gate_attempts
                 ));
                 self.push_display_message(DisplayMessage::system(
-                    "⚠️ We nudged the agent several times but its validation still isn't holding up. We stopped poking; review the remaining todos yourself.",
+                    "⚠️ We nudged the agent several times but its validation still isn't holding up. We stopped poking this list; review the remaining todos yourself.",
                 ));
-                self.auto_poke_incomplete_todos = false;
+                self.todo_gate_stall_fingerprint = Some(gate_fingerprint);
+                self.auto_poke_incomplete_todos = self.auto_poke_default_on;
                 self.todo_confidence_spike_challenged = false;
                 self.todo_completion_gate_attempts = 0;
                 self.todo_gate_digest_delivered = false;

@@ -37,6 +37,9 @@ jcode transcript "run the tests"   # inject text into the active TUI
 --all-configured` reports what is already usable without prompting. `/account`
 switches between accounts of the same provider.
 
+Browser-based OpenAI login completes on a local callback at
+`http://localhost:1455/auth/callback`.
+
 Credential resolution order, OAuth details, and per-provider environment
 variables are documented in [OAUTH.md](OAUTH.md).
 

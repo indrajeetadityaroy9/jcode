@@ -12,6 +12,7 @@ mod status;
 mod streaming;
 mod tools;
 mod turn_execution;
+pub(crate) use turn_execution::history_from_session;
 mod turn_loops;
 mod turn_streaming_mpsc;
 mod utils;

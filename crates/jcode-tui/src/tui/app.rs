@@ -925,6 +925,12 @@ pub struct App {
     /// list must not trigger another automatic turn: the agent may be parked on
     /// a worker, wake, or human decision, and repeated pokes cannot help.
     last_auto_poke_fingerprint: Option<String>,
+    /// Todo+goal state that exhausted the completion gate. The gate stops
+    /// nudging while the state still matches, but auto-poke stays armed: a
+    /// later, different todo state is new work and gets a fresh gate budget.
+    /// Disarming the feature outright instead killed poking for the rest of the
+    /// session, the same failure mode the no-todos branch guards against.
+    todo_gate_stall_fingerprint: Option<String>,
     /// Set when the current turn ended with a provider guardrail/refusal stop
     /// (ServerEvent::ProviderGuardrail). Consumed by the Done handler to
     /// update `consecutive_guardrail_stops`.

@@ -113,6 +113,7 @@ pub(super) fn disable_auto_poke(app: &mut App) -> usize {
     app.todo_confidence_spike_challenged = false;
     app.todo_completion_gate_attempts = 0;
     app.last_auto_poke_fingerprint = None;
+    app.todo_gate_stall_fingerprint = None;
     app.todo_gate_digest_delivered = false;
     cleared
 }
@@ -245,6 +246,7 @@ pub(super) fn activate_auto_poke(app: &mut App) -> PokeActivation {
     app.todo_confidence_spike_challenged = false;
     app.todo_completion_gate_attempts = 0;
     app.last_auto_poke_fingerprint = None;
+    app.todo_gate_stall_fingerprint = None;
     // Re-arming starts a fresh review cycle, so the deferred quality digest is
     // eligible to be delivered again for the upcoming work.
     app.todo_gate_digest_delivered = false;
@@ -2488,6 +2490,61 @@ pub(super) fn build_todo_confidence_summary_message(todos: &[crate::todo::TodoIt
     }
 }
 
+/// Appended to a completion-gate continuation so every attempt carries new,
+/// actionable information.
+///
+/// The gate used to resend a byte-identical nudge on each attempt: the model
+/// learned nothing between tries, answered in prose, and the budget ran out
+/// while the harness called it a stall. Naming the unmet field, the state it
+/// has to reach, the action that records it, and the remaining budget turns a
+/// repeated poke into an escalation - including the honest option of reopening
+/// work that cannot be validated, which is strictly more useful than the
+/// harness quietly giving up.
+pub(super) fn build_todo_gate_escalation_suffix(
+    todos: &[crate::todo::TodoItem],
+    attempt: u8,
+    max_attempts: u8,
+) -> String {
+    let required = crate::todo::ConfidenceState::Validated.as_str();
+    let mut suffix = format!("\n\nAutomated follow-up {attempt} of {max_attempts}.");
+
+    let mut unmet: Vec<String> = Vec::new();
+    for todo in todos.iter().filter(|todo| todo.status == "completed") {
+        let label: String = todo.content.trim().chars().take(70).collect();
+        match todo.completion_confidence {
+            None => unmet.push(format!(
+                "- \"{label}\": completion_confidence is unset; it must reach \"{required}\"."
+            )),
+            Some(state) if !crate::todo::completion_confidence_passes(Some(state)) => {
+                unmet.push(format!(
+                    "- \"{label}\": completion_confidence is \"{}\"; it must reach \"{required}\".",
+                    state.as_str()
+                ))
+            }
+            Some(_) => {}
+        }
+    }
+    if !unmet.is_empty() {
+        suffix.push_str("\nUnmet on:\n");
+        suffix.push_str(&unmet.join("\n"));
+    }
+
+    suffix.push_str(
+        "\nTwo actions clear this, both through the todo tool: record the state together with the \
+         evidence that earns it (what you ran, what you observed), or move the item back to \
+         pending/cancelled and say what blocks validation. A prose reply changes nothing and this \
+         check will fire again.",
+    );
+    if attempt >= max_attempts {
+        suffix.push_str(
+            " This is the final automated follow-up: if the work cannot be validated now, reopen \
+             or cancel the item and record why, so the list reflects reality instead of being \
+             abandoned mid-check.",
+        );
+    }
+    suffix
+}
+
 pub(super) fn todo_confidence_summary(todos: &[crate::todo::TodoItem]) -> TodoConfidenceSummary {
     let completed: Vec<&crate::todo::TodoItem> = todos
         .iter()
@@ -2514,9 +2571,13 @@ pub(super) fn todo_confidence_summary(todos: &[crate::todo::TodoItem]) -> TodoCo
         .iter()
         .filter(|(_, state, _)| !crate::todo::completion_confidence_passes(Some(*state)))
         .count();
-    let completion_confidence_needs_validation = completion_average.is_none()
-        || missing_completion_confidence > 0
-        || below_threshold_count > 0;
+    // An empty `completed` set has nothing to validate: a list whose items were
+    // all cancelled/deferred is a legitimate end state, and demanding a
+    // confidence average for it is unsatisfiable - there is no completed todo to
+    // attach one to, so the gate would nudge until its budget ran out.
+    let completion_confidence_needs_validation = missing_completion_confidence > 0
+        || below_threshold_count > 0
+        || (!completed.is_empty() && completion_average.is_none());
     let confidence_spike_detected = !crate::todo::spike_completed_todos(todos).is_empty();
     let needs_more_work = completion_confidence_needs_validation || confidence_spike_detected;
 

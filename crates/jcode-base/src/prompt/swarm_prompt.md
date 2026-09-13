@@ -32,3 +32,14 @@ Structure guidance for spawned swarm agents:
 - Recursive spawning is reserved for a root running in `swarm-deep` mode. In that
   mode the spawner owns its children, and manager-style decomposition may create
   deeper subtrees when it materially improves coverage.
+
+Observing a worker that is still running:
+
+- `status` is the live view: it carries the worker's current state, detail, and
+  streamed output tail, so it answers "what is it doing right now".
+- `summary` and `read_context` report the worker's *recorded* transcript, which
+  is written per turn. A worker mid-turn can therefore summarise as empty while
+  it is genuinely working - read that as "no turn recorded yet", never as "did
+  nothing", and check `status` before concluding anything about progress.
+- A worker's own completion report is the authoritative account of its work.
+  Wait for it rather than reconstructing the result from a transcript read.

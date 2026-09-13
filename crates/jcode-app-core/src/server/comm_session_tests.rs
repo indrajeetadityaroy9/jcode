@@ -1177,3 +1177,4 @@ async fn spawn_admission_lock_serializes_per_swarm_only() {
 }
 
 include!("comm_session_tests/spawn_route.rs");
+include!("comm_session_tests/busy_reads.rs");
