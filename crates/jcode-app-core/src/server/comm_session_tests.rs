@@ -1175,3 +1175,5 @@ async fn spawn_admission_lock_serializes_per_swarm_only() {
             .is_ok()
     );
 }
+
+include!("comm_session_tests/spawn_route.rs");

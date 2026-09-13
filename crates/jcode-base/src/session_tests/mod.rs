@@ -36,3 +36,6 @@ impl Drop for EnvVarGuard {
 
 #[path = "cases.rs"]
 mod cases;
+
+#[path = "provider_key.rs"]
+mod provider_key;

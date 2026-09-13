@@ -315,6 +315,32 @@ impl MultiProvider {
         Some(key.to_string())
     }
 
+    /// Whether a process-global runtime env value may name this session's
+    /// provider, given the provider the caller was actually handed.
+    ///
+    /// `JCODE_RUNTIME_PROVIDER` / `JCODE_OPENROUTER_CACHE_NAMESPACE` /
+    /// `JCODE_ACTIVE_PROVIDER` are process-wide and rewritten per activation, so
+    /// in a daemon holding many sessions one provider's runtime can name the
+    /// *next* session. Rejecting only a confident disagreement keeps every
+    /// legitimate use working: the OpenRouter slot multiplexes every
+    /// OpenAI-compatible profile, so a profile id there is authoritative; an
+    /// unclassifiable name or value is no evidence against the env.
+    pub(crate) fn runtime_env_key_matches_provider_name(
+        env_key: &str,
+        provider_name: &str,
+    ) -> bool {
+        let Some(name_key) = Self::session_provider_key_from_provider_name(provider_name) else {
+            return true;
+        };
+        if name_key == "openrouter" {
+            return true;
+        }
+        let Some(env_family) = Self::confident_provider_family(env_key) else {
+            return true;
+        };
+        env_family == name_key
+    }
+
     fn session_provider_key_matches_provider_name(provider_key: &str, provider_name: &str) -> bool {
         let provider_key = Self::canonical_session_provider_key(provider_key.trim());
         let Some(derived) = Self::session_provider_key_from_provider_name(provider_name)
@@ -338,6 +364,55 @@ impl MultiProvider {
             }
             other => provider_key == other,
         }
+    }
+
+    /// The first-party provider family a session `provider_key` names, when it
+    /// names one unambiguously.
+    ///
+    /// `None` for OpenAI-compatible profile ids, custom provider names, and
+    /// anything else that cannot be classified with confidence - those are
+    /// legitimately free to serve model ids this table knows nothing about.
+    fn confident_provider_family(provider_key: &str) -> Option<&'static str> {
+        let key = Self::canonical_session_provider_key(provider_key)
+            .trim()
+            .to_ascii_lowercase();
+        let base = key
+            .strip_suffix("-api-key")
+            .or_else(|| key.strip_suffix("-apikey"))
+            .or_else(|| key.strip_suffix("-api"))
+            .or_else(|| key.strip_suffix("-oauth"))
+            .unwrap_or(key.as_str());
+        jcode_provider_core::provider_key_from_hint(Some(base))
+    }
+
+    /// Whether a persisted session `provider_key` can actually serve `model`.
+    ///
+    /// A session's `provider_key` is stamped at client setup, before provider
+    /// selection settles, so it can name a provider that does not serve the
+    /// model the session ended up running - `gemini-api` beside
+    /// `claude-opus-5`, for example. Callers that copy a session's
+    /// model+provider_key pair somewhere else (swarm spawn inheritance) must
+    /// check the pair first, because an incoherent one points requests at an
+    /// endpoint that cannot answer for that model.
+    ///
+    /// Only a confident disagreement between two first-party families is
+    /// reported. Everything else - an unclassifiable key, an unclassifiable
+    /// model, or an `openrouter` guess, which `provider_for_model` returns for
+    /// any id merely containing `/` or `@` - returns `true`, because a
+    /// heuristic is not evidence enough to override an explicit key.
+    pub fn session_provider_key_serves_model(provider_key: &str, model: &str) -> bool {
+        let Some(key_family) = Self::confident_provider_family(provider_key) else {
+            return true;
+        };
+        let Some(model_family) = crate::provider::provider_for_model(model.trim())
+            .and_then(|provider_name| {
+                jcode_provider_core::provider_key_from_hint(Some(provider_name))
+            })
+            .filter(|family| *family != "openrouter")
+        else {
+            return true;
+        };
+        key_family == model_family
     }
 
     pub fn model_switch_request_for_session_model(

@@ -9,12 +9,13 @@ pub fn is_listable_model_name(model: &str) -> bool {
         && !model_name_is_likely_non_chat(trimmed)
 }
 
-/// Heuristic to keep obviously non-chat models (embeddings, speech, image,
-/// rerankers, etc.) out of the chat model picker. OpenAI-compatible profiles
-/// (e.g. NVIDIA NIM, FPT, Chutes, Groq) expose their *entire*
-/// catalog, which otherwise floods the picker with hundreds of models that
-/// can't be used for chat. The match is conservative and token-boundary aware
-/// so it won't drop a legitimately named chat model.
+/// Heuristic to keep obviously non-chat models out of the chat model picker:
+/// embeddings, rerankers, speech (TTS/STT), image and video generation, music,
+/// realtime-audio dialog, and robotics. OpenAI-compatible profiles (e.g. NVIDIA
+/// NIM, FPT, Chutes, Groq) and Google's Gemini catalog expose their *entire*
+/// model list, which otherwise floods the picker with entries that can never
+/// answer a chat-completions request. The match is conservative and
+/// token-boundary aware so it won't drop a legitimately named chat model.
 pub fn model_name_is_likely_non_chat(model: &str) -> bool {
     let lower = model.to_ascii_lowercase();
     // Strip any provider/path prefix so "01-ai/yi-large" -> matches on the full
@@ -42,9 +43,14 @@ pub fn model_name_is_likely_non_chat(model: &str) -> bool {
         "outpaint",
         "nemoretriever",
         "riva-translate",
-        "gpt-audio",
+        "nano-banana",
         "style-transfer",
         "video-detector",
+        // Realtime bidirectional-audio families. Matched as substrings rather
+        // than a bare `live` token, which is overloaded: providers also use it
+        // to mean "from the live catalog" (e.g. `zen-live-only-model`).
+        "flash-live",
+        "live-translate",
     ];
     if SUBSTRING_MARKERS.iter().any(|m| lower.contains(m)) {
         return true;
@@ -76,6 +82,10 @@ pub fn model_name_is_likely_non_chat(model: &str) -> bool {
         "vila",
         "nvembed",
         "reward",
+        "veo",
+        "audio",
+        "robotics",
+        "aqa",
     ];
     if tokens.iter().any(|t| TOKEN_MARKERS.contains(t)) {
         // "vision" is sometimes part of a multimodal chat model, so only drop
@@ -257,6 +267,18 @@ mod listable_tests {
             "anthropic/claude-opus-4.8",
             "deepseek-chat",
             "kimi-k2",
+            // Gemini catalog: reasoning/pro/flash, research tools, and coding
+            // models stay listable.
+            "gemini-3.1-pro-preview-customtools",
+            "gemini-flash-lite-latest",
+            "deep-research-pro-preview-12-2025",
+            "gemini-2.5-computer-use-preview-10-2025",
+            "gemma-4-31b-it",
+            "antigravity-preview-05-2026",
+            // `live` is overloaded: providers use it for "from the live
+            // catalog", not only for realtime audio. Only the realtime-audio
+            // families are filtered, so this must stay listable.
+            "zen-live-only-model",
         ] {
             assert!(
                 is_listable_model_name(model),
@@ -301,6 +323,18 @@ mod listable_tests {
             "us.stability.stable-style-transfer-v1:0",
             "nvidia/nemotron-4-340b-reward",
             "nvidia/ai-synthetic-video-detector",
+            // Gemini catalog: generation and realtime modalities this harness
+            // cannot drive a turn with.
+            "veo-3.1-generate-preview",
+            "nano-banana-pro-preview",
+            "gemini-2.5-flash-preview-tts",
+            "gemini-3.1-flash-image",
+            "gemini-2.5-flash-native-audio-latest",
+            "gemini-3.1-flash-live-preview",
+            "gemini-3.5-live-translate-preview",
+            "gemini-3.5-transcribe",
+            "gemini-robotics-er-2-preview",
+            "aqa",
         ] {
             assert!(
                 model_name_is_likely_non_chat(model),

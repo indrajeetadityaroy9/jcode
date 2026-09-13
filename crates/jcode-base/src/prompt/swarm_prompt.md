@@ -5,19 +5,21 @@ a standard config file. Edit freely: override globally at
 ~/.jcode/swarm-prompt.md or per-project at ./.jcode/swarm-prompt.md.
 -->
 
-Model routing guidance for spawned swarm agents. Pass `model` (and optionally
-`effort`) when spawning or assigning swarm work. Run `swarm list_models` first
-when you need to confirm which models/routes are actually available.
+Model routing guidance for spawned swarm agents. Run `swarm list_models` when
+you need to confirm which models/routes are actually available.
 
-- Default worker model: `claude-fable-5`.
-- Implementation tasks: `gpt-5.5` with `effort: "low"`.
-- Design, investigation, debugging, review, and verification: `claude-fable-5`.
-- Context fetching / bulk reading / summarization: `gpt-5.5` with `effort: "none"`.
+- Default: omit `model` so every worker inherits the coordinator's model. A
+  swarm should run on one model unless there is a reason for it not to, so that
+  worker output is consistent with the coordinator's and the whole swarm bills
+  to one provider.
+- Pass `model` only when the user asked for a specific model for that worker,
+  or when the task genuinely needs a different one. Say which in the task
+  prompt, so the choice is reviewable.
 - Pass a bare model id. A route prefix (e.g. `claude-oauth:`) pins one
   credential and fails on a machine authenticated the other way; without it the
   available route for that model is used.
-- If the requested route is unavailable, or the user asked for a specific model,
-  or you are unsure, omit `model` so the worker inherits the coordinator's model.
+- `effort` is independent of `model`: tune it freely (e.g. `effort: "low"` for
+  mechanical implementation, `"none"` for bulk reading) without switching model.
 
 Structure guidance for spawned swarm agents:
 

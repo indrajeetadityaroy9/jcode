@@ -294,15 +294,51 @@ fn is_inherit_sentinel(model: &str) -> bool {
     trimmed.eq_ignore_ascii_case("inherit") || trimmed.eq_ignore_ascii_case("coordinator")
 }
 
-/// Selection that inherits the coordinator's model, provider key, and route.
+/// The `provider_key`/route a spawn should carry for `model`, inheriting the
+/// coordinator's only when that route can actually serve the model.
+///
+/// A coordinator's `provider_key` is stamped before provider selection settles,
+/// so a live session can hold an incoherent pair (`gemini-api` beside
+/// `claude-opus-5`). Copying that into a spawn points the worker's first
+/// request at an endpoint that cannot serve the model and it dies immediately,
+/// so on disagreement derive from the model and drop `route_api_method` too.
+fn inherited_route_for_model(
+    model: Option<&str>,
+    coordinator: &CoordinatorSpawnIdentity,
+) -> (Option<String>, Option<String>) {
+    let derived = (provider_key_for_spawn_model(model, None), None);
+    let nonblank = |value: &str| !value.trim().is_empty();
+    let (Some(provider_key), Some(model)) = (
+        coordinator.provider_key.as_deref().filter(|k| nonblank(k)),
+        model.filter(|m| nonblank(m)),
+    ) else {
+        return derived;
+    };
+
+    if crate::provider::MultiProvider::session_provider_key_serves_model(provider_key, model) {
+        return (
+            Some(provider_key.to_string()),
+            coordinator.route_api_method.clone(),
+        );
+    }
+
+    crate::logging::warn(&format!(
+        "Swarm spawn: coordinator provider_key '{provider_key}' cannot serve model '{model}'; \
+         deriving the spawn route from the model instead of inheriting it (derived={:?})",
+        derived.0
+    ));
+    derived
+}
+
+/// Selection that inherits the coordinator's model and, when coherent with it,
+/// the coordinator's provider key and route.
 fn inherit_coordinator_selection(coordinator: &CoordinatorSpawnIdentity) -> SwarmSpawnSelection {
+    let (provider_key, route_api_method) =
+        inherited_route_for_model(coordinator.model.as_deref(), coordinator);
     SwarmSpawnSelection {
         model: coordinator.model.clone(),
-        provider_key: coordinator
-            .provider_key
-            .clone()
-            .or_else(|| provider_key_for_spawn_model(coordinator.model.as_deref(), None)),
-        route_api_method: coordinator.route_api_method.clone(),
+        provider_key,
+        route_api_method,
     }
 }
 
@@ -322,15 +358,14 @@ fn selection_for_concrete_model(
 
     // A concrete model only inherits the coordinator's provider_key/route
     // when it targets the same model; otherwise the route would point at
-    // the wrong provider/auth mode.
+    // the wrong provider/auth mode. Even then the pair must be coherent -
+    // see `inherited_route_for_model`.
     if coordinator.model.as_deref() == Some(model.as_str()) {
+        let (provider_key, route_api_method) = inherited_route_for_model(Some(&model), coordinator);
         SwarmSpawnSelection {
-            model: Some(model.clone()),
-            provider_key: coordinator
-                .provider_key
-                .clone()
-                .or_else(|| provider_key_for_spawn_model(Some(&model), None)),
-            route_api_method: coordinator.route_api_method.clone(),
+            model: Some(model),
+            provider_key,
+            route_api_method,
         }
     } else {
         SwarmSpawnSelection {

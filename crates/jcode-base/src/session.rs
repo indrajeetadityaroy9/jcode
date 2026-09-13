@@ -266,25 +266,40 @@ fn default_is_test_session() -> bool {
     env_flag_enabled("JCODE_TEST_SESSION")
 }
 
+/// The `provider_key` to stamp on a session served by `provider_name`.
+///
+/// The runtime env vars below are process-global and rewritten per activation,
+/// so they are only trusted when they do not contradict the provider actually
+/// handed in: in a daemon holding many sessions, one provider's activation
+/// otherwise renames every session created afterwards. An autodetected
+/// OpenAI-compatible profile used to leave `gemini-api` on Claude sessions this
+/// way, which made their persisted route unusable on resume and on spawn.
 pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
     let normalized_name = provider_name.trim().to_ascii_lowercase();
+    let usable = |key: &str| {
+        crate::provider::MultiProvider::runtime_env_key_matches_provider_name(key, provider_name)
+    };
+
     if let Ok(runtime_provider) = std::env::var("JCODE_RUNTIME_PROVIDER") {
         let runtime_provider = runtime_provider.trim().to_ascii_lowercase();
-        if !runtime_provider.is_empty() && runtime_provider != "openai-compatible" {
+        if !runtime_provider.is_empty()
+            && runtime_provider != "openai-compatible"
+            && usable(&runtime_provider)
+        {
             return Some(runtime_provider);
         }
     }
 
     if let Ok(namespace) = std::env::var("JCODE_OPENROUTER_CACHE_NAMESPACE") {
         let namespace = namespace.trim().to_ascii_lowercase();
-        if !namespace.is_empty() {
+        if !namespace.is_empty() && usable(&namespace) {
             return Some(namespace);
         }
     }
 
     if let Ok(active) = std::env::var("JCODE_ACTIVE_PROVIDER") {
         let active = active.trim().to_ascii_lowercase();
-        if !active.is_empty() {
+        if !active.is_empty() && usable(&active) {
             return Some(active);
         }
     }
