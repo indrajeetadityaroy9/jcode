@@ -192,9 +192,10 @@ pub fn metered_pricing_for_source(source_key: &str, model: &str) -> Option<Route
     metered_pricing_for_source_with_tier(source_key, model, None)
 }
 
-/// Like [`metered_pricing_for_source`] but honoring the active service tier
-/// (`/fast on` priority tier, OpenAI flex) which changes per-token rates on
-/// the dual-auth providers' premium models.
+/// Like [`metered_pricing_for_source`] but honoring the active service tier,
+/// which changes per-token rates on OpenAI's premium models. The tier comes
+/// from `provider.openai_service_tier` / `JCODE_OPENAI_SERVICE_TIER` (e.g.
+/// `flex`); Anthropic is never sent a tier, so its rates never vary.
 pub fn metered_pricing_for_source_with_tier(
     source_key: &str,
     model: &str,
@@ -202,7 +203,7 @@ pub fn metered_pricing_for_source_with_tier(
 ) -> Option<RouteCheapnessEstimate> {
     // 1. Curated static tables.
     let static_estimate = match source_key {
-        "claude:api-key" => core_pricing::anthropic_api_pricing_with_tier(model, service_tier),
+        "claude:api-key" => core_pricing::anthropic_api_pricing(model),
         "openai:api-key" => core_pricing::openai_api_pricing_with_tier(model, service_tier),
         _ => None,
     };

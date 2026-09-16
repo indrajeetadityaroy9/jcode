@@ -40,8 +40,8 @@ use super::comm_sync::{
 use super::provider_control::{
     handle_cycle_model, handle_notify_auth_changed, handle_refresh_models,
     handle_set_compaction_mode, handle_set_model, handle_set_reasoning_effort, handle_set_route,
-    handle_set_service_tier, handle_set_transport, handle_switch_anthropic_account,
-    handle_switch_openai_account, try_available_models_updated_event,
+    handle_set_transport, handle_switch_anthropic_account, handle_switch_openai_account,
+    try_available_models_updated_event,
 };
 use super::{
     AwaitMembersRuntime, ClientConnectionInfo, ClientDebugState, FileTouchService,
@@ -1792,10 +1792,6 @@ pub(super) async fn handle_client(
                 } else {
                     handle_set_reasoning_effort(id, effort, &agent, &client_event_tx).await;
                 }
-            }
-
-            Request::SetServiceTier { id, service_tier } => {
-                handle_set_service_tier(id, service_tier, &agent, &client_event_tx).await;
             }
 
             Request::SetTransport { id, transport } => {

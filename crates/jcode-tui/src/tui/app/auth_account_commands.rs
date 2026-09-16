@@ -240,13 +240,6 @@ fn parse_account_command(trimmed: &str) -> Option<Result<AccountCommand, String>
                 }
                 AccountCommand::SetOpenAiEffort(normalize_clearish_value(value))
             }
-            "fast" if provider.id == "openai" => match value.to_ascii_lowercase().as_str() {
-                "on" => AccountCommand::SetOpenAiFast(true),
-                "off" => AccountCommand::SetOpenAiFast(false),
-                _ => {
-                    return Some(Err("Usage: /account openai fast <on|off>".to_string()));
-                }
-            },
             "premium" if provider.id == "copilot" => {
                 if value.is_empty() {
                     return Some(Err(
@@ -404,7 +397,6 @@ pub(crate) fn execute_account_command_local(app: &mut App, command: AccountComma
         AccountCommand::SetOpenAiEffort(value) => {
             save_openai_effort_setting_local(app, value.as_deref())
         }
-        AccountCommand::SetOpenAiFast(enabled) => save_openai_fast_setting_local(app, enabled),
         AccountCommand::SetCopilotPremium(mode) => {
             save_copilot_premium_setting(app, mode.as_deref())
         }
@@ -538,12 +530,6 @@ pub(crate) async fn execute_account_command_remote(
             if let Some(value) = value.as_deref() {
                 remote.set_reasoning_effort(value).await?;
             }
-        }
-        AccountCommand::SetOpenAiFast(enabled) => {
-            save_openai_fast_setting_local(app, enabled);
-            remote
-                .set_service_tier(if enabled { "priority" } else { "off" })
-                .await?;
         }
         other => execute_account_command_local(app, other),
     }
@@ -723,29 +709,6 @@ fn save_openai_effort_setting_local(app: &mut App, value: Option<&str>) {
         }
         Err(err) => app.push_display_message(DisplayMessage::error(format!(
             "Failed to save OpenAI effort: {}",
-            err
-        ))),
-    }
-}
-
-pub(crate) fn save_openai_fast_setting_local(app: &mut App, enabled: bool) {
-    // Persist an explicit "off" instead of clearing the key. `None` serializes
-    // by removing `openai_service_tier` from config.toml entirely, which made
-    // "/fast default off" look like it never saved anything (issue #506). The
-    // OpenAI runtime already treats "off" as disabling the tier.
-    let value = if enabled { "priority" } else { "off" };
-    match crate::config::Config::set_openai_service_tier(Some(value)) {
-        Ok(()) => {
-            let _ = app.provider.set_service_tier(value);
-            let label = if enabled { "on" } else { "off" };
-            app.set_status_notice(format!("Fast mode: {}", label));
-            app.push_display_message(DisplayMessage::system(format!(
-                "Saved OpenAI fast mode: {}.",
-                label
-            )));
-        }
-        Err(err) => app.push_display_message(DisplayMessage::error(format!(
-            "Failed to save OpenAI fast mode: {}",
             err
         ))),
     }
@@ -962,20 +925,11 @@ fn render_provider_settings_markdown(app: &App, provider_id: &str) -> String {
                     .as_deref()
                     .unwrap_or("(provider default)")
             ));
-            lines.push(format!(
-                "  - Fast mode: {}",
-                if cfg.provider.openai_service_tier.as_deref() == Some("priority") {
-                    "on"
-                } else {
-                    "off"
-                }
-            ));
             lines.push("  - /account openai transport <auto|https|websocket>".to_string());
             lines.push(
                 "  - /account openai effort <none|minimal|low|medium|high|xhigh|max|clear>"
                     .to_string(),
             );
-            lines.push("  - /account openai fast <on|off>".to_string());
         }
         "copilot" => {
             lines.push("Settings".to_string());

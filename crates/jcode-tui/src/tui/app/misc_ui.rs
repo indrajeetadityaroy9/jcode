@@ -385,13 +385,12 @@ impl App {
     /// Resolve and cache per-model pricing for the active provider. Uses the
     /// unified resolver (curated static tables, then the OpenRouter caches,
     /// then the live models.dev catalog) so any metered provider gets real
-    /// per-model prices instead of the generic defaults. Honors the active
-    /// service tier (`/fast on` priority, OpenAI flex), which changes
-    /// per-token rates on premium models. Re-resolves when the model or tier
-    /// changes.
+    /// per-model prices instead of the generic defaults. Honors the configured
+    /// OpenAI service tier (`flex`/`priority`), which changes per-token rates
+    /// on premium models. Re-resolves when the model or tier changes.
     fn refresh_cached_pricing(&mut self, model: &str, is_anthropic: bool, is_openai: bool) {
         let service_tier = self.active_service_tier_for_pricing();
-        // Tier is part of the memo key so toggling `/fast on` re-prices.
+        // Tier is part of the memo key so a tier change re-prices.
         let price_key = match service_tier.as_deref() {
             Some(tier) => format!("{model}|{tier}"),
             None => model.to_string(),

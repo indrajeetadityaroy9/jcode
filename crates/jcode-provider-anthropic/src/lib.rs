@@ -556,8 +556,6 @@ pub struct ApiRequest {
     pub output_config: Option<ApiOutputConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub service_tier: Option<String>,
     pub stream: bool,
 }
 

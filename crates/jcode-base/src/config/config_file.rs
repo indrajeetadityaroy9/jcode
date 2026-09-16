@@ -150,18 +150,6 @@ impl Config {
         Ok(())
     }
 
-    /// Update the persisted OpenAI service tier preference.
-    pub fn set_openai_service_tier(value: Option<&str>) -> anyhow::Result<()> {
-        let mut cfg = Self::load();
-        cfg.provider.openai_service_tier = value.map(|s| s.to_string());
-        cfg.save()?;
-        crate::logging::info(&format!(
-            "Saved openai_service_tier to config: {}",
-            value.unwrap_or("(none)")
-        ));
-        Ok(())
-    }
-
     /// Update the persisted default alignment preference.
     pub fn set_display_centered(centered: bool) -> anyhow::Result<()> {
         let mut cfg = Self::load();

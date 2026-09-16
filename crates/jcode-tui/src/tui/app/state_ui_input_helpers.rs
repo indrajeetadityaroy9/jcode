@@ -535,21 +535,6 @@ impl App {
             );
         }
 
-        if prefix.starts_with("/fast ") {
-            let modes = [
-                "on",
-                "off",
-                "status",
-                "default on",
-                "default off",
-                "default status",
-            ];
-            return self.rank_suggestions(
-                input,
-                modes.iter().map(|m| (format!("/fast {}", m), *m)).collect(),
-            );
-        }
-
         if prefix.starts_with("/transport ") {
             let transports = ["auto", "https", "websocket"];
             return self.rank_suggestions(
@@ -1199,7 +1184,6 @@ impl App {
                 | "/model"
                 | "/agents"
                 | "/effort"
-                | "/fast"
                 | "/transport"
                 | "/login"
                 | "/auth"

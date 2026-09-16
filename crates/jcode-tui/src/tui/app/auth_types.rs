@@ -109,7 +109,6 @@ pub(crate) enum AccountCommand {
     SetDefaultModel(Option<String>),
     SetOpenAiTransport(Option<String>),
     SetOpenAiEffort(Option<String>),
-    SetOpenAiFast(bool),
     SetCopilotPremium(Option<String>),
     SetOpenAiCompatApiBase(Option<String>),
     SetOpenAiCompatApiKeyName(Option<String>),

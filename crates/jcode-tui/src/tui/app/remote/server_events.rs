@@ -2333,34 +2333,6 @@ pub(in crate::tui::app) fn handle_server_event(
             }
             false
         }
-        ServerEvent::ServiceTierChanged {
-            service_tier,
-            error,
-            ..
-        } => {
-            if let Some(err) = error {
-                app.push_display_message(DisplayMessage::error(format!(
-                    "Failed to set fast mode: {}",
-                    err
-                )));
-            } else {
-                app.remote_service_tier = service_tier.clone();
-                let enabled = service_tier.as_deref() == Some("priority");
-                let label = service_tier
-                    .as_deref()
-                    .map(app_mod::service_tier_display_label)
-                    .unwrap_or("Standard");
-                let applies_next_request = app.is_processing;
-                app.push_display_message(DisplayMessage::system(
-                    app_mod::fast_mode_success_message(enabled, label, applies_next_request),
-                ));
-                app.set_status_notice(app_mod::fast_mode_status_notice(
-                    enabled,
-                    applies_next_request,
-                ));
-            }
-            false
-        }
         ServerEvent::TransportChanged {
             transport, error, ..
         } => {

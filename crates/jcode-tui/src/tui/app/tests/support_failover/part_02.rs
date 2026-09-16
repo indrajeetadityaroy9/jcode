@@ -30,46 +30,6 @@ fn test_cancel_pending_provider_failover_clears_countdown() {
 }
 
 #[derive(Clone)]
-struct FastMockProvider {
-    service_tier: StdArc<StdMutex<Option<String>>>,
-}
-
-#[async_trait::async_trait]
-impl Provider for FastMockProvider {
-    async fn complete(
-        &self,
-        _messages: &[Message],
-        _tools: &[crate::message::ToolDefinition],
-        _system: &str,
-        _resume_session_id: Option<&str>,
-    ) -> Result<crate::provider::EventStream> {
-        unimplemented!("FastMockProvider")
-    }
-
-    fn name(&self) -> &str {
-        "mock"
-    }
-
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
-
-    fn service_tier(&self) -> Option<String> {
-        self.service_tier.lock().unwrap().clone()
-    }
-
-    fn set_service_tier(&self, service_tier: &str) -> anyhow::Result<()> {
-        let normalized = match service_tier.trim().to_ascii_lowercase().as_str() {
-            "priority" | "fast" => Some("priority".to_string()),
-            "off" | "default" | "auto" | "none" => None,
-            other => anyhow::bail!("unsupported service tier {other}"),
-        };
-        *self.service_tier.lock().unwrap() = normalized;
-        Ok(())
-    }
-}
-
-#[derive(Clone)]
 struct SwitchableMockProvider {
     active_provider: StdArc<StdMutex<String>>,
 }
@@ -517,18 +477,6 @@ fn failover_error_message(prompt: &crate::provider::ProviderFailoverPrompt) -> S
         "[jcode-provider-failover]{}\nignored",
         serde_json::to_string(prompt).expect("serialize failover prompt")
     )
-}
-
-fn create_fast_test_app() -> App {
-    let provider: Arc<dyn Provider> = Arc::new(FastMockProvider {
-        service_tier: StdArc::new(StdMutex::new(None)),
-    });
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let registry = rt.block_on(crate::tool::Registry::new(provider.clone()));
-    let mut app = App::new_for_test_harness(provider, registry);
-    app.queue_mode = false;
-    app.diff_mode = crate::config::DiffDisplayMode::Inline;
-    app
 }
 
 fn create_gemini_test_app() -> App {

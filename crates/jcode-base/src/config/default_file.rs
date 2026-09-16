@@ -315,10 +315,10 @@ openai_reasoning_effort = "low"
 # anthropic_reasoning_effort = "medium"
 # OpenAI transport mode (auto|websocket|https)
 # openai_transport = "auto"
-# OpenAI service tier override (priority|flex|off)
-# Defaults to `priority` to match Codex /fast behavior for OpenAI OAuth
-# (higher speed, higher usage). Set to "off" (or "standard") to disable.
-openai_service_tier = "priority"
+# OpenAI service tier override (flex|priority|off). Commented out: the
+# provider default (standard) applies unless you opt in. `flex` trades latency
+# for lower per-token rates; `priority` does the reverse.
+# openai_service_tier = "flex"
 # Preserve provider-native reasoning/thinking for future-turn context when supported.
 # Applies to OpenRouter, Anthropic, and OpenAI native reasoning replay. Display is separate.
 preserve_reasoning_context = true

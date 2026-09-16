@@ -1,35 +1,4 @@
 #[test]
-fn test_handle_server_event_service_tier_changed_mentions_next_request_when_streaming() {
-    let mut app = create_test_app();
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _guard = rt.enter();
-    let mut remote = crate::tui::backend::RemoteConnection::dummy();
-
-    app.is_processing = true;
-
-    app.handle_server_event(
-        crate::protocol::ServerEvent::ServiceTierChanged {
-            id: 7,
-            service_tier: Some("priority".to_string()),
-            error: None,
-        },
-        &mut remote,
-    );
-
-    assert_eq!(app.remote_service_tier, Some("priority".to_string()));
-    assert_eq!(
-        app.status_notice(),
-        Some("Fast: on (next request)".to_string())
-    );
-
-    let last = app.display_messages().last().expect("missing response");
-    assert_eq!(
-        last.content,
-        "✓ Fast mode on (Fast)\nApplies to the next request/turn. The current in-flight request keeps its existing tier."
-    );
-}
-
-#[test]
 fn test_reload_handoff_active_when_server_reload_flag_set() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("create temp dir");

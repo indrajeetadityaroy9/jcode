@@ -482,65 +482,6 @@ pub(super) fn effort_bar(index: usize, total: usize) -> String {
     bar
 }
 
-pub(super) fn service_tier_display_label(service_tier: &str) -> &str {
-    match service_tier {
-        "priority" | "fast" => "Fast",
-        "flex" => "Flex",
-        // Explicit disable values persisted by "/fast default off" (issue
-        // #506) and accepted by the OpenAI runtime.
-        "off" | "default" | "auto" | "none" => "Standard",
-        other => other,
-    }
-}
-
-pub(super) fn fast_mode_success_message(
-    enabled: bool,
-    label: &str,
-    applies_next_request: bool,
-) -> String {
-    let status = if enabled { "on" } else { "off" };
-    if applies_next_request {
-        format!(
-            "✓ Fast mode {} ({})\nApplies to the next request/turn. The current in-flight request keeps its existing tier.",
-            status, label
-        )
-    } else {
-        format!("✓ Fast mode {} ({})", status, label)
-    }
-}
-
-pub(super) fn fast_mode_status_notice(enabled: bool, applies_next_request: bool) -> String {
-    let status = if enabled { "on" } else { "off" };
-    if applies_next_request {
-        format!("Fast: {} (next request)", status)
-    } else {
-        format!("Fast: {}", status)
-    }
-}
-
-pub(super) fn fast_mode_overview_message(
-    enabled: bool,
-    current_label: &str,
-    default_enabled: bool,
-    default_label: &str,
-) -> String {
-    format!(
-        "Fast mode is {}.\nCurrent tier: {}\nSaved default: {} ({})\nUse /fast on, /fast off, or /fast default on|off.",
-        if enabled { "on" } else { "off" },
-        current_label,
-        if default_enabled { "on" } else { "off" },
-        default_label
-    )
-}
-
-pub(super) fn fast_mode_default_message(default_enabled: bool, default_label: &str) -> String {
-    format!(
-        "Saved default fast mode is {}.\nDefault tier: {}\nUse /fast default on or /fast default off.",
-        if default_enabled { "on" } else { "off" },
-        default_label
-    )
-}
-
 pub(super) fn mask_email(email: &str) -> String {
     let trimmed = email.trim();
     let Some((local, domain)) = trimmed.split_once('@') else {

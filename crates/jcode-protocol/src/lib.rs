@@ -591,7 +591,6 @@ impl Request {
             Request::SetSubagentModel { id, .. } => *id,
             Request::RunSubagent { id, .. } => *id,
             Request::SetReasoningEffort { id, .. } => *id,
-            Request::SetServiceTier { id, .. } => *id,
             Request::SetTransport { id, .. } => *id,
             Request::SetFeature { id, .. } => *id,
             Request::SetCompactionMode { id, .. } => *id,

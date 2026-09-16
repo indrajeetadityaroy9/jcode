@@ -662,16 +662,6 @@ impl RemoteConnection {
         self.send_request(request).await
     }
 
-    /// Set service tier on the server (for OpenAI models)
-    pub async fn set_service_tier(&mut self, service_tier: &str) -> Result<()> {
-        let request = Request::SetServiceTier {
-            id: self.next_request_id,
-            service_tier: service_tier.to_string(),
-        };
-        self.next_request_id += 1;
-        self.send_request(request).await
-    }
-
     /// Set connection transport on the server (for OpenAI models)
     pub async fn set_transport(&mut self, transport: &str) -> Result<()> {
         let request = Request::SetTransport {

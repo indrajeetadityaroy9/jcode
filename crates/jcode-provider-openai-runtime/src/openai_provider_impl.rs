@@ -957,20 +957,6 @@ impl Provider for OpenAIProvider {
             .then_some(self.native_compaction_threshold_tokens)
     }
 
-    fn set_service_tier(&self, service_tier: &str) -> Result<()> {
-        let normalized = Self::normalize_service_tier(service_tier)?;
-        let mut guard = self
-            .service_tier
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        *guard = normalized;
-        Ok(())
-    }
-
-    fn available_service_tiers(&self) -> Vec<&'static str> {
-        vec!["priority", "flex"]
-    }
-
     fn transport(&self) -> Option<String> {
         self.transport_mode
             .try_read()

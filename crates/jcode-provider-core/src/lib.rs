@@ -279,21 +279,12 @@ pub trait Provider: Send + Sync {
         vec![]
     }
 
-    /// Get the active service tier override (if applicable).
+    /// Get the active service tier, when the provider was configured with one
+    /// (`provider.openai_service_tier` / `JCODE_OPENAI_SERVICE_TIER`, e.g.
+    /// OpenAI's `flex`). Read-only: the tier is a startup configuration
+    /// choice, not a runtime toggle.
     fn service_tier(&self) -> Option<String> {
         None
-    }
-
-    /// Set the active service tier override (if applicable).
-    fn set_service_tier(&self, _service_tier: &str) -> Result<()> {
-        Err(anyhow::anyhow!(
-            "This provider does not support service tier switching"
-        ))
-    }
-
-    /// Get ordered list of available service tiers.
-    fn available_service_tiers(&self) -> Vec<&'static str> {
-        vec![]
     }
 
     /// Get the native compaction mode for the active provider, if any.

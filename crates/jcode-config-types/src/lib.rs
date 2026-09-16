@@ -1108,7 +1108,7 @@ impl Default for ProviderConfig {
             openai_reasoning_effort: Some("low".to_string()),
             anthropic_reasoning_effort: None,
             openai_transport: None,
-            openai_service_tier: Some("priority".to_string()),
+            openai_service_tier: None,
             openai_native_compaction_mode: "auto".to_string(),
             openai_native_compaction_threshold_tokens: 200_000,
             preserve_reasoning_context: true,

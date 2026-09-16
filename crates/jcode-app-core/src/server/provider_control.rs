@@ -730,45 +730,6 @@ fn spawn_deferred_reasoning_effort_change(
     });
 }
 
-pub(super) async fn handle_set_service_tier(
-    id: u64,
-    service_tier: String,
-    agent: &Arc<Mutex<Agent>>,
-    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
-) {
-    let apply = move |provider: Arc<dyn Provider>,
-                      client_event_tx: &mpsc::UnboundedSender<ServerEvent>| {
-        match provider.set_service_tier(&service_tier) {
-            Ok(()) => {
-                let _ = client_event_tx.send(ServerEvent::ServiceTierChanged {
-                    id,
-                    service_tier: provider.service_tier(),
-                    error: None,
-                });
-            }
-            Err(e) => {
-                let _ = client_event_tx.send(ServerEvent::ServiceTierChanged {
-                    id,
-                    service_tier: None,
-                    error: Some(e.to_string()),
-                });
-            }
-        }
-    };
-
-    if let Ok(agent_guard) = agent.try_lock() {
-        apply(agent_guard.provider_handle(), client_event_tx);
-    } else {
-        spawn_deferred_provider_operation(
-            "set_service_tier",
-            id,
-            Arc::clone(agent),
-            client_event_tx.clone(),
-            apply,
-        );
-    }
-}
-
 pub(super) async fn handle_set_transport(
     id: u64,
     transport: String,
@@ -1329,11 +1290,6 @@ mod tests {
             self.service_tier.lock().expect("service lock").clone()
         }
 
-        fn set_service_tier(&self, service_tier: &str) -> anyhow::Result<()> {
-            *self.service_tier.lock().expect("service lock") = Some(service_tier.to_string());
-            Ok(())
-        }
-
         fn transport(&self) -> Option<String> {
             self.transport.lock().expect("transport lock").clone()
         }
@@ -1446,37 +1402,4 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn set_service_tier_does_not_wait_for_busy_agent_lock() {
-        let _guard = crate::storage::lock_test_env();
-        let _runtime = IsolatedRuntimeDir::new();
-
-        let (provider, agent, client_event_tx, mut client_event_rx) =
-            test_agent("session_busy_set_service_tier").await;
-        let busy_agent_lock = agent.lock().await;
-
-        timeout(
-            Duration::from_millis(100),
-            handle_set_service_tier(9, "priority".to_string(), &agent, &client_event_tx),
-        )
-        .await
-        .expect("service tier changes must not wait for a busy agent mutex");
-
-        assert!(client_event_rx.try_recv().is_err());
-
-        drop(busy_agent_lock);
-
-        let event = timeout(Duration::from_secs(1), client_event_rx.recv())
-            .await
-            .expect("deferred service tier change should finish after agent is idle");
-        assert_eq!(provider.service_tier().as_deref(), Some("priority"));
-        assert!(matches!(
-            event,
-            Some(ServerEvent::ServiceTierChanged {
-                id: 9,
-                service_tier: Some(service_tier),
-                error: None,
-            }) if service_tier == "priority"
-        ));
-    }
 }

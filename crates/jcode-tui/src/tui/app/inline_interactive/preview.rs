@@ -81,8 +81,8 @@ impl App {
                     filter: String::new(),
                 }),
                 "settings" | "login" | "add" | "switch" | "use" | "remove" | "rm" | "delete"
-                | "transport" | "effort" | "fast" | "premium" | "api-base" | "api-key-name"
-                | "env-file" | "default-model" => None,
+                | "transport" | "effort" | "premium" | "api-base" | "api-key-name" | "env-file"
+                | "default-model" => None,
                 _ => Some(InlinePickerPreviewRequest::Account {
                     provider_filter: Some(provider_filter),
                     filter: remainder.to_string(),

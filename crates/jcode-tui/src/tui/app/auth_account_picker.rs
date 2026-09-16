@@ -182,24 +182,6 @@ impl App {
                             status_notice: "Account: editing OpenAI effort...".to_string(),
                         },
                     ));
-                    items.push(AccountPickerItem::action(
-                        provider.id,
-                        provider.display_name,
-                        "Fast mode",
-                        if cfg.provider.openai_service_tier.as_deref() == Some("priority") {
-                            "on"
-                        } else {
-                            "off"
-                        },
-                        AccountPickerCommand::SubmitInput(format!(
-                            "/account openai fast {}",
-                            if cfg.provider.openai_service_tier.as_deref() == Some("priority") {
-                                "off"
-                            } else {
-                                "on"
-                            }
-                        )),
-                    ));
                 }
                 "openai-compatible" => {
                     let compat = crate::provider_catalog::resolve_openai_compatible_profile(

@@ -563,53 +563,16 @@ fn test_anthropic_max_alias_uses_strongest_real_effort() {
     );
 }
 
+/// Opus 4.8 is natively 1M-context, so the `[1m]` alias is redundant and a
+/// stale persisted value must be migrated to the canonical id rather than
+/// requested verbatim.
 #[test]
-fn test_anthropic_opus_48_fast_mode_service_tier_serializes_priority() {
+fn test_anthropic_stale_1m_alias_migrates_to_canonical_model() {
     let provider = AnthropicProvider::new();
-    provider.set_model("claude-opus-4-8").unwrap();
 
-    assert_eq!(provider.available_service_tiers(), vec!["off", "priority"]);
-    assert_eq!(provider.service_tier(), None);
-
-    provider.set_service_tier("priority").unwrap();
-    assert_eq!(provider.service_tier().as_deref(), Some("priority"));
-
-    let request = ApiRequest {
-        model: strip_1m_suffix(&provider.model()).to_string(),
-        max_tokens: 1024,
-        system: None,
-        messages: vec![],
-        tools: None,
-        metadata: None,
-        thinking: None,
-        output_config: None,
-        temperature: None,
-        service_tier: provider.current_service_tier_for_model(&provider.model()),
-        stream: true,
-    };
-    let value = serde_json::to_value(&request).unwrap();
-
-    assert_eq!(value["model"], "claude-opus-4-8");
-    assert_eq!(value["service_tier"], "auto");
-}
-
-#[test]
-fn test_anthropic_fast_mode_is_limited_to_opus_48() {
-    let provider = AnthropicProvider::new();
-    provider.set_model("claude-opus-4-6").unwrap();
-
-    assert!(provider.available_service_tiers().is_empty());
-    assert!(provider.set_service_tier("priority").is_err());
-    assert_eq!(provider.service_tier(), None);
-
-    // A stale `[1m]` alias for a native-1M model is migrated to canonical form.
     provider.set_model("claude-opus-4-8[1m]").unwrap();
-    assert_eq!(provider.model(), "claude-opus-4-8");
-    provider.set_service_tier("priority").unwrap();
-    assert_eq!(provider.service_tier().as_deref(), Some("priority"));
 
-    provider.set_service_tier("off").unwrap();
-    assert_eq!(provider.service_tier(), None);
+    assert_eq!(provider.model(), "claude-opus-4-8");
 }
 
 #[test]

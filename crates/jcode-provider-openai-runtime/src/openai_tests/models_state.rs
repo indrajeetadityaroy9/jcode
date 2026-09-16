@@ -264,44 +264,6 @@ async fn test_switching_to_https_clears_persistent_ws_state() {
     server.abort();
 }
 
-#[test]
-fn test_service_tier_can_be_changed_while_a_request_snapshot_is_held() {
-    let provider = Arc::new(OpenAIProvider::new(CodexCredentials {
-        access_token: "test".to_string(),
-        refresh_token: String::new(),
-        id_token: None,
-        account_id: None,
-        expires_at: None,
-    }));
-
-    let read_guard = provider
-        .service_tier
-        .read()
-        .expect("service tier read lock should be available");
-
-    let (tx, rx) = std::sync::mpsc::channel();
-    let provider_for_write = Arc::clone(&provider);
-    let handle = std::thread::spawn(move || {
-        let result = provider_for_write.set_service_tier("priority");
-        tx.send(result).expect("send result from setter thread");
-    });
-
-    std::thread::sleep(Duration::from_millis(20));
-    assert!(
-        rx.try_recv().is_err(),
-        "writer should wait for the in-flight snapshot to finish"
-    );
-
-    drop(read_guard);
-
-    rx.recv()
-        .expect("receive service tier setter result")
-        .expect("service tier update should succeed once read lock is released");
-    handle.join().expect("join setter thread");
-
-    assert_eq!(provider.service_tier(), Some("priority".to_string()));
-}
-
 /// The OpenAI catalog endpoint and the chat endpoint must be selected by the
 /// same authoritative discriminator: the loaded credential's *shape*
 /// (`is_chatgpt_mode`), not the requested credential mode or a token-string

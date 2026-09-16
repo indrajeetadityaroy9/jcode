@@ -73,10 +73,6 @@ pub(super) fn draw_help_overlay(frame: &mut Frame, area: Rect, scroll: usize, ap
         "Set effort (none|minimal|low|medium|high|xhigh|max|swarm|swarm-deep)",
     ));
     lines.push(help_entry(
-        "/fast [on|off|status|default ...]",
-        "Toggle fast mode",
-    ));
-    lines.push(help_entry(
         "/transport <mode>",
         "Set connection transport (auto|https|websocket)",
     ));

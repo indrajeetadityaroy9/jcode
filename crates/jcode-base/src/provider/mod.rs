@@ -2327,41 +2327,8 @@ impl Provider for MultiProvider {
 
     fn service_tier(&self) -> Option<String> {
         match self.active_provider() {
-            ActiveProvider::Claude if !self.use_claude_cli => {
-                self.anthropic_provider().and_then(|a| a.service_tier())
-            }
             ActiveProvider::OpenAI => self.openai_provider().and_then(|o| o.service_tier()),
             _ => None,
-        }
-    }
-
-    fn set_service_tier(&self, service_tier: &str) -> Result<()> {
-        match self.active_provider() {
-            ActiveProvider::Claude if !self.use_claude_cli => self
-                .anthropic_provider()
-                .ok_or_else(|| anyhow::anyhow!("Anthropic provider not available"))?
-                .set_service_tier(service_tier),
-            ActiveProvider::OpenAI => self
-                .openai_provider()
-                .ok_or_else(|| anyhow::anyhow!("OpenAI provider not available"))?
-                .set_service_tier(service_tier),
-            _ => Err(anyhow::anyhow!(
-                "Service tier switching is only supported for OpenAI models and Claude Opus 4.8"
-            )),
-        }
-    }
-
-    fn available_service_tiers(&self) -> Vec<&'static str> {
-        match self.active_provider() {
-            ActiveProvider::Claude if !self.use_claude_cli => self
-                .anthropic_provider()
-                .map(|a| a.available_service_tiers())
-                .unwrap_or_default(),
-            ActiveProvider::OpenAI => self
-                .openai_provider()
-                .map(|o| o.available_service_tiers())
-                .unwrap_or_default(),
-            _ => vec![],
         }
     }
 

@@ -268,10 +268,6 @@ pub enum Request {
         target_session_id: Option<String>,
     },
 
-    /// Set service tier for OpenAI models (priority|fast|flex|off)
-    #[serde(rename = "set_service_tier")]
-    SetServiceTier { id: u64, service_tier: String },
-
     /// Set connection transport for OpenAI models (auto|https|websocket)
     #[serde(rename = "set_transport")]
     SetTransport { id: u64, transport: String },
@@ -1188,16 +1184,6 @@ pub enum ServerEvent {
         id: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
         effort: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-    },
-
-    /// Service tier changed (response to set_service_tier)
-    #[serde(rename = "service_tier_changed")]
-    ServiceTierChanged {
-        id: u64,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        service_tier: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
