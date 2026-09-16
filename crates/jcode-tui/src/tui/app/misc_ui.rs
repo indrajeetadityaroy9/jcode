@@ -462,35 +462,6 @@ impl App {
         }
     }
 
-    pub(super) fn handle_help_key(&mut self, code: KeyCode) -> Result<()> {
-        let scroll = self.help_scroll.unwrap_or(0);
-        match code {
-            KeyCode::Esc | KeyCode::Char('q') => {
-                self.help_scroll = None;
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.help_scroll = Some(scroll.saturating_add(1));
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.help_scroll = Some(scroll.saturating_sub(1));
-            }
-            KeyCode::PageDown | KeyCode::Char(' ') => {
-                self.help_scroll = Some(scroll.saturating_add(20));
-            }
-            KeyCode::PageUp => {
-                self.help_scroll = Some(scroll.saturating_sub(20));
-            }
-            KeyCode::Home | KeyCode::Char('g') => {
-                self.help_scroll = Some(0);
-            }
-            KeyCode::End | KeyCode::Char('G') => {
-                self.help_scroll = Some(usize::MAX);
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
     pub(super) fn handle_model_status_key(&mut self, code: KeyCode) -> Result<()> {
         let scroll = self.model_status_scroll.unwrap_or(0);
         match code {

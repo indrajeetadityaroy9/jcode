@@ -127,7 +127,7 @@ fn slash_command_submit_retains_pending_images() {
 
     app.pending_images
         .push(("image/png".to_string(), "aGVsbG8=".to_string()));
-    app.input = "/help".to_string();
+    app.input = "/alignment".to_string();
     app.submit_input();
 
     // Slash commands are handled locally and must not consume attached images;
@@ -182,53 +182,6 @@ fn test_resize_redraw_is_debounced() {
     assert!(app.flush_pending_resize_redraw());
     assert!(!app.resize_redraw_pending);
     assert!(!app.flush_pending_resize_redraw());
-}
-
-#[test]
-fn test_help_topic_shows_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help compact".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/compact"));
-    assert!(msg.content.contains("background"));
-    assert!(msg.content.contains("/compact mode"));
-}
-
-#[test]
-fn test_help_topic_shows_provider_test_coverage_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help provider-test-coverage".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/provider-test-coverage"));
-    assert!(msg.content.contains("live verification evidence"));
-    assert!(msg.content.contains("readiness gaps"));
-}
-
-#[test]
-fn test_help_topic_shows_log_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help log".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/log mark [note]"));
-    assert!(msg.content.contains("JCODE_LOG_MARK"));
 }
 
 #[test]
@@ -440,68 +393,6 @@ fn session_picker_preview_wheel_uses_shared_scroll_momentum() {
 }
 
 #[test]
-fn test_help_topic_shows_btw_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help btw".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/btw <question>"));
-    assert!(msg.content.contains("Forks (splits) the session"));
-}
-
-#[test]
-fn test_help_topic_shows_fork_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help fork".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/fork <prompt>"));
-    assert!(msg.content.contains("Alias for /fork"));
-}
-
-#[test]
-fn test_help_topic_shows_git_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help git".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/git"));
-    assert!(msg.content.contains("git status --short --branch"));
-    assert!(msg.content.contains("/git status"));
-}
-
-#[test]
-fn test_help_topic_shows_commit_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help commit".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/commit"));
-    assert!(msg.content.contains("logical commits"));
-    assert!(msg.content.contains("preserve unrelated work"));
-}
-
-#[test]
 fn test_commit_command_starts_synthetic_user_turn() {
     let mut app = create_test_app();
     app.input = "/commit".to_string();
@@ -534,21 +425,6 @@ fn test_commit_push_command_starts_synthetic_user_turn() {
 }
 
 #[test]
-fn test_help_topic_shows_commit_push_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help commit-push".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/commit-push"));
-    assert!(msg.content.contains("push"));
-}
-
-#[test]
 fn test_triage_command_starts_synthetic_user_turn() {
     let mut app = create_test_app();
     app.input = "/triage".to_string();
@@ -569,37 +445,6 @@ fn test_triage_command_includes_focus_in_prompt() {
     let prompt = crate::tui::app::commands::build_triage_prompt(" only crash reports");
     assert!(prompt.contains("Triage the open GitHub issues"));
     assert!(prompt.contains("Additional focus from the user: only crash reports"));
-}
-
-#[test]
-fn test_help_topic_shows_catchup_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help catchup".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/catchup"));
-    assert!(msg.content.contains("side panel"));
-    assert!(msg.content.contains("/catchup next"));
-}
-
-#[test]
-fn test_help_topic_shows_back_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help back".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/back"));
-    assert!(msg.content.contains("Catch Up"));
 }
 
 #[test]
@@ -720,54 +565,6 @@ fn test_maybe_show_catchup_after_history_adds_brief_page_and_marks_seen() {
             &persisted.status
         ));
     });
-}
-
-#[test]
-fn test_help_topic_shows_observe_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help observe".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/observe"));
-    assert!(msg.content.contains("latest tool call or tool result"));
-}
-
-#[test]
-fn test_help_topic_shows_splitview_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help splitview".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/splitview"));
-    assert!(
-        msg.content
-            .contains("mirrors the current chat in the side panel")
-    );
-}
-
-#[test]
-fn test_help_topic_shows_refactor_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help refactor".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/refactor [focus]"));
-    assert!(msg.content.contains("independent read-only subagent"));
 }
 
 #[test]

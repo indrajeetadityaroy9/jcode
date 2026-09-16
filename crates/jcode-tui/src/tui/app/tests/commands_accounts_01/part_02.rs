@@ -108,20 +108,6 @@ fn test_compact_notifications_invalid_usage_shows_error() {
 }
 
 #[test]
-fn test_help_topic_shows_fix_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help fix".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/fix"));
-}
-
-#[test]
 fn test_mask_email_censors_local_part() {
     assert_eq!(mask_email("jeremyh1@uw.edu"), "j***1@uw.edu");
 }

@@ -17,7 +17,7 @@ fn test_prompt_history_records_only_new_prompts_and_moves_repeats_to_front() {
 fn test_prompt_history_skips_slash_shell_and_empty_inputs() {
     let mut app = create_test_app();
 
-    app.record_prompt_history("/help");
+    app.record_prompt_history("/alignment");
     app.record_prompt_history("!ls -la");
     app.record_prompt_history("   ");
     app.record_prompt_history("");

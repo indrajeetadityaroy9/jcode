@@ -70,7 +70,6 @@ pub(crate) mod idle_animation_repaint;
 mod idle_heap_release;
 mod inline_interactive;
 mod input;
-mod input_help;
 mod local;
 mod misc_ui;
 mod model_context;
@@ -87,7 +86,6 @@ mod shortcut_hints;
 mod split_view;
 mod state_ui;
 mod state_ui_input_helpers;
-pub(crate) use state_ui_input_helpers::registered_command_entries;
 mod state_ui_maintenance;
 mod state_ui_messages;
 mod state_ui_runtime;
@@ -563,7 +561,6 @@ impl ImproveMode {
 pub(super) enum MouseScrollTarget {
     Chat,
     SidePane,
-    HelpOverlay,
     ModelStatusOverlay,
     /// The right-hand preview pane of the /resume session picker overlay.
     SessionPickerPreview,
@@ -1498,8 +1495,6 @@ pub struct App {
     /// When to show the overscroll status line: off, always on, or the elastic
     /// overscroll reveal (default). From `display.overscroll_status` config.
     overscroll_status_mode: crate::config::OverscrollStatusMode,
-    /// Scroll offset for changelog overlay (None = not visible)
-    help_scroll: Option<usize>,
     model_status_scroll: Option<usize>,
     model_status_content: String,
     /// Session picker overlay (None = not visible)

@@ -1658,7 +1658,7 @@ mod tests {
             composer_mode("! cargo test", true),
             ComposerMode::ShellRemote
         );
-        assert_eq!(composer_mode(" /help", false), ComposerMode::SlashCommand);
+        assert_eq!(composer_mode(" /alignment", false), ComposerMode::SlashCommand);
         assert_eq!(composer_mode("hello", false), ComposerMode::Chat);
     }
 

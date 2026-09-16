@@ -88,8 +88,8 @@ struct TestState {
     time_since_activity: Option<Duration>,
     remote_startup_phase_active: bool,
     inline_view_state: Option<crate::tui::InlineViewState>,
+    model_status: Option<(usize, String)>,
     inline_interactive_state: Option<crate::tui::InlineInteractiveState>,
-    help_scroll: Option<usize>,
     chat_native_scrollbar: bool,
     suggestions: Vec<(String, String)>,
     compacted_hidden_user_prompts: usize,
@@ -391,11 +391,10 @@ impl crate::tui::TuiState for TestState {
     fn inline_view_state(&self) -> Option<&crate::tui::InlineViewState> {
         self.inline_view_state.as_ref()
     }
-    fn help_scroll(&self) -> Option<usize> {
-        self.help_scroll
-    }
     fn model_status_overlay(&self) -> Option<(usize, &str)> {
-        None
+        self.model_status
+            .as_ref()
+            .map(|(scroll, content)| (*scroll, content.as_str()))
     }
     fn session_picker_overlay(&self) -> Option<&std::cell::RefCell<session_picker::SessionPicker>> {
         None

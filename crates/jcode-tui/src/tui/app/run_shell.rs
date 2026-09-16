@@ -1149,7 +1149,7 @@ mod tests {
     #[test]
     fn slash_command_palette_suspends_spinner_fast_path() {
         assert!(is_slash_command_input("/"));
-        assert!(is_slash_command_input("  /help"));
+        assert!(is_slash_command_input("  /alignment"));
         assert!(!is_slash_command_input("normal prompt"));
     }
 
@@ -1273,7 +1273,7 @@ mod tests {
     fn status_spinner_partial_does_not_overwrite_slash_palette_cell() {
         let area = Rect::new(0, 0, 12, 1);
         let mut buffer = Buffer::empty(area);
-        buffer.set_string(0, 0, "/help  show help", Style::default().fg(Color::Yellow));
+        buffer.set_string(0, 0, "/alignment  set align", Style::default().fg(Color::Yellow));
 
         assert!(
             !render_status_spinner_into_buffer(&buffer, area, "⠙"),

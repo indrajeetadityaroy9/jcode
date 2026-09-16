@@ -2744,22 +2744,6 @@ fn test_finish_turn_auto_poke_preserves_visible_turn_started() {
 }
 
 #[test]
-fn test_help_topic_shows_overnight_command_details() {
-    let mut app = create_test_app();
-    app.input = "/help overnight".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing help response");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("/overnight <hours>[h|m] [mission]"));
-    assert!(msg.content.contains("review HTML page"));
-    assert!(msg.content.contains("/overnight status"));
-}
-
-#[test]
 fn test_overnight_status_without_runs_is_handled() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();

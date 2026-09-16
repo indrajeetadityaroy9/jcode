@@ -872,27 +872,6 @@ pub(super) fn handle_cancel_command(app: &mut App, trimmed: &str) -> bool {
     true
 }
 
-pub(super) fn handle_help_command(app: &mut App, trimmed: &str) -> bool {
-    if let Some(topic) = trimmed.strip_prefix("/help ") {
-        if let Some(help) = app.command_help(topic) {
-            app.push_display_message(DisplayMessage::system(help));
-        } else {
-            app.push_display_message(DisplayMessage::error(format!(
-                "Unknown command '{}'. Use /help to list commands.",
-                topic.trim()
-            )));
-        }
-        return true;
-    }
-
-    if trimmed == "/help" {
-        app.help_scroll = Some(0);
-        return true;
-    }
-
-    false
-}
-
 /// `/keys` shows the keymap diagnostics: detected terminal, discovered terminal
 /// and macOS shortcuts, and any conflicts with jcode's own keybindings.
 /// `/keys refresh` forces a fresh scan of the machine (otherwise a cached
@@ -1666,7 +1645,6 @@ pub(super) fn handle_git_status_completed(app: &mut App, completed: GitStatusCom
 
 pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     if handle_subagent_model_command(app, trimmed)
-        || app.handle_hotkeys_command(trimmed)
         || app.handle_terminal_setup_command(trimmed)
         || handle_subagent_command(app, trimmed)
         || handle_observe_command(app, trimmed)
@@ -3234,8 +3212,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
                             role: "system".to_string(),
                             content: format!(
                                 "{}\n\n{}\n\
-                                The summary will be applied automatically when ready.\n\
-                                Use /help compact for details.",
+                                The summary will be applied automatically when ready.",
                                 status_msg,
                                 App::format_compaction_started_message("manual")
                             ),

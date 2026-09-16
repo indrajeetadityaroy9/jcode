@@ -1833,10 +1833,6 @@ impl crate::tui::TuiState for App {
         self.inline_view_state.as_ref()
     }
 
-    fn help_scroll(&self) -> Option<usize> {
-        self.help_scroll
-    }
-
     fn model_status_overlay(&self) -> Option<(usize, &str)> {
         self.model_status_scroll
             .map(|scroll| (scroll, self.model_status_content.as_str()))

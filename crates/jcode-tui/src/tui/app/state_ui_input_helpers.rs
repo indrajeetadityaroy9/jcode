@@ -1,14 +1,6 @@
 use super::*;
 use crate::tui::core;
 
-/// Every non-hidden slash command with its one-line description, in
-/// registration order. The `/help` overlay uses this to list commands its
-/// hand-written sections have not covered, so a newly registered command can
-/// never be invisible to users.
-pub(crate) fn registered_command_entries() -> impl Iterator<Item = (&'static str, &'static str)> {
-    super::command_spec::advertised().map(|spec| (spec.name, spec.summary))
-}
-
 impl App {
     /// Find word boundary going backward (for Ctrl+W, Alt+B)
     pub(super) fn find_word_boundary_back(&self) -> usize {
@@ -137,7 +129,7 @@ impl App {
 
         let mut seen = std::collections::HashSet::new();
         // Aliases are offered alongside their canonical name so typing one still
-        // autocompletes, while `/help` lists the canonical name only.
+        // autocompletes, while the palette lists the canonical name only.
         let mut commands: Vec<(String, &'static str)> = Vec::new();
         for spec in super::command_spec::advertised() {
             for name in std::iter::once(spec.name).chain(spec.aliases.iter().copied()) {
@@ -462,16 +454,6 @@ impl App {
 
         if prefix_trimmed == "/agents" {
             return vec![("/agents".into(), "Open agent model config picker")];
-        }
-
-        if prefix.starts_with("/help ") {
-            let base = "/help";
-            let topics = self
-                .command_candidates()
-                .into_iter()
-                .map(|(cmd, help)| (format!("{} {}", base, cmd.trim_start_matches('/')), help))
-                .collect();
-            return self.rank_suggestions(input, topics);
         }
 
         if prefix.starts_with("/colors ") {
@@ -1173,8 +1155,7 @@ impl App {
     pub(super) fn command_accepts_args(cmd: &str) -> bool {
         matches!(
             cmd.trim(),
-            "/help"
-                | "/btw"
+            "/btw"
                 | "/fork"
                 | "/git"
                 | "/transcript"
@@ -1227,15 +1208,15 @@ impl App {
 
 #[cfg(test)]
 mod registered_command_tests {
-    use super::*;
-
     /// Uniqueness and alias resolution are enforced in `command_spec`; this
     /// covers the surface built on top of it: aliases must reach autocomplete,
-    /// while `/help` lists canonical names only so one command is not shown
+    /// while the palette lists canonical names only so one command is not shown
     /// three times.
     #[test]
-    fn help_lists_canonical_names_only() {
-        let advertised: Vec<&str> = registered_command_entries().map(|(name, _)| name).collect();
+    fn palette_lists_canonical_names_only() {
+        let advertised: Vec<&str> = super::super::command_spec::advertised()
+            .map(|spec| spec.name)
+            .collect();
         assert!(advertised.contains(&"/initiatives"));
         for alias in ["/goals", "/goal", "/mission"] {
             assert!(

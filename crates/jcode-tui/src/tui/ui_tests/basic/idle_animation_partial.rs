@@ -324,9 +324,9 @@ fn a_full_screen_overlay_stops_the_decorative_animation_cadence() {
     );
 
     let overlays: Vec<(&str, TestState)> = vec![(
-        "help",
+        "model status",
         TestState {
-            help_scroll: Some(0),
+            model_status: Some((0, "# Model status\n\nrows".to_string())),
             ..idle_animation_state(1.0)
         },
     )];

@@ -321,35 +321,6 @@ fn test_handterm_native_scroll_client_roundtrips_over_socket() {
 }
 
 #[test]
-fn test_mouse_scroll_help_overlay_updates_help_scroll() {
-    let mut app = create_test_app();
-    app.help_scroll = Some(5);
-
-    let scroll_only = app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::ScrollDown,
-        column: 10,
-        row: 5,
-        modifiers: KeyModifiers::empty(),
-    });
-
-    assert!(
-        scroll_only,
-        "help overlay mouse wheel should be scroll-only"
-    );
-    assert_eq!(app.help_scroll, Some(8));
-
-    let scroll_only = app.handle_mouse_event(MouseEvent {
-        kind: MouseEventKind::ScrollUp,
-        column: 10,
-        row: 5,
-        modifiers: KeyModifiers::empty(),
-    });
-
-    assert!(scroll_only);
-    assert_eq!(app.help_scroll, Some(5));
-}
-
-#[test]
 fn test_mouse_scroll_over_unfocused_diagram_scrolls_chat_without_resizing_pane() {
     let _render_lock = scroll_render_test_lock();
     let (mut app, mut terminal) = create_scroll_test_app(120, 30, 0, 80);
@@ -955,27 +926,6 @@ fn test_transcript_command_suggestions_include_path_variant() {
 }
 
 #[test]
-fn test_help_topic_suggestions_are_contextual() {
-    let app = create_test_app();
-    let suggestions = app.get_suggestions_for("/help fi");
-    assert_eq!(
-        suggestions.first().map(|(cmd, _)| cmd.as_str()),
-        Some("/help fix")
-    );
-}
-
-#[test]
-fn test_help_topic_suggestions_include_catchup_topics() {
-    let app = create_test_app();
-
-    let suggestions = app.get_suggestions_for("/help cat");
-    assert!(suggestions.iter().any(|(cmd, _)| cmd == "/help catchup"));
-
-    let suggestions = app.get_suggestions_for("/help bac");
-    assert!(suggestions.iter().any(|(cmd, _)| cmd == "/help back"));
-}
-
-#[test]
 fn test_context_command_reports_session_context_snapshot() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
@@ -1280,7 +1230,7 @@ fn test_agents_command_suggestions_include_targets() {
 }
 
 #[test]
-fn test_swarm_prompt_command_is_discoverable_in_suggestions_and_help() {
+fn test_swarm_prompt_command_is_discoverable_in_suggestions() {
     let app = create_test_app();
     let suggestions = app.get_suggestions_for("/swarm-pro");
     assert!(
@@ -1288,13 +1238,6 @@ fn test_swarm_prompt_command_is_discoverable_in_suggestions_and_help() {
             .iter()
             .any(|(command, _)| command == "/swarm-prompt")
     );
-
-    let help = app
-        .command_help("swarm-prompt")
-        .expect("/swarm-prompt should have detailed help");
-    assert!(help.contains("/swarm-prompt"));
-    assert!(help.contains(".jcode/swarm-prompt.md"));
-    assert!(help.contains("Restart or reload Jcode"));
 }
 
 #[test]

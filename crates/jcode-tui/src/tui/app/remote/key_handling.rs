@@ -251,10 +251,6 @@ async fn handle_remote_key_internal(
         return Ok(());
     }
 
-    if app.help_scroll.is_some() {
-        return app.handle_help_key(code);
-    }
-
     if app.session_picker_overlay.is_some() {
         return app.handle_session_picker_key(code, modifiers);
     }
@@ -829,23 +825,6 @@ async fn handle_remote_key_internal(
                 // below need to know an alias exists.
                 let canonical = app_mod::command_spec::canonical_input(prepared.expanded.trim());
                 let trimmed = canonical.as_deref().unwrap_or(prepared.expanded.trim());
-
-                if let Some(topic) = trimmed.strip_prefix("/help ") {
-                    if let Some(help) = app.command_help(topic) {
-                        app.push_display_message(DisplayMessage::system(help));
-                    } else {
-                        app.push_display_message(DisplayMessage::error(format!(
-                            "Unknown command '{}'. Use /help to list commands.",
-                            topic.trim()
-                        )));
-                    }
-                    return Ok(());
-                }
-
-                if trimmed == "/help" {
-                    app.help_scroll = Some(0);
-                    return Ok(());
-                }
 
                 if handle_remote_rewind_command(app, remote, trimmed).await? {
                     return Ok(());

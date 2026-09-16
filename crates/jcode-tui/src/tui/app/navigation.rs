@@ -14,7 +14,6 @@ struct MouseScrollTraceState {
     diagram_x: i32,
     diagram_y: i32,
     diagram_zoom: u8,
-    help_scroll: Option<usize>,
 }
 
 impl MouseScrollTraceState {
@@ -30,13 +29,12 @@ impl MouseScrollTraceState {
             diagram_x: app.diagram_scroll_x,
             diagram_y: app.diagram_scroll_y,
             diagram_zoom: app.diagram_zoom,
-            help_scroll: app.help_scroll,
         }
     }
 
     fn summary(&self) -> String {
         format!(
-            "chat={} auto={} queue={} target={:?} diff={} diff_auto={} diagram_focus={} diagram=({},{} @ {}%) help={:?}",
+            "chat={} auto={} queue={} target={:?} diff={} diff_auto={} diagram_focus={} diagram=({},{} @ {}%)",
             self.chat_offset,
             self.auto_scroll_paused,
             self.mouse_queue,
@@ -47,7 +45,6 @@ impl MouseScrollTraceState {
             self.diagram_x,
             self.diagram_y,
             self.diagram_zoom,
-            self.help_scroll,
         )
     }
 }
@@ -877,17 +874,6 @@ impl App {
             MouseScrollTarget::SidePane => {
                 self.side_pane_scroll_by(if direction < 0 { -1 } else { 1 })
             }
-            MouseScrollTarget::HelpOverlay => {
-                let Some(current) = self.help_scroll else {
-                    return false;
-                };
-                self.help_scroll = Some(if direction < 0 {
-                    current.saturating_sub(1)
-                } else {
-                    current.saturating_add(1)
-                });
-                true
-            }
             MouseScrollTarget::ModelStatusOverlay => {
                 let Some(current) = self.model_status_scroll else {
                     return false;
@@ -1319,20 +1305,6 @@ impl App {
                 }
                 return scroll_only;
             }};
-        }
-
-        if self.help_scroll.is_some() {
-            match mouse.kind {
-                MouseEventKind::ScrollUp => {
-                    self.enqueue_mouse_scroll(MouseScrollTarget::HelpOverlay, -1);
-                    finish_mouse_event!(true, "help_overlay_scroll_up");
-                }
-                MouseEventKind::ScrollDown => {
-                    self.enqueue_mouse_scroll(MouseScrollTarget::HelpOverlay, 1);
-                    finish_mouse_event!(true, "help_overlay_scroll_down");
-                }
-                _ => finish_mouse_event!(false, "help_overlay_non_scroll"),
-            }
         }
 
         if self.model_status_scroll.is_some() {

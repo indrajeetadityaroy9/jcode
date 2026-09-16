@@ -209,9 +209,10 @@ fn terminal_setup_command_is_dispatched_and_reports_something_actionable() {
 fn terminal_setup_is_offered_in_the_command_palette() {
     // Discoverability matters: a user whose Shift+Enter submits needs to find
     // this without reading the source.
-    let (_, help) = crate::tui::app::registered_command_entries()
-        .find(|(name, _)| *name == "/terminal-setup")
-        .expect("/terminal-setup should be a public command");
+    let help = crate::tui::app::command_spec::advertised()
+        .find(|spec| spec.name == "/terminal-setup")
+        .expect("/terminal-setup should be a public command")
+        .summary;
     assert!(
         help.contains("Shift+Enter"),
         "help text should name the problem it solves, got: {help}"

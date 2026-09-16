@@ -46,42 +46,36 @@ fn test_image_placeholder_before_text_submits_as_user_turn_with_image() {
 fn test_image_placeholder_prefix_prevents_slash_command_routing() {
     let mut app = create_test_app();
     attach_test_image(&mut app);
-    let input = format!("{}/help", app.input());
+    let input = format!("{}/alignment", app.input());
     app.set_input_for_test(input);
 
     app.submit_input();
 
     // Input does not start with '/', so it is a normal user turn (with the
-    // image attached), not a /help invocation.
+    // image attached), not a command invocation.
     assert!(app.is_processing);
-    assert!(app.help_scroll.is_none(), "help must not open");
     assert!(app.pending_images.is_empty());
 }
 
 #[test]
 fn test_slash_command_with_trailing_image_placeholder_routes_as_command() {
     let mut app = create_test_app();
-    app.set_input_for_test("/help ");
+    app.set_input_for_test("/alignment ");
     attach_test_image(&mut app);
-    assert_eq!(app.input(), "/help [image 1]");
+    assert_eq!(app.input(), "/alignment [image 1]");
 
     app.submit_input();
 
-    // "/help [image 1]" is parsed as `/help <topic>` with the literal
-    // placeholder as topic, so it reports an unknown command and the
+    // "/alignment [image 1]" is parsed as the command with the literal
+    // placeholder as its argument, so it reports a usage error and the
     // pending image stays attached in the app (not sent, not dropped).
     assert!(!app.is_processing, "command routing must not start a turn");
     let last = app.display_messages().last().expect("display message");
     assert_eq!(last.role, "error");
-    assert!(
-        last.content.contains("Unknown command"),
-        "unexpected message: {}",
-        last.content
-    );
     assert_eq!(
         app.pending_images.len(),
         1,
-        "handled command leaves the pending image queued"
+        "a command must not consume the pending image"
     );
 }
 

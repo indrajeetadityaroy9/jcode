@@ -28,7 +28,6 @@ pub(super) fn dispatch_local_command(app: &mut App, trimmed: &str) -> bool {
 
 fn dispatch_canonical_command(app: &mut App, trimmed: &str) -> bool {
     super::commands::handle_cancel_command(app, trimmed)
-        || super::commands::handle_help_command(app, trimmed)
         || super::commands::handle_keys_command(app, trimmed)
         || super::commands::handle_ssh_command(app, trimmed)
         // `/test` and `/initiatives` are dispatched inside

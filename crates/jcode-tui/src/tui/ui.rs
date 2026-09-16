@@ -2568,18 +2568,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // natively in all terminal emulators.
     clear_area(frame, area);
 
-    if let Some(scroll) = app.help_scroll() {
-        overlays::draw_help_overlay(frame, area, scroll, app);
-        finalize_frame_metrics(
-            app,
-            total_start,
-            Duration::ZERO,
-            total_start.elapsed(),
-            None,
-        );
-        return;
-    }
-
     if let Some((scroll, content)) = app.model_status_overlay() {
         overlays::draw_model_status_overlay(frame, area, scroll, content);
         finalize_frame_metrics(

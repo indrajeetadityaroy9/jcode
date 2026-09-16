@@ -2468,11 +2468,6 @@ pub(super) fn handle_modal_key(
         return Ok(true);
     }
 
-    if app.help_scroll.is_some() {
-        app.handle_help_key(code)?;
-        return Ok(true);
-    }
-
     if app.model_status_scroll.is_some() {
         app.handle_model_status_key(code)?;
         return Ok(true);
