@@ -106,10 +106,17 @@ pub(super) async fn cleanup_client_connection(
         return Ok(());
     }
 
+    // This session is going away. A client-attached turn is owned by
+    // `processing_task` (aborted below), but the same session can also have a
+    // headless registration (server-initiated turn, swarm wake delivery) whose
+    // task nothing else holds. Abort it before reaching for the agent mutex: a
+    // turn wedged inside a tool holds that mutex for its whole duration, and
+    // aborting is what releases it in time for the graceful shutdown below.
+    crate::turn_cancel_registry::abort_headless_turn(client_session_id);
     {
         if let Some(agent_arc) = super::remove_session_entry(sessions, client_session_id).await {
             let lock_result =
-                tokio::time::timeout(std::time::Duration::from_secs(2), agent_arc.lock()).await;
+                tokio::time::timeout(super::AGENT_SHUTDOWN_LOCK_TIMEOUT, agent_arc.lock()).await;
 
             match lock_result {
                 Ok(mut agent) => {
@@ -254,6 +261,10 @@ pub(super) async fn cleanup_client_connection(
     if let Some(handle) = processing_task.take() {
         handle.abort();
     }
+    // Any headless registration for this session was aborted above, before the
+    // graceful-shutdown lock. Clear the entry in case the turn had already
+    // finished and left one behind.
+    crate::turn_cancel_registry::remove_headless_turn_abort(client_session_id);
 
     event_handle.abort();
     Ok(())

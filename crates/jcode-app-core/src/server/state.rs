@@ -64,6 +64,19 @@ pub(super) fn remove_background_tool_signal(session_id: &str) {
     }
 }
 
+/// How long a teardown path waits for a session's agent mutex before giving up
+/// on graceful shutdown (`mark_closed` plus final memory extraction).
+///
+/// A turn holds the mutex for its whole duration, so any teardown that races a
+/// busy turn needs a bounded wait rather than an immediate `try_lock`: the
+/// aborted turn releases the mutex only once it unwinds to its next await
+/// point. Shared by the swarm `stop` path, the idle-worker reaper,
+/// client-disconnect cleanup, and debug `destroy_session` so they agree on the
+/// budget instead of each picking a literal (or, as `destroy_session` did,
+/// blocking forever on an unbounded lock).
+pub(super) const AGENT_SHUTDOWN_LOCK_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(2);
+
 /// Record of a file access by an agent
 #[derive(Clone, Debug)]
 pub struct FileAccess {

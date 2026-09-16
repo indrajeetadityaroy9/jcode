@@ -92,27 +92,40 @@ pub(super) async fn maybe_handle_session_admin_command(
             return Err(anyhow::anyhow!("destroy_session: requires a session_id"));
         }
 
+        // Cancel any in-flight headless turn first: a worker wedged inside a
+        // tool holds the agent mutex for the turn's whole duration, so the
+        // unbounded lock below would otherwise hang this debug command forever.
+        crate::turn_cancel_registry::abort_headless_turn(target_id);
         let removed_agent = super::remove_session_entry(sessions, target_id).await;
         remove_session_interrupt_queue(soft_interrupt_queues, target_id).await;
         remove_background_tool_signal(target_id);
-        if let Some(ref agent_arc) = removed_agent {
-            let mut agent = agent_arc.lock().await;
-            agent.mark_closed();
-            let memory_enabled = agent.memory_enabled();
-            let transcript = if memory_enabled {
-                Some(agent.build_transcript_for_extraction())
-            } else {
-                None
-            };
-            let sid = target_id.to_string();
-            let working_dir = agent.working_dir().map(|dir| dir.to_string());
-            drop(agent);
-            if let Some(transcript) = transcript {
-                crate::memory_agent::trigger_final_extraction_with_dir(
-                    transcript,
-                    sid,
-                    working_dir,
-                );
+        if let Some(agent_arc) = &removed_agent {
+            match tokio::time::timeout(super::AGENT_SHUTDOWN_LOCK_TIMEOUT, agent_arc.lock()).await {
+                Ok(mut agent) => {
+                    agent.mark_closed();
+                    let memory_enabled = agent.memory_enabled();
+                    let transcript = if memory_enabled {
+                        Some(agent.build_transcript_for_extraction())
+                    } else {
+                        None
+                    };
+                    let sid = target_id.to_string();
+                    let working_dir = agent.working_dir().map(|dir| dir.to_string());
+                    drop(agent);
+                    if let Some(transcript) = transcript {
+                        crate::memory_agent::trigger_final_extraction_with_dir(
+                            transcript,
+                            sid,
+                            working_dir,
+                        );
+                    }
+                }
+                Err(_) => {
+                    crate::logging::warn(&format!(
+                        "destroy_session {target_id} timed out waiting for the agent lock after {}s; skipping graceful shutdown",
+                        super::AGENT_SHUTDOWN_LOCK_TIMEOUT.as_secs()
+                    ));
+                }
             }
         }
 

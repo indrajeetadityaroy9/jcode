@@ -772,7 +772,8 @@ fn spawn_assigned_task_run(
     swarm_event_tx: broadcast::Sender<SwarmEvent>,
 ) {
     let assignment_text = append_swarm_completion_report_instructions(&assignment_text);
-    tokio::spawn(async move {
+    let abort_session = target_session.clone();
+    let turn_task = tokio::spawn(async move {
         {
             let now_ms = now_unix_ms();
             let mut plans = swarm_plans.write().await;
@@ -1089,7 +1090,15 @@ fn spawn_assigned_task_run(
                 .await;
             }
         }
+        crate::turn_cancel_registry::release_headless_turn_abort(&target_session);
     });
+    // Assigned workers are headless: nothing else holds this task, so publish
+    // its abort handle so `stop` and the idle reaper can actually cancel a turn
+    // wedged inside a tool instead of leaking it until server exit.
+    crate::turn_cancel_registry::register_headless_turn_abort(
+        &abort_session,
+        turn_task.abort_handle(),
+    );
 }
 
 fn format_salvage_message(

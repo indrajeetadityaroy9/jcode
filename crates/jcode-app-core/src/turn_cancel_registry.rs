@@ -27,6 +27,7 @@ use jcode_agent_runtime::InterruptSignal;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
+use tokio::task::{AbortHandle, Id};
 
 static NEXT_TOKEN: AtomicU64 = AtomicU64::new(1);
 /// All interrupt signals registered for one session's in-flight turns.
@@ -111,11 +112,94 @@ pub fn rename_active_turns(old_session_id: &str, new_session_id: &str) {
         },
         Err(_) => 0,
     };
+    // Headless abort handles are keyed by session id too, and a headless turn
+    // can be renamed underneath itself the same way (resume/reattach), so the
+    // hard-cancel path must follow the rename or `stop` on the new id would
+    // find nothing to abort.
+    if let Ok(mut map) = HEADLESS_TURN_ABORTS.lock()
+        && let Some(entry) = map.remove(old_session_id)
+    {
+        map.insert(new_session_id.to_string(), entry);
+    }
     if moved > 0 {
         crate::logging::info(&format!(
             "TURN_CANCEL_RENAMED old_session={} new_session={} moved={}",
             old_session_id, new_session_id, moved
         ));
+    }
+}
+
+/// Process-global registry of *hard* abort handles for headless turns.
+///
+/// [`ACTIVE_TURNS`] above holds cooperative signals: firing one sets a flag the
+/// turn loop checks between steps. That is the right mechanism for a cancel
+/// during provider streaming, but it cannot reach a turn parked inside a tool
+/// — a tool blocked on a socket read never returns to a check point, so the
+/// flag is simply never observed.
+///
+/// Client-attached turns have a fallback for that case: the turn runs as
+/// `processing_task` in the connection loop and `cleanup_client_connection`
+/// aborts the task outright on teardown. Headless turns had none. Swarm worker
+/// spawns (`spawn_swarm_agent`, `spawn_assigned_task_run`) launch the turn with
+/// a detached `tokio::spawn` and drop the `JoinHandle`, so a worker wedged in a
+/// tool outlived `swarm stop` entirely: the member was removed and the
+/// concurrency slot freed, but the task kept running — holding the agent mutex
+/// (which made the stop path skip `mark_closed`) and whatever sockets the tool
+/// had open — until the whole server exited.
+///
+/// The handle has to be registered by the *spawner*: a task cannot obtain its
+/// own `AbortHandle`, which is why this cannot fold into
+/// [`register_active_turn`] (called from inside the turn). Entries are keyed by
+/// session id and carry the task id they belong to, so a finishing turn can
+/// deregister itself without erasing a successor's registration.
+static HEADLESS_TURN_ABORTS: LazyLock<Mutex<HashMap<String, (Id, AbortHandle)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Register (or replace) the abort handle for a session's headless turn.
+/// Call from the spawn site with the freshly spawned task's handle.
+pub fn register_headless_turn_abort(session_id: &str, handle: AbortHandle) {
+    if let Ok(mut map) = HEADLESS_TURN_ABORTS.lock() {
+        map.insert(session_id.to_string(), (handle.id(), handle));
+    }
+}
+
+/// Abort the session's headless turn, if one is registered. Returns whether a
+/// handle was found. The aborted task unwinds at its next await point, which is
+/// also what releases the agent mutex it holds for the turn's duration.
+pub fn abort_headless_turn(session_id: &str) -> bool {
+    let Ok(mut map) = HEADLESS_TURN_ABORTS.lock() else {
+        return false;
+    };
+    let Some((_, handle)) = map.remove(session_id) else {
+        return false;
+    };
+    handle.abort();
+    crate::logging::info(&format!(
+        "HEADLESS_TURN_ABORTED session={}",
+        session_id
+    ));
+    true
+}
+
+/// Drop the calling turn's registration now that it has finished, but only if
+/// it is still the registered one. A worker handed a second assignment
+/// registers a fresh handle; without the task-id check the first turn's cleanup
+/// would erase it and leave the live turn uncancellable again.
+pub fn release_headless_turn_abort(session_id: &str) {
+    let Some(current) = tokio::task::try_id() else {
+        return;
+    };
+    if let Ok(mut map) = HEADLESS_TURN_ABORTS.lock()
+        && map.get(session_id).is_some_and(|(owner, _)| *owner == current)
+    {
+        map.remove(session_id);
+    }
+}
+
+/// Drop a session's headless-turn registration without aborting it.
+pub fn remove_headless_turn_abort(session_id: &str) {
+    if let Ok(mut map) = HEADLESS_TURN_ABORTS.lock() {
+        map.remove(session_id);
     }
 }
 
@@ -305,6 +389,75 @@ mod tests {
         );
         assert!(registered[0].same_instance(&survivor_signal));
         assert!(active_turn_signals(old_id).is_empty());
+    }
+
+    /// The load-bearing contract of the headless abort registry: a turn parked
+    /// inside a tool cannot observe a cooperative cancel, so the teardown paths
+    /// must be able to kill the task outright — and killing it is what releases
+    /// the agent mutex the turn holds for its whole duration, which is what
+    /// lets `stop` run `mark_closed` instead of skipping graceful shutdown.
+    #[tokio::test]
+    async fn abort_headless_turn_kills_a_parked_turn_and_frees_its_lock() {
+        let session_id = "turn_cancel_registry_abort_parked";
+        let agent_lock = std::sync::Arc::new(tokio::sync::Mutex::new(()));
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel::<()>();
+
+        let task_lock = std::sync::Arc::clone(&agent_lock);
+        let turn = tokio::spawn(async move {
+            let _held = task_lock.lock().await;
+            let _ = started_tx.send(());
+            // Stands in for a tool blocked on a socket read: no await point
+            // ever returns, so no cooperative cancel flag is ever checked.
+            std::future::pending::<()>().await;
+        });
+        register_headless_turn_abort(session_id, turn.abort_handle());
+        started_rx.await.expect("turn should reach its parked state");
+        assert!(
+            agent_lock.try_lock().is_err(),
+            "a running turn holds the agent mutex"
+        );
+
+        assert!(abort_headless_turn(session_id));
+        assert!(
+            turn.await.expect_err("aborted turn must not complete").is_cancelled(),
+            "the parked turn must actually be cancelled"
+        );
+        assert!(
+            agent_lock.try_lock().is_ok(),
+            "aborting the turn must release the agent mutex for graceful shutdown"
+        );
+        assert!(
+            !abort_headless_turn(session_id),
+            "the registration must be consumed"
+        );
+    }
+
+    /// A worker handed a second assignment registers a fresh handle. The first
+    /// turn's self-deregistration must not erase it, or the live turn silently
+    /// becomes uncancellable again — the exact bug this registry exists to fix.
+    #[tokio::test]
+    async fn a_finished_turn_does_not_deregister_its_successor() {
+        let session_id = "turn_cancel_registry_release_successor";
+        let (proceed_tx, proceed_rx) = tokio::sync::oneshot::channel::<()>();
+
+        let first_session = session_id.to_string();
+        let first = tokio::spawn(async move {
+            let _ = proceed_rx.await;
+            release_headless_turn_abort(&first_session);
+        });
+        register_headless_turn_abort(session_id, first.abort_handle());
+
+        let second = tokio::spawn(async { std::future::pending::<()>().await });
+        register_headless_turn_abort(session_id, second.abort_handle());
+
+        proceed_tx.send(()).expect("first turn should be waiting");
+        first.await.expect("first turn should finish cleanly");
+
+        assert!(
+            abort_headless_turn(session_id),
+            "the live turn's registration must survive its predecessor's release"
+        );
+        assert!(second.await.expect_err("live turn must be cancelled").is_cancelled());
     }
 }
 

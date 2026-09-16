@@ -18,6 +18,43 @@ fn floor_char_boundary(text: &str, index: usize) -> usize {
 /// The wrapped-tool-call markers emitted by some models inside plain text.
 const WRAP_TOOL_MARKERS: [&str; 2] = ["to=functions.", "+#+#"];
 
+/// Aborts a spawned tool task if the turn holding it is dropped.
+///
+/// Tools run in their own task so Alt+B can detach them to the background, and
+/// the turn keeps only the `JoinHandle`. Dropping a `JoinHandle` *detaches* the
+/// task rather than cancelling it, so a cancelled turn (server reload, client
+/// disconnect, `swarm stop` on a wedged worker) used to leave the tool task
+/// running: a tool blocked on a socket read kept that socket open, with no
+/// session, member, or handle left anywhere to reach it, until the process
+/// exited.
+///
+/// The guard makes cancellation compositional: whoever kills the turn kills its
+/// tool. Aborting an already-finished task is a no-op, so the normal completion
+/// path needs no special casing; the one path that must survive is Alt+B
+/// backgrounding, which calls [`AbortToolOnDrop::disarm`] before handing the
+/// handle to the background registry.
+struct AbortToolOnDrop(Option<tokio::task::AbortHandle>);
+
+impl AbortToolOnDrop {
+    fn new(handle: &tokio::task::JoinHandle<Result<jcode_tool_types::ToolOutput>>) -> Self {
+        Self(Some(handle.abort_handle()))
+    }
+
+    /// Give up ownership: the tool task is being handed to someone else (the
+    /// background registry) and must outlive this turn.
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for AbortToolOnDrop {
+    fn drop(&mut self) {
+        if let Some(handle) = &self.0 {
+            handle.abort();
+        }
+    }
+}
+
 /// Find the first wrapped-tool-call marker in `accumulated`, scanning only the
 /// newly appended `delta` plus a short overlap from the previous tail (so a
 /// marker straddling the append boundary is still found).
@@ -1361,6 +1398,9 @@ impl Agent {
                         .execute(&tool_name_for_spawn, tool_input_for_spawn, ctx)
                         .await
                 });
+                // If this turn is cancelled while the tool is still running,
+                // the tool task must die with it rather than being detached.
+                let mut tool_abort_guard = AbortToolOnDrop::new(&tool_handle);
 
                 // Reset background signal before waiting
                 self.background_tool_signal.reset();
@@ -1535,6 +1575,9 @@ impl Agent {
                         tool_elapsed.as_secs_f64()
                     ));
 
+                    // Ownership moves to the background registry, which keeps
+                    // the tool running deliberately past this turn.
+                    tool_abort_guard.disarm();
                     let bg_info = crate::background::global()
                         .adopt(&tc.name, &self.session.id, tool_handle)
                         .await;

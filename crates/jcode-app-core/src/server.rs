@@ -257,11 +257,19 @@ async fn reap_idle_spawned_workers(
         )
         .await;
 
+        // Same contract as the swarm `stop` path: cancel any in-flight headless
+        // turn first, otherwise a worker wedged inside a tool keeps running
+        // after the reaper has removed its session and member.
+        crate::turn_cancel_registry::abort_headless_turn(&session_id);
         if let Some(agent_arc) = remove_session_entry(sessions, &session_id).await {
             remove_session_interrupt_queue(soft_interrupt_queues, &session_id).await;
             remove_background_tool_signal(&session_id);
-            if let Ok(mut agent) = agent_arc.try_lock() {
-                agent.mark_closed();
+            match tokio::time::timeout(AGENT_SHUTDOWN_LOCK_TIMEOUT, agent_arc.lock()).await {
+                Ok(mut agent) => agent.mark_closed(),
+                Err(_) => crate::logging::warn(&format!(
+                    "Idle-worker reap of session {session_id} timed out waiting for the agent lock after {}s; skipping graceful shutdown",
+                    AGENT_SHUTDOWN_LOCK_TIMEOUT.as_secs()
+                )),
             }
         }
 
@@ -568,7 +576,6 @@ async fn capture_runtime_memory_attribution_sample(
     });
     sample
 }
-
 mod state;
 
 use self::state::latest_peer_touches;
@@ -577,11 +584,11 @@ pub use self::state::{
     SwarmState,
 };
 use self::state::{
-    SessionInterruptQueues, fanout_live_client_event, fanout_session_event,
-    queue_soft_interrupt_for_session, register_background_tool_signal,
-    register_session_event_sender, register_session_interrupt_queue, remove_background_tool_signal,
-    remove_session_interrupt_queue, rename_background_tool_signal, rename_session_interrupt_queue,
-    session_event_fanout_sender, unregister_session_event_sender,
+    AGENT_SHUTDOWN_LOCK_TIMEOUT, SessionInterruptQueues, fanout_live_client_event,
+    fanout_session_event, queue_soft_interrupt_for_session, register_background_tool_signal,
+    register_session_event_sender, register_session_interrupt_queue,
+    remove_background_tool_signal, remove_session_interrupt_queue, rename_background_tool_signal,
+    rename_session_interrupt_queue, session_event_fanout_sender, unregister_session_event_sender,
 };
 pub use crate::plan::{SwarmTaskProgress, VersionedPlan};
 

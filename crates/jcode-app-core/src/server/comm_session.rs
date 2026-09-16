@@ -766,7 +766,7 @@ pub(super) async fn spawn_swarm_agent(
             let event_history2 = Arc::clone(event_history);
             let event_counter2 = Arc::clone(event_counter);
             let swarm_event_tx2 = swarm_event_tx.clone();
-            tokio::spawn(async move {
+            let turn_task = tokio::spawn(async move {
                 update_member_status(
                     &sid_clone,
                     "running",
@@ -816,7 +816,17 @@ pub(super) async fn spawn_swarm_agent(
                     Some(&swarm_event_tx2),
                 )
                 .await;
+                crate::turn_cancel_registry::release_headless_turn_abort(&sid_clone);
             });
+            // Headless workers have no connection loop to own this task, so
+            // publish its abort handle for the teardown paths (`stop`, the idle
+            // reaper). Without it a worker wedged inside a tool keeps running
+            // after its member is removed, since the cooperative cancel signal
+            // never reaches a tool blocked on I/O.
+            crate::turn_cancel_registry::register_headless_turn_abort(
+                &new_session_id,
+                turn_task.abort_handle(),
+            );
         }
     }
 
@@ -1082,28 +1092,47 @@ pub(super) async fn handle_comm_stop(
         return;
     };
 
+    // Cancel the target's in-flight headless turn before tearing the session
+    // down. A worker wedged inside a tool holds the agent mutex for the whole
+    // turn, so without this the task survives the stop: the member is removed
+    // and the slot freed, but the turn keeps running (and keeps the tool's
+    // sockets open) until the server exits. Aborting also releases the mutex,
+    // which is what lets the graceful shutdown below actually run.
+    let aborted_turn = crate::turn_cancel_registry::abort_headless_turn(&target_session);
     let removed_agent = super::remove_session_entry(sessions, &target_session).await;
     let removed_live_agent = removed_agent.is_some();
     if let Some(agent_arc) = removed_agent {
         remove_session_interrupt_queue(soft_interrupt_queues, &target_session).await;
         remove_background_tool_signal(&target_session);
-        if let Ok(mut agent) = agent_arc.try_lock() {
-            agent.mark_closed();
-            let memory_enabled = agent.memory_enabled();
-            let transcript = if memory_enabled {
-                Some(agent.build_transcript_for_extraction())
-            } else {
-                None
-            };
-            let sid = target_session.clone();
-            let working_dir = agent.working_dir().map(|dir| dir.to_string());
-            drop(agent);
-            if let Some(transcript) = transcript {
-                crate::memory_agent::trigger_final_extraction_with_dir(
-                    transcript,
-                    sid,
-                    working_dir,
-                );
+        // Bounded wait rather than `try_lock`: the aborted turn only drops the
+        // mutex once it unwinds to its next await point, and a busy turn would
+        // otherwise make us skip `mark_closed` and the final memory extraction
+        // entirely. Mirrors `cleanup_client_connection`'s disconnect path.
+        match tokio::time::timeout(super::AGENT_SHUTDOWN_LOCK_TIMEOUT, agent_arc.lock()).await {
+            Ok(mut agent) => {
+                agent.mark_closed();
+                let memory_enabled = agent.memory_enabled();
+                let transcript = if memory_enabled {
+                    Some(agent.build_transcript_for_extraction())
+                } else {
+                    None
+                };
+                let sid = target_session.clone();
+                let working_dir = agent.working_dir().map(|dir| dir.to_string());
+                drop(agent);
+                if let Some(transcript) = transcript {
+                    crate::memory_agent::trigger_final_extraction_with_dir(
+                        transcript,
+                        sid,
+                        working_dir,
+                    );
+                }
+            }
+            Err(_) => {
+                crate::logging::warn(&format!(
+                    "Stop of session {target_session} timed out waiting for the agent lock after {}s (aborted_turn={aborted_turn}); skipping graceful shutdown",
+                    super::AGENT_SHUTDOWN_LOCK_TIMEOUT.as_secs()
+                ));
             }
         }
     }
