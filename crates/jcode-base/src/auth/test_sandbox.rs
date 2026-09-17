@@ -116,7 +116,6 @@ fn tracked_env_vars() -> Vec<String> {
         "JCODE_OPENROUTER_STATIC_MODELS",
         "JCODE_OPENROUTER_AUTH_HEADER",
         "JCODE_OPENROUTER_AUTH_HEADER_NAME",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_OPENAI_COMPAT_API_BASE",
         "JCODE_OPENAI_COMPAT_API_KEY_NAME",
         "JCODE_OPENAI_COMPAT_ENV_FILE",
@@ -132,13 +131,8 @@ fn tracked_env_vars() -> Vec<String> {
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
         "ANTHROPIC_API_KEY",
-        "AZURE_OPENAI_ENDPOINT",
-        "AZURE_OPENAI_MODEL",
-        "AZURE_OPENAI_API_KEY",
-        "AZURE_OPENAI_USE_ENTRA",
         "GOOGLE_API_KEY",
         "GEMINI_API_KEY",
-        "CURSOR_API_KEY",
     ]
     .into_iter()
     .map(ToString::to_string)

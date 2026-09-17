@@ -85,16 +85,6 @@ pub(super) fn provider_usage_cache_is_fresh(
         && !usage_reset_passed(report.limits.iter().map(|limit| limit.resets_at.as_deref()))
 }
 
-pub(super) fn format_token_count(tokens: u64) -> String {
-    if tokens >= 1_000_000 {
-        format!("{:.1}M", tokens as f64 / 1_000_000.0)
-    } else if tokens >= 1_000 {
-        format!("{:.1}k", tokens as f64 / 1_000.0)
-    } else {
-        format!("{}", tokens)
-    }
-}
-
 pub(super) fn humanize_key(key: &str) -> String {
     key.replace('_', " ")
         .split_whitespace()

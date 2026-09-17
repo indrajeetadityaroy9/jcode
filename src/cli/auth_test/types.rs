@@ -17,8 +17,6 @@ pub(crate) enum AuthTestTarget {
     Openai,
     Gemini,
     Antigravity,
-    Copilot,
-    Cursor,
 }
 
 impl AuthTestTarget {
@@ -28,8 +26,6 @@ impl AuthTestTarget {
             Self::Openai => super::provider_init::ProviderChoice::Openai,
             Self::Gemini => super::provider_init::ProviderChoice::Gemini,
             Self::Antigravity => super::provider_init::ProviderChoice::Antigravity,
-            Self::Copilot => super::provider_init::ProviderChoice::Copilot,
-            Self::Cursor => super::provider_init::ProviderChoice::Cursor,
         }
     }
 
@@ -39,8 +35,6 @@ impl AuthTestTarget {
             Self::Openai => "openai",
             Self::Gemini => "gemini",
             Self::Antigravity => "antigravity",
-            Self::Copilot => "copilot",
-            Self::Cursor => "cursor",
         }
     }
 
@@ -52,8 +46,6 @@ impl AuthTestTarget {
             super::provider_init::ProviderChoice::Openai => Some(Self::Openai),
             super::provider_init::ProviderChoice::Gemini => Some(Self::Gemini),
             super::provider_init::ProviderChoice::Antigravity => Some(Self::Antigravity),
-            super::provider_init::ProviderChoice::Copilot => Some(Self::Copilot),
-            super::provider_init::ProviderChoice::Cursor => Some(Self::Cursor),
             _ => None,
         }
     }
@@ -107,37 +99,6 @@ impl AuthTestTarget {
                     .display()
                     .to_string(),
                 crate::storage::user_home_path(".pi/agent/auth.json")?
-                    .display()
-                    .to_string(),
-            ]),
-            Self::Copilot => Ok(vec![
-                crate::storage::user_home_path(".copilot/config.json")?
-                    .display()
-                    .to_string(),
-                crate::storage::user_home_path(".config/github-copilot/hosts.json")?
-                    .display()
-                    .to_string(),
-                crate::storage::user_home_path(".config/github-copilot/apps.json")?
-                    .display()
-                    .to_string(),
-                crate::storage::user_home_path(".local/share/opencode/auth.json")?
-                    .display()
-                    .to_string(),
-                crate::storage::user_home_path(".pi/agent/auth.json")?
-                    .display()
-                    .to_string(),
-            ]),
-            Self::Cursor => Ok(vec![
-                dirs::config_dir()
-                    .ok_or_else(|| anyhow::anyhow!("No config directory found"))?
-                    .join("jcode")
-                    .join("cursor.env")
-                    .display()
-                    .to_string(),
-                crate::auth::cursor::cursor_auth_file_path()?
-                    .display()
-                    .to_string(),
-                crate::storage::user_home_path(".config/Cursor/User/globalStorage/state.vscdb")?
                     .display()
                     .to_string(),
             ]),

@@ -1311,7 +1311,6 @@ impl BridgeState {
                 Some(("openai-api", &["OPENAI_API_KEY"], "openai.env"))
             }
             "openrouter" => Some(("openrouter", &["OPENROUTER_API_KEY"], "openrouter.env")),
-            "cursor" => Some(("cursor", &["CURSOR_API_KEY"], "cursor.env")),
             "gemini" | "gemini-api" | "google-gemini" => Some((
                 "gemini",
                 &["GEMINI_API_KEY", "GOOGLE_API_KEY"],

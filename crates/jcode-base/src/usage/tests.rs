@@ -1,3 +1,4 @@
+use super::display::humanize_key;
 use super::*;
 
 #[test]

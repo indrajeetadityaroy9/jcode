@@ -41,21 +41,17 @@ members = [
     "crates/jcode-setup-hints",
     "crates/jcode-storage",
     "crates/jcode-side-panel-types",
-    "crates/jcode-azure-auth",
     "crates/jcode-provider-metadata",
     "crates/jcode-provider-env",
     "crates/jcode-provider-core",
     "crates/jcode-schema-dialect",
     "crates/jcode-provider-anthropic",
     "crates/jcode-provider-antigravity",
-    "crates/jcode-provider-copilot",
     "crates/jcode-provider-openrouter",
     "crates/jcode-provider-openai",
     "crates/jcode-provider-gemini",
     "crates/jcode-provider-gemini-runtime",
-    "crates/jcode-provider-cursor-runtime",
     "crates/jcode-provider-antigravity-runtime",
-    "crates/jcode-provider-copilot-runtime",
     "crates/jcode-provider-claude-cli-runtime",
     "crates/jcode-provider-openrouter-runtime",
     "crates/jcode-provider-anthropic-runtime",
@@ -181,9 +177,7 @@ jcode-provider-doctor = { path = "crates/jcode-provider-doctor" }
 # not rebuild the base -> app-core -> tui spine. Registered with the external
 # provider registry at startup (src/cli/startup.rs).
 jcode-provider-gemini-runtime = { path = "crates/jcode-provider-gemini-runtime" }
-jcode-provider-cursor-runtime = { path = "crates/jcode-provider-cursor-runtime" }
 jcode-provider-antigravity-runtime = { path = "crates/jcode-provider-antigravity-runtime" }
-jcode-provider-copilot-runtime = { path = "crates/jcode-provider-copilot-runtime" }
 jcode-provider-claude-cli-runtime = { path = "crates/jcode-provider-claude-cli-runtime" }
 jcode-provider-openrouter-runtime = { path = "crates/jcode-provider-openrouter-runtime" }
 jcode-provider-anthropic-runtime = { path = "crates/jcode-provider-anthropic-runtime" }

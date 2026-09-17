@@ -284,12 +284,6 @@ pub fn active_openai_compatible_display_name() -> Option<String> {
 
 pub fn runtime_provider_display_name(provider_name: &str) -> String {
     if provider_name.eq_ignore_ascii_case("openrouter") {
-        if let Ok(runtime_provider) = std::env::var("JCODE_RUNTIME_PROVIDER")
-            && runtime_provider.trim().eq_ignore_ascii_case("azure-openai")
-        {
-            return "Azure OpenAI".to_string();
-        }
-
         active_openai_compatible_display_name().unwrap_or_else(|| "OpenRouter".to_string())
     } else {
         provider_name.to_string()
@@ -598,7 +592,6 @@ fn apply_openai_compatible_profile_env_impl(
         "JCODE_OPENROUTER_STATIC_MODELS",
         "JCODE_OPENROUTER_AUTH_HEADER",
         "JCODE_OPENROUTER_AUTH_HEADER_NAME",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_OPENROUTER_PROVIDER",
         "JCODE_OPENROUTER_NO_FALLBACK",
         "JCODE_NAMED_PROVIDER_PROFILE",

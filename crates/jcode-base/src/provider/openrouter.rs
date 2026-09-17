@@ -57,12 +57,6 @@ pub(crate) fn maybe_schedule_standard_openrouter_catalog_refresh(context: &'stat
 
 /// Whether OpenRouter/OpenAI-compatible credentials are available.
 pub fn has_credentials() -> bool {
-    if matches!(
-        configured_dynamic_bearer_provider().as_deref(),
-        Some("azure")
-    ) {
-        return crate::auth::azure::has_configuration();
-    }
     if configured_allow_no_auth() {
         return true;
     }
@@ -94,7 +88,6 @@ fn explicit_openrouter_runtime_configured() -> bool {
         "JCODE_OPENROUTER_API_BASE",
         "JCODE_OPENROUTER_API_KEY_NAME",
         "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
     ]
     .iter()
     .any(|var| std::env::var_os(var).is_some())
@@ -208,13 +201,6 @@ fn provider_features_enabled(api_base: &str) -> bool {
     api_base.contains("openrouter.ai")
 }
 
-fn configured_dynamic_bearer_provider() -> Option<String> {
-    std::env::var("JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER")
-        .ok()
-        .map(|v| v.trim().to_ascii_lowercase())
-        .filter(|v| !v.is_empty())
-}
-
 fn configured_allow_no_auth() -> bool {
     std::env::var("JCODE_OPENROUTER_ALLOW_NO_AUTH")
         .ok()
@@ -236,8 +222,8 @@ pub enum OpenRouterTransportState {
     /// Real OpenRouter BYOK. The provider implementation is both the runtime identity
     /// and the HTTP transport.
     OpenRouterApiKey,
-    /// A direct OpenAI-compatible endpoint that needs a user key, Azure credential,
-    /// or provider-profile secret while reusing the OpenRouter-compatible transport.
+    /// A direct OpenAI-compatible endpoint that needs a user key or
+    /// provider-profile secret while reusing the OpenRouter-compatible transport.
     DirectApiKey,
     /// A direct local/no-auth OpenAI-compatible endpoint, for example Ollama or LM Studio.
     DirectNoAuth,
@@ -301,7 +287,7 @@ impl OpenRouterTransportState {
     }
 
     fn runtime_provider_is_direct_compatible(runtime_provider: Option<&str>) -> bool {
-        matches!(runtime_provider, Some("openai-compatible" | "azure-openai"))
+        matches!(runtime_provider, Some("openai-compatible"))
             || runtime_provider
                 .and_then(crate::provider_catalog::openai_compatible_profile_by_id)
                 .is_some()

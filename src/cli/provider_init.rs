@@ -39,8 +39,6 @@ pub enum ProviderChoice {
     )]
     OpenaiApi,
     Openrouter,
-    #[value(alias = "azure-openai", alias = "aoai")]
-    Azure,
     #[value(alias = "opencode-zen", alias = "zen")]
     Opencode,
     #[value(alias = "opencodego")]
@@ -114,8 +112,6 @@ pub enum ProviderChoice {
     AlibabaCodingPlan,
     #[value(alias = "compat", alias = "custom")]
     OpenaiCompatible,
-    Cursor,
-    Copilot,
     Gemini,
     #[value(
         alias = "gemini-key",
@@ -138,7 +134,6 @@ impl ProviderChoice {
             Self::Openai => "openai",
             Self::OpenaiApi => "openai-api",
             Self::Openrouter => "openrouter",
-            Self::Azure => "azure",
             Self::Opencode => "opencode",
             Self::OpencodeGo => "opencode-go",
             Self::Zai => "zai",
@@ -172,8 +167,6 @@ impl ProviderChoice {
             Self::Cerebras => "cerebras",
             Self::AlibabaCodingPlan => "alibaba-coding-plan",
             Self::OpenaiCompatible => "openai-compatible",
-            Self::Cursor => "cursor",
-            Self::Copilot => "copilot",
             Self::Gemini => "gemini",
             Self::GeminiApi => "gemini-api",
             Self::Antigravity => "antigravity",
@@ -207,10 +200,6 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
     (
         ProviderChoice::Openrouter,
         crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Azure,
-        crate::provider_catalog::AZURE_LOGIN_PROVIDER,
     ),
     (
         ProviderChoice::Opencode,
@@ -343,14 +332,6 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
     (
         ProviderChoice::OpenaiCompatible,
         crate::provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Cursor,
-        crate::provider_catalog::CURSOR_LOGIN_PROVIDER,
-    ),
-    (
-        ProviderChoice::Copilot,
-        crate::provider_catalog::COPILOT_LOGIN_PROVIDER,
     ),
     (
         ProviderChoice::Gemini,
@@ -555,13 +536,10 @@ fn login_provider_detection_detail(
 }
 
 struct AutoProviderAvailability {
-    auth_status: auth::AuthStatus,
     has_claude: bool,
     has_openai: bool,
-    has_copilot: bool,
     has_antigravity: bool,
     has_gemini: bool,
-    has_cursor: bool,
     has_openrouter: bool,
 }
 
@@ -569,10 +547,8 @@ impl AutoProviderAvailability {
     fn has_any_provider(&self) -> bool {
         self.has_claude
             || self.has_openai
-            || self.has_copilot
             || self.has_antigravity
             || self.has_gemini
-            || self.has_cursor
             || self.has_openrouter
     }
 }
@@ -621,12 +597,9 @@ async fn detect_auto_provider_flags() -> AutoProviderAvailability {
     AutoProviderAvailability {
         has_claude: auth_status.anthropic.has_oauth || auth_status.anthropic.has_api_key,
         has_openai: auth_status.openai_has_oauth || auth_status.openai_has_api_key,
-        has_copilot: auth_status.copilot_has_api_token,
         has_antigravity: auth::antigravity::load_tokens().is_ok(),
         has_gemini: auth_status.gemini == auth::AuthState::Available,
-        has_cursor: auth_status.cursor == auth::AuthState::Available,
         has_openrouter: auth_status.openrouter == auth::AuthState::Available,
-        auth_status,
     }
 }
 
@@ -1067,110 +1040,6 @@ fn ensure_antigravity_auth_allowed_for_explicit_choice() -> Result<()> {
     Ok(())
 }
 
-fn ensure_copilot_auth_allowed_for_explicit_choice() -> Result<()> {
-    if auth::copilot::load_github_token().is_ok() {
-        return Ok(());
-    }
-    let Some(source) = auth::copilot::has_unconsented_external_auth() else {
-        return Ok(());
-    };
-    let path = source.path();
-    if !can_prompt_for_external_auth() {
-        anyhow::bail!(external_auth_blocked_message(
-            "GitHub Copilot",
-            source.display_name(),
-            &path,
-            "jcode login --provider copilot"
-        ));
-    }
-    if prompt_to_trust_external_auth("GitHub Copilot", source.display_name(), &path)? {
-        auth::copilot::trust_external_auth_source(source)?;
-        return Ok(());
-    }
-    anyhow::bail!(
-        "Skipped trusting external Copilot credentials. Run `jcode login --provider copilot` to authenticate jcode directly."
-    )
-}
-
-fn maybe_enable_copilot_auth_for_auto(has_other_provider: bool) -> Result<bool> {
-    if auth::copilot::load_github_token().is_ok() {
-        return Ok(true);
-    }
-    let Some(source) = auth::copilot::has_unconsented_external_auth() else {
-        return Ok(false);
-    };
-    if has_other_provider {
-        return Ok(false);
-    }
-    let path = source.path();
-    if !can_prompt_for_external_auth() {
-        crate::logging::warn(&external_auth_blocked_message(
-            "GitHub Copilot",
-            source.display_name(),
-            &path,
-            "jcode login --provider copilot",
-        ));
-        return Ok(false);
-    }
-    if prompt_to_trust_external_auth("GitHub Copilot", source.display_name(), &path)? {
-        auth::copilot::trust_external_auth_source(source)?;
-        return Ok(auth::copilot::load_github_token().is_ok());
-    }
-    Ok(false)
-}
-
-fn ensure_cursor_auth_allowed_for_explicit_choice() -> Result<()> {
-    if auth::cursor::has_cursor_native_auth() || auth::cursor::has_cursor_api_key() {
-        return Ok(());
-    }
-    let Some(source) = auth::cursor::has_unconsented_external_auth() else {
-        return Ok(());
-    };
-    let path = source.path()?;
-    if !can_prompt_for_external_auth() {
-        anyhow::bail!(external_auth_blocked_message(
-            "Cursor",
-            source.display_name(),
-            &path,
-            "jcode login --provider cursor"
-        ));
-    }
-    if prompt_to_trust_external_auth("Cursor", source.display_name(), &path)? {
-        auth::cursor::trust_external_auth_source(source)?;
-        return Ok(());
-    }
-    anyhow::bail!(
-        "Skipped trusting external Cursor credentials. Run `jcode login --provider cursor` to authenticate jcode directly."
-    )
-}
-
-fn maybe_enable_cursor_auth_for_auto(has_other_provider: bool) -> Result<bool> {
-    if auth::cursor::has_cursor_native_auth() || auth::cursor::has_cursor_api_key() {
-        return Ok(true);
-    }
-    let Some(source) = auth::cursor::has_unconsented_external_auth() else {
-        return Ok(false);
-    };
-    if has_other_provider {
-        return Ok(false);
-    }
-    let path = source.path()?;
-    if !can_prompt_for_external_auth() {
-        crate::logging::warn(&external_auth_blocked_message(
-            "Cursor",
-            source.display_name(),
-            &path,
-            "jcode login --provider cursor",
-        ));
-        return Ok(false);
-    }
-    if prompt_to_trust_external_auth("Cursor", source.display_name(), &path)? {
-        auth::cursor::trust_external_auth_source(source)?;
-        return Ok(auth::cursor::has_cursor_native_auth());
-    }
-    Ok(false)
-}
-
 pub fn select_initial_model_provider(provider_key: &str) {
     crate::provider::activation::select_initial_runtime_provider_key(provider_key);
 }
@@ -1235,20 +1104,11 @@ pub async fn login_and_bootstrap_provider(
         LoginProviderTarget::AutoImport
         | LoginProviderTarget::Claude
         | LoginProviderTarget::ClaudeApiKey
-        | LoginProviderTarget::Copilot
         | LoginProviderTarget::OpenRouter => Arc::new(provider::MultiProvider::new()),
         LoginProviderTarget::OpenAi => Arc::new(provider::MultiProvider::with_preference(true)),
         LoginProviderTarget::OpenAiApiKey => {
             select_initial_model_provider("openai");
             Arc::new(provider::MultiProvider::with_preference(true))
-        }
-        LoginProviderTarget::Azure => {
-            let model = crate::provider::activation::apply_azure_openai_runtime()?;
-            let multi = provider::MultiProvider::new();
-            if let Some(model) = model {
-                let _ = multi.set_model(&model);
-            }
-            Arc::new(multi)
         }
         LoginProviderTarget::OpenAiCompatible(profile) => {
             apply_openai_compatible_profile_env(Some(profile));
@@ -1261,11 +1121,6 @@ pub async fn login_and_bootstrap_provider(
                 let _ = multi.set_model(model);
             }
             Arc::new(multi)
-        }
-        LoginProviderTarget::Cursor => {
-            clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
-            Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
         }
         LoginProviderTarget::Gemini => {
             clear_initial_model_provider();
@@ -1395,19 +1250,6 @@ async fn init_provider_with_options(
             select_initial_model_provider("openai");
             Arc::new(provider::MultiProvider::with_preference_fast(true))
         }
-        ProviderChoice::Cursor => {
-            ensure_cursor_auth_allowed_for_explicit_choice()?;
-            init_notice("Using Cursor native HTTPS provider (experimental)");
-            clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
-            Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
-        }
-        ProviderChoice::Copilot => {
-            ensure_copilot_auth_allowed_for_explicit_choice()?;
-            init_notice("Using GitHub Copilot API as the initial provider (use /model to switch)");
-            select_initial_model_provider("copilot");
-            Arc::new(provider::MultiProvider::new_fast())
-        }
         ProviderChoice::Gemini => {
             ensure_gemini_auth_allowed_for_explicit_choice()?;
             if auth::gemini::has_api_key() {
@@ -1425,16 +1267,7 @@ async fn init_provider_with_options(
             ensure_external_api_key_auth_allowed_for_explicit_choice("OPENROUTER_API_KEY")?;
             init_notice("Using OpenRouter as the initial provider (use /model to switch)");
             select_initial_model_provider("openrouter");
-            Arc::new(provider::MultiProvider::new_fast())
-        }
-        ProviderChoice::Azure => {
-            let model = crate::provider::activation::apply_azure_openai_runtime()?;
-            init_notice("Using Azure OpenAI as the initial provider (use /model to switch)");
-            let multi = provider::MultiProvider::new_fast();
-            if let Some(model) = model {
-                let _ = multi.set_model(&model);
-            }
-            Arc::new(multi)
+            Arc::new(provider::MultiProvider::new())
         }
         ProviderChoice::Opencode
         | ProviderChoice::OpencodeGo
@@ -1544,16 +1377,12 @@ async fn init_provider_with_options(
                 let supplemental_start = std::time::Instant::now();
                 let mut has_claude = availability.has_claude;
                 let mut has_openai = availability.has_openai;
-                let mut has_copilot = availability.has_copilot;
                 let has_antigravity = availability.has_antigravity;
                 let mut has_gemini = availability.has_gemini;
-                let mut has_cursor = availability.has_cursor;
                 let mut has_openrouter = availability.has_openrouter;
                 let mut has_other_provider = has_claude
-                    || has_copilot
                     || has_antigravity
                     || has_gemini
-                    || has_cursor
                     || has_openrouter;
 
                 if !has_openai {
@@ -1561,10 +1390,8 @@ async fn init_provider_with_options(
                 }
                 has_other_provider = has_openai
                     || has_claude
-                    || has_copilot
                     || has_antigravity
                     || has_gemini
-                    || has_cursor
                     || has_openrouter;
 
                 if !has_claude {
@@ -1573,39 +1400,13 @@ async fn init_provider_with_options(
                 }
                 has_other_provider = has_openai
                     || has_claude
-                    || has_copilot
                     || has_antigravity
                     || has_gemini
-                    || has_cursor
-                    || has_openrouter;
-
-                if !has_copilot {
-                    has_copilot =
-                        maybe_enable_copilot_auth_for_auto(has_other_provider && !has_copilot)?;
-                }
-                has_other_provider = has_openai
-                    || has_claude
-                    || has_copilot
-                    || has_antigravity
-                    || has_gemini
-                    || has_cursor
                     || has_openrouter;
 
                 if !has_gemini {
                     has_gemini =
                         maybe_enable_gemini_auth_for_auto(has_other_provider && !has_gemini)?;
-                }
-                has_other_provider = has_openai
-                    || has_claude
-                    || has_copilot
-                    || has_antigravity
-                    || has_gemini
-                    || has_cursor
-                    || has_openrouter;
-
-                if !has_cursor {
-                    has_cursor =
-                        maybe_enable_cursor_auth_for_auto(has_other_provider && !has_cursor)?;
                 }
 
                 if !has_openrouter {
@@ -1614,10 +1415,8 @@ async fn init_provider_with_options(
 
                 has_other_provider = has_openai
                     || has_claude
-                    || has_copilot
                     || has_antigravity
                     || has_gemini
-                    || has_cursor
                     || has_openrouter;
 
                 if !has_openrouter {
@@ -1627,13 +1426,10 @@ async fn init_provider_with_options(
                 }
 
                 availability = AutoProviderAvailability {
-                    auth_status: auth::AuthStatus::check_fast(),
                     has_claude,
                     has_openai,
-                    has_copilot,
                     has_antigravity,
                     has_gemini,
-                    has_cursor,
                     has_openrouter,
                 };
                 crate::logging::info(&format!(
@@ -1651,7 +1447,7 @@ async fn init_provider_with_options(
             }
 
             if availability.has_any_provider() {
-                let multi = provider::MultiProvider::from_auth_status(availability.auth_status);
+                let multi = provider::MultiProvider::new();
                 init_notice(&format!(
                     "Using {} (use /model to switch models)",
                     multi.name()
@@ -1673,7 +1469,7 @@ async fn init_provider_with_options(
                     crate::logging::info(
                         "No credentials configured; booting deferred-auth MultiProvider for in-TUI login",
                     );
-                    let multi = provider::MultiProvider::from_auth_status(availability.auth_status);
+                    let multi = provider::MultiProvider::new();
                     crate::env::set_var("JCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
                     Arc::new(multi)
                 } else if non_interactive {

@@ -376,8 +376,6 @@ fn auth_full_specs(
         (anthropic_label, auth.anthropic.state),
         ("openrouter".to_string(), auth.openrouter),
         (openai_label, auth.openai),
-        (provider_label("cursor", auth.cursor, None), auth.cursor),
-        (provider_label("copilot", auth.copilot, None), auth.copilot),
         (gemini_label, auth.gemini),
         (
             provider_label("antigravity", auth.antigravity, None),
@@ -464,13 +462,6 @@ fn header_provider_auth_tag(
     }
 
     match name {
-        "copilot" => {
-            if auth.copilot_has_api_token {
-                "oauth"
-            } else {
-                ""
-            }
-        }
         "openrouter" | "openai-compatible" => "api-key",
         other
             if crate::provider_catalog::resolve_openai_compatible_profile_selection(other)
@@ -588,10 +579,7 @@ fn configured_auth_count(auth: &AuthStatus) -> usize {
     [
         auth.anthropic.state,
         auth.openrouter,
-        auth.azure,
         auth.openai,
-        auth.cursor,
-        auth.copilot,
         auth.gemini,
         auth.antigravity,
     ]
@@ -1396,7 +1384,7 @@ mod tests {
                 oauth_state: AuthState::Expired,
                 has_api_key: false,
             },
-            azure: AuthState::Available,
+            openrouter: AuthState::Available,
             ..AuthStatus::default()
         };
 
@@ -1660,7 +1648,7 @@ mod tests {
         assert!(rendered.contains("openai(key)"), "rendered: {rendered}");
         // Providers the user has no credentials for stay out of the header.
         assert!(!rendered.contains("openrouter"), "rendered: {rendered}");
-        assert!(!rendered.contains("copilot"), "rendered: {rendered}");
+        assert!(!rendered.contains("gemini"), "rendered: {rendered}");
         assert!(!rendered.contains("○"), "rendered: {rendered}");
     }
 

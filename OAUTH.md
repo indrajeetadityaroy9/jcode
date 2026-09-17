@@ -20,16 +20,12 @@ Credentials are stored locally:
 - Codex CLI auth source (read in place only after confirmation): `~/.codex/auth.json`
 - Gemini native OAuth: `~/.jcode/gemini_oauth.json`
 - Gemini CLI import fallback: `~/.gemini/oauth_creds.json`
-- Copilot CLI plaintext fallback: `~/.copilot/config.json`
-- Legacy Copilot JSON sources: `~/.config/github-copilot/hosts.json`, `~/.config/github-copilot/apps.json`
 
 Relevant code:
 - Claude provider: `src/provider/claude.rs`
 - OpenAI login + refresh: `src/auth/oauth.rs`
 - OpenAI credentials parsing: `src/auth/codex.rs`
 - OpenAI requests: `src/provider/openai.rs`
-- Azure OpenAI auth/config: `src/auth/azure.rs`
-- Azure OpenAI transport: `src/provider/openrouter.rs`
 - Gemini login + refresh: `src/auth/gemini.rs`
 - Gemini Code Assist provider: `src/provider/gemini.rs`
 - OpenAI-compatible provider metadata/login descriptors: `crates/jcode-provider-metadata/src/lib.rs`
@@ -156,50 +152,6 @@ a malformed value is logged and ignored rather than breaking requests.
 - Callback issues: make sure port 1455 is free and the browser can reach
   `http://localhost:1455/auth/callback`.
 
-## Azure OpenAI
-
-This was added after comparing J-Code to OpenCode/Crush. The meaningful auth gap
-was not another browser OAuth flow, but support for **Azure OpenAI** using either:
-- **Microsoft Entra ID** credentials (via Azure's `DefaultAzureCredential` chain), or
-- **Azure OpenAI API keys**.
-
-### Login/setup steps
-1. Run `jcode login --provider azure`.
-2. Enter your Azure OpenAI endpoint, for example:
-   - `https://your-resource.openai.azure.com`
-3. Enter your Azure deployment/model name.
-4. Choose one auth mode:
-   - **Entra ID** (recommended)
-   - **API key**
-5. jcode saves settings to `~/.config/jcode/azure-openai.env`.
-
-### Stored configuration
-The Azure env file may contain:
-- `AZURE_OPENAI_ENDPOINT`
-- `AZURE_OPENAI_MODEL`
-- `AZURE_OPENAI_USE_ENTRA`
-- `AZURE_OPENAI_API_KEY` (only when using key auth)
-
-### Runtime behavior
-- jcode normalizes the endpoint to the newer Azure OpenAI `/openai/v1` base.
-- In **Entra ID** mode, jcode obtains bearer tokens using `azure_identity::DefaultAzureCredential` with scope:
-  - `https://cognitiveservices.azure.com/.default`
-- In **API key** mode, jcode sends the credential in the Azure-style `api-key` header.
-- The Azure provider currently reuses J-Code's OpenAI-compatible transport layer under the hood.
-- Model catalog fetching is disabled for Azure by default, so you should configure a deployment/model explicitly.
-
-### Entra ID credential sources
-`DefaultAzureCredential` can resolve credentials from sources like:
-- `az login`
-- managed identity
-- Azure environment credentials
-
-### Troubleshooting
-- If Entra ID auth fails locally, try `az login` first.
-- Make sure your identity has access to the Azure OpenAI resource.
-- If requests fail with deployment/model errors, verify `AZURE_OPENAI_MODEL` matches your deployed model name.
-- If you prefer static credentials, re-run `jcode login --provider azure` and choose API key mode.
-
 ## Gemini OAuth
 
 ### Login steps
@@ -292,40 +244,10 @@ If jcode finds matching API keys in trusted OpenCode/pi auth files, it can reuse
 
 ## Experimental CLI Providers
 
-J-Code also supports experimental CLI-backed providers, plus Antigravity with native OAuth login:
-- `--provider cursor`
-- `--provider copilot`
+J-Code also supports Antigravity, a CLI-backed provider with native OAuth login:
 - `--provider antigravity`
 
-Cursor uses jcode's native HTTPS transport. Copilot uses GitHub device-flow auth. Antigravity login/auth storage is handled natively by jcode.
-
-### Cursor
-- Login: `jcode login --provider cursor`
-  - saves `CURSOR_API_KEY` to `~/.config/jcode/cursor.env`
-- Runtime:
-  - jcode uses native HTTPS requests
-  - if a Cursor API key is configured, jcode exchanges/uses it directly
-- Env vars:
-  - `JCODE_CURSOR_MODEL` (default: `composer-1.5`)
-  - `CURSOR_API_KEY` (optional; overrides saved key)
-
-### GitHub Copilot
-- Login: `jcode login --provider copilot`
-  - Headless / SSH: `jcode login --provider copilot --no-browser`
-  - Scriptable remote flow: `jcode login --provider copilot --print-auth-url`, then later `jcode login --provider copilot --complete`
-  - jcode uses GitHub device code flow and can print the verification URL/QR without opening a local browser.
-- Credential discovery order:
-  1. `COPILOT_GITHUB_TOKEN`
-  2. `GH_TOKEN`
-  3. `GITHUB_TOKEN`
-  4. trusted `~/.copilot/config.json`
-  5. trusted legacy `~/.config/github-copilot/hosts.json`
-  6. trusted legacy `~/.config/github-copilot/apps.json`
-  7. trusted OpenCode/pi OAuth entries
-  8. `gh auth token`
-- Env vars:
-  - `JCODE_COPILOT_CLI_PATH` (optional override for CLI path)
-  - `JCODE_COPILOT_MODEL` (default: `claude-sonnet-4`)
+Antigravity login/auth storage is handled natively by jcode.
 
 ### Antigravity
 - Login: `jcode login --provider antigravity` (native Google OAuth flow; does **not** require Antigravity to be installed)
@@ -352,4 +274,3 @@ Cursor uses jcode's native HTTPS transport. Copilot uses GitHub device-flow auth
 - jcode stores temporary scriptable login state in `~/.jcode/pending-login/*.json`
 - pending state expires automatically
 - stale pending entries are cleaned up when scriptable login flows start or resume
-- Copilot `--print-auth-url` stores the GitHub device code session and `--complete` resumes polling later

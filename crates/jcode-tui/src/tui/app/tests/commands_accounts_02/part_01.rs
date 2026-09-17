@@ -473,50 +473,6 @@ fn test_account_command_combines_claude_and_openai_accounts() {
 }
 
 #[test]
-fn test_account_command_uses_fast_auth_snapshot_without_running_cursor_status() {
-    use std::os::unix::fs::PermissionsExt;
-
-    with_temp_jcode_home(|| {
-        let prev_cursor_cli_path = std::env::var_os("JCODE_CURSOR_CLI_PATH");
-        let temp = tempfile::TempDir::new().expect("create temp dir");
-        let marker = temp.path().join("cursor-status-ran");
-        let script = temp.path().join("cursor-agent-mock");
-
-        std::fs::write(
-            &script,
-            format!("#!/bin/sh\necho ran > \"{}\"\nexit 0\n", marker.display()),
-        )
-        .expect("write mock cursor agent");
-        let mut permissions = std::fs::metadata(&script)
-            .expect("stat mock cursor agent")
-            .permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(&script, permissions).expect("chmod mock cursor agent");
-
-        let mut app = create_test_app();
-
-        crate::env::set_var("JCODE_CURSOR_CLI_PATH", &script);
-        crate::auth::AuthStatus::invalidate_cache();
-        let _ = std::fs::remove_file(&marker);
-
-        app.input = "/account".to_string();
-        app.submit_input();
-
-        assert!(app.inline_interactive_state.is_some());
-        assert!(
-            !marker.exists(),
-            "/account should not execute `cursor-agent status` on open"
-        );
-
-        match prev_cursor_cli_path {
-            Some(value) => crate::env::set_var("JCODE_CURSOR_CLI_PATH", value),
-            None => crate::env::remove_var("JCODE_CURSOR_CLI_PATH"),
-        }
-        crate::auth::AuthStatus::invalidate_cache();
-    });
-}
-
-#[test]
 fn test_account_switch_shorthand_switches_openai_account_by_label() {
     with_temp_jcode_home(|| {
         let now_ms = chrono::Utc::now().timestamp_millis();

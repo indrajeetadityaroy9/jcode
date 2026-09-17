@@ -266,7 +266,7 @@ async fn resolve_coordinator_spawn_identity(
 /// GPT-5.5 on the OpenAI API key route regardless of the coordinator's model.
 ///
 /// Returns `None` for models without such a prefix, or for prefixes that carry
-/// no API-vs-OAuth decision (bare provider aliases, OpenRouter, Copilot, ...).
+/// no API-vs-OAuth decision (bare provider aliases, OpenRouter, ...).
 /// Those keep their prefixed model and route correctly via the existing
 /// session-restore path.
 fn explicit_route_for_configured_model(model: &str) -> Option<SwarmSpawnSelection> {

@@ -148,7 +148,7 @@ fn parse_account_command(trimmed: &str) -> Option<Result<AccountCommand, String>
         "default-provider" => {
             if remainder.is_empty() {
                 return Some(Err(
-                    "Usage: /account default-provider <claude|openai|copilot|gemini|openrouter|auto>"
+                    "Usage: /account default-provider <claude|openai|gemini|openrouter|auto>"
                         .to_string(),
                 ));
             }
@@ -239,14 +239,6 @@ fn parse_account_command(trimmed: &str) -> Option<Result<AccountCommand, String>
                     ));
                 }
                 AccountCommand::SetOpenAiEffort(normalize_clearish_value(value))
-            }
-            "premium" if provider.id == "copilot" => {
-                if value.is_empty() {
-                    return Some(Err(
-                        "Usage: /account copilot premium <normal|one|zero>".to_string()
-                    ));
-                }
-                AccountCommand::SetCopilotPremium(normalize_normal_mode_value(value))
             }
             "api-base" if provider.id == "openai-compatible" => {
                 if value.is_empty() {
@@ -396,9 +388,6 @@ pub(crate) fn execute_account_command_local(app: &mut App, command: AccountComma
         }
         AccountCommand::SetOpenAiEffort(value) => {
             save_openai_effort_setting_local(app, value.as_deref())
-        }
-        AccountCommand::SetCopilotPremium(mode) => {
-            save_copilot_premium_setting(app, mode.as_deref())
         }
         AccountCommand::SetOpenAiCompatApiBase(value) => {
             save_openai_compat_setting(app, OpenAiCompatSetting::ApiBase, value.as_deref())
@@ -595,21 +584,12 @@ fn normalize_clearish_value(value: &str) -> Option<String> {
     }
 }
 
-fn normalize_normal_mode_value(value: &str) -> Option<String> {
-    let trimmed = value.trim().to_ascii_lowercase();
-    match trimmed.as_str() {
-        "" | "normal" | "clear" | "unset" => None,
-        "one" | "zero" => Some(trimmed),
-        _ => Some(trimmed),
-    }
-}
-
 fn save_default_provider_setting(app: &mut App, provider: Option<&str>) {
     let normalized = provider.map(|provider| provider.trim().to_ascii_lowercase());
     let provider = match normalized.as_deref() {
         None => None,
         Some("auto") => None,
-        Some("claude" | "openai" | "copilot" | "gemini" | "openrouter") => normalized,
+        Some("claude" | "openai" | "gemini" | "openrouter") => normalized,
         // Accept the dual-auth credential spellings too (`anthropic-api`,
         // `claude-api`, `openai-api`, `claude-oauth`, ...). These are the same
         // values the model picker's "set default" path writes, and startup now
@@ -619,7 +599,7 @@ fn save_default_provider_setting(app: &mut App, provider: Option<&str>) {
         Some(other) if jcode_provider_core::AuthRoute::parse(other).is_some() => normalized,
         Some(other) => {
             app.push_display_message(DisplayMessage::error(format!(
-                "Unsupported default provider {}. Use claude, openai, anthropic-api, openai-api, copilot, gemini, openrouter, or auto.",
+                "Unsupported default provider {}. Use claude, openai, anthropic-api, openai-api, gemini, openrouter, or auto.",
                 other
             )));
             return;
@@ -709,46 +689,6 @@ fn save_openai_effort_setting_local(app: &mut App, value: Option<&str>) {
         }
         Err(err) => app.push_display_message(DisplayMessage::error(format!(
             "Failed to save OpenAI effort: {}",
-            err
-        ))),
-    }
-}
-
-fn save_copilot_premium_setting(app: &mut App, mode: Option<&str>) {
-    use crate::provider::copilot::PremiumMode;
-
-    let premium_mode = match mode.unwrap_or("normal") {
-        "normal" => PremiumMode::Normal,
-        "one" => PremiumMode::OnePerSession,
-        "zero" => PremiumMode::Zero,
-        other => {
-            app.push_display_message(DisplayMessage::error(format!(
-                "Copilot premium mode must be normal, one, or zero (got {}).",
-                other
-            )));
-            return;
-        }
-    };
-    app.provider.set_premium_mode(premium_mode);
-    let result = match mode {
-        None | Some("normal") => crate::config::Config::set_copilot_premium(None),
-        Some(value) => crate::config::Config::set_copilot_premium(Some(value)),
-    };
-    match result {
-        Ok(()) => {
-            let label = match premium_mode {
-                PremiumMode::Normal => "normal",
-                PremiumMode::OnePerSession => "one premium per session",
-                PremiumMode::Zero => "zero premium requests",
-            };
-            app.set_status_notice(format!("Premium: {}", label));
-            app.push_display_message(DisplayMessage::system(format!(
-                "Saved Copilot premium mode: {}.",
-                label
-            )));
-        }
-        Err(err) => app.push_display_message(DisplayMessage::error(format!(
-            "Failed to save Copilot premium mode: {}",
             err
         ))),
     }
@@ -931,14 +871,6 @@ fn render_provider_settings_markdown(app: &App, provider_id: &str) -> String {
                     .to_string(),
             );
         }
-        "copilot" => {
-            lines.push("Settings".to_string());
-            lines.push(format!(
-                "  - Premium mode: {}",
-                cfg.provider.copilot_premium.as_deref().unwrap_or("normal")
-            ));
-            lines.push("  - /account copilot premium <normal|one|zero>".to_string());
-        }
         "openai-compatible" => {
             let compat = crate::provider_catalog::resolve_openai_compatible_profile(
                 crate::provider_catalog::OPENAI_COMPAT_PROFILE,
@@ -980,7 +912,7 @@ fn render_provider_settings_markdown(app: &App, provider_id: &str) -> String {
                 .unwrap_or("(provider default)")
         ));
         lines.push(
-            "  - /account default-provider <claude|openai|copilot|gemini|openrouter|auto>"
+            "  - /account default-provider <claude|openai|gemini|openrouter|auto>"
                 .to_string(),
         );
         lines.push("  - /account default-model <model|clear>".to_string());

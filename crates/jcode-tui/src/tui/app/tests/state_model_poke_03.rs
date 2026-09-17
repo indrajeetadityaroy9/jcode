@@ -630,7 +630,7 @@ fn test_tui_api_key_auth_refreshes_catalog_shows_diff_without_opening_picker() {
 #[test]
 fn test_tui_cerebras_paste_key_lifecycle_has_no_degraded_success_messages() {
     let _env_lock = crate::storage::lock_test_env();
-    let _guard = AzureLoginEnvGuard::save(&[
+    let _guard = LoginEnvGuard::save(&[
         "CEREBRAS_API_KEY",
         "JCODE_OPENROUTER_API_BASE",
         "JCODE_OPENROUTER_API_KEY_NAME",
@@ -639,7 +639,6 @@ fn test_tui_cerebras_paste_key_lifecycle_has_no_degraded_success_messages() {
         "JCODE_OPENROUTER_PROVIDER_FEATURES",
         "JCODE_OPENROUTER_MODEL_CATALOG",
         "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_RUNTIME_PROVIDER",
         "JCODE_ACTIVE_PROVIDER",
         "JCODE_INITIAL_PROVIDER_EXPLICIT",
@@ -1395,9 +1394,9 @@ fn test_login_completed_surfaces_new_provider_models_in_local_model_picker() {
     let mut app = create_auth_refresh_test_app();
 
     app.handle_login_completed(crate::bus::LoginCompleted {
-        provider: "copilot".to_string(),
+        provider: "gemini".to_string(),
         success: true,
-        message: "Authenticated as **octocat** via GitHub Copilot.\n\nCopilot models are now available in `/model`."
+        message: "Authenticated as **octocat** via Google Gemini.\n\nGemini models are now available in `/model`."
             .to_string(),
     });
 
@@ -1409,103 +1408,37 @@ fn test_login_completed_surfaces_new_provider_models_in_local_model_picker() {
         .as_ref()
         .expect("model picker should be open");
 
-    let copilot_entry = picker
+    let gemini_entry = picker
         .entries
         .iter()
         .find(|entry| entry.name == "claude-opus-4.6")
-        .expect("copilot model should be shown after login");
+        .expect("gemini model should be shown after login");
 
     assert!(
         picker
             .entries
             .iter()
             .any(|entry| entry.name == "deepseek-v4-flash"),
-        "all newly available Copilot models should appear in /model"
+        "all newly available Gemini models should appear in /model"
     );
-    assert!(copilot_entry.options.iter().any(|route| {
-        route.provider == "Copilot" && route.api_method == "copilot" && route.available
+    assert!(gemini_entry.options.iter().any(|route| {
+        route.provider == "Gemini" && route.api_method == "gemini" && route.available
     }));
 
     assert!(
         picker.entries[0]
             .options
             .iter()
-            .any(|route| route.provider == "Copilot" && route.detail.contains("recently added")),
+            .any(|route| route.provider == "Gemini" && route.detail.contains("recently added")),
         "recently authenticated provider should be prioritized and marked in /model"
     );
 }
 
-#[derive(Clone)]
-struct AzureLoginMockProvider {
-    model: StdArc<StdMutex<String>>,
-    auth_changed: StdArc<AtomicUsize>,
-    complete_calls: StdArc<AtomicUsize>,
-}
-
-#[async_trait::async_trait]
-impl Provider for AzureLoginMockProvider {
-    async fn complete(
-        &self,
-        _messages: &[Message],
-        _tools: &[crate::message::ToolDefinition],
-        _system: &str,
-        _resume_session_id: Option<&str>,
-    ) -> Result<crate::provider::EventStream> {
-        self.complete_calls.fetch_add(1, Ordering::SeqCst);
-        let stream = futures::stream::empty::<Result<crate::message::StreamEvent>>();
-        Ok(Box::pin(stream) as crate::provider::EventStream)
-    }
-
-    fn name(&self) -> &str {
-        "OpenRouter"
-    }
-
-    fn model(&self) -> String {
-        self.model.lock().unwrap().clone()
-    }
-
-    fn set_model(&self, model: &str) -> Result<()> {
-        let model = model
-            .trim()
-            .strip_prefix("openrouter:")
-            .unwrap_or_else(|| model.trim())
-            .trim();
-        if model.is_empty() {
-            anyhow::bail!("model cannot be empty");
-        }
-        *self.model.lock().unwrap() = model.to_string();
-        Ok(())
-    }
-
-    fn available_models_display(&self) -> Vec<String> {
-        vec![self.model()]
-    }
-
-    fn model_routes(&self) -> Vec<crate::provider::ModelRoute> {
-        vec![crate::provider::ModelRoute {
-            model: self.model(),
-            provider: "Azure OpenAI".to_string(),
-            api_method: "openai-compatible".to_string(),
-            available: true,
-            detail: String::new(),
-            cheapness: None,
-        }]
-    }
-
-    fn on_auth_changed(&self) {
-        self.auth_changed.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
-}
-
-struct AzureLoginEnvGuard {
+struct LoginEnvGuard {
     saved: Vec<(&'static str, Option<String>)>,
 }
 
-impl AzureLoginEnvGuard {
+impl LoginEnvGuard {
     fn save(keys: &[&'static str]) -> Self {
         let saved = keys
             .iter()
@@ -1518,7 +1451,7 @@ impl AzureLoginEnvGuard {
     }
 }
 
-impl Drop for AzureLoginEnvGuard {
+impl Drop for LoginEnvGuard {
     fn drop(&mut self) {
         for (key, value) in self.saved.drain(..) {
             if let Some(value) = value {
@@ -1528,75 +1461,6 @@ impl Drop for AzureLoginEnvGuard {
             }
         }
     }
-}
-
-#[test]
-fn test_azure_login_completion_switches_local_model_without_completion() {
-    let _env_lock = crate::storage::lock_test_env();
-    let _guard = AzureLoginEnvGuard::save(&[
-        "AZURE_OPENAI_ENDPOINT",
-        "AZURE_OPENAI_MODEL",
-        "AZURE_OPENAI_API_KEY",
-        "AZURE_OPENAI_USE_ENTRA",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_MODEL_CATALOG",
-        "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
-        "JCODE_OPENROUTER_MODEL",
-        "JCODE_RUNTIME_PROVIDER",
-        "JCODE_ACTIVE_PROVIDER",
-        "JCODE_INITIAL_PROVIDER_EXPLICIT",
-    ]);
-    crate::env::set_var("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com");
-    crate::env::set_var("AZURE_OPENAI_MODEL", "azure-deployment");
-    crate::env::set_var("AZURE_OPENAI_API_KEY", "test-key");
-    crate::env::set_var("AZURE_OPENAI_USE_ENTRA", "0");
-
-    let _test_env = ensure_test_jcode_home_if_unset();
-    clear_persisted_test_ui_state();
-    crate::tui::ui::clear_test_render_state_for_tests();
-
-    let model = StdArc::new(StdMutex::new("old-model".to_string()));
-    let auth_changed = StdArc::new(AtomicUsize::new(0));
-    let complete_calls = StdArc::new(AtomicUsize::new(0));
-    let provider: Arc<dyn Provider> = Arc::new(AzureLoginMockProvider {
-        model: StdArc::clone(&model),
-        auth_changed: StdArc::clone(&auth_changed),
-        complete_calls: StdArc::clone(&complete_calls),
-    });
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let registry = rt.block_on(crate::tool::Registry::new(provider.clone()));
-    let mut app = App::new_for_test_harness(provider, registry);
-    app.queue_mode = false;
-    app.diff_mode = crate::config::DiffDisplayMode::Inline;
-    app.provider_session_id = Some("stale-upstream".to_string());
-    app.session.provider_session_id = Some("stale-upstream".to_string());
-    app.session.model = Some("old-model".to_string());
-
-    app.handle_login_completed(crate::bus::LoginCompleted {
-        provider: "Azure OpenAI".to_string(),
-        success: true,
-        message: "Azure OpenAI ready".to_string(),
-    });
-
-    assert_eq!(&*model.lock().unwrap(), "azure-deployment");
-    assert_eq!(app.session.model.as_deref(), Some("azure-deployment"));
-    assert_eq!(app.provider_session_id, None);
-    assert_eq!(app.session.provider_session_id, None);
-    assert_eq!(auth_changed.load(Ordering::SeqCst), 1);
-    assert_eq!(complete_calls.load(Ordering::SeqCst), 0);
-    assert_eq!(
-        std::env::var("JCODE_RUNTIME_PROVIDER").as_deref(),
-        Ok("azure-openai")
-    );
-    assert_eq!(
-        app.status_notice(),
-        Some("Login: Azure OpenAI ready (azure-deployment)".to_string())
-    );
 }
 
 #[test]
@@ -1808,7 +1672,7 @@ fn test_login_smoke_model_picker_renders_unstacked_provider_rows() {
     // catalog fits in one terminal viewport.
     let openai_text = render_filtered(&mut app, "gpt-5.4");
     let comtegra_text = render_filtered(&mut app, "glm-51-nvfp4");
-    let copilot_text = render_filtered(&mut app, "claude-opus-4.6");
+    let gemini_text = render_filtered(&mut app, "claude-opus-4.6");
     let deepseek_text = render_filtered(&mut app, "deepseek/deepseek-v4-pro");
     let kimi_text = render_filtered(&mut app, "moonshotai/kimi-k2.5");
     let openrouter_openai_text = render_filtered(&mut app, "openai/gpt-5.5");
@@ -1833,9 +1697,7 @@ fn test_login_smoke_model_picker_renders_unstacked_provider_rows() {
         .find(|line| line.contains("glm-51-nvfp4"))
         .unwrap_or("");
     assert!(
-        glm_row.contains("Comtegra GPU Cloud")
-            && glm_row.contains("api key")
-            && !glm_row.contains("copilot"),
+        glm_row.contains("Comtegra GPU Cloud") && glm_row.contains("api key"),
         "Comtegra GLM row should show its provider and API-key method, got row `{}` in:\n{}",
         glm_row,
         comtegra_text
@@ -1848,9 +1710,9 @@ fn test_login_smoke_model_picker_renders_unstacked_provider_rows() {
         comtegra_text
     );
     assert!(
-        copilot_text.contains("Claude Opus 4.6") && copilot_text.contains("Copilot"),
-        "Copilot route should be visible, got:\n{}",
-        copilot_text
+        gemini_text.contains("Claude Opus 4.6") && gemini_text.contains("Gemini"),
+        "Gemini route should be visible, got:\n{}",
+        gemini_text
     );
     assert!(
         deepseek_text.contains("deepseek/deepseek-v4-pro") && deepseek_text.contains("openrouter"),
@@ -1902,7 +1764,7 @@ fn test_login_smoke_model_picker_renders_unstacked_provider_rows() {
     for text in [
         &openai_text,
         &comtegra_text,
-        &copilot_text,
+        &gemini_text,
         &deepseek_text,
         &kimi_text,
         &openrouter_openai_text,

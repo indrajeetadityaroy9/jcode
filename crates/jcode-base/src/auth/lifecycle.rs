@@ -238,25 +238,15 @@ const ALL_GEMINI_MODELS: &[&str] = &[
 /// empty slice for providers without a curated order (local OpenAI-compatible,
 /// raw OpenRouter, ...), which preserves live-catalog order.
 ///
-/// Copilot and Cursor proxy Claude/OpenAI models under their bare canonical ids
-/// (`copilot:claude-opus-4-8`), so they share the same "catalog lists the cheap
-/// model first" hazard as a direct login and get the combined Claude+OpenAI
-/// order. The Claude/OpenAI subscription default bias mirrors jcode's global
-/// default model. Azure/Gemini/Antigravity are native hosted catalogs
-/// whose route lists are often ordered oldest-first, so they get an explicit
-/// curated order too.
+/// The Claude/OpenAI subscription default bias mirrors jcode's global default
+/// model. Gemini/Antigravity are native hosted catalogs whose route lists are
+/// often ordered oldest-first, so they get an explicit curated order too.
 fn provider_preferred_model_orders(
     activation: &AuthActivationResult,
 ) -> &'static [&'static [&'static str]] {
     match activation.provider_id.as_deref() {
         Some("claude") | Some("claude-api") => &[crate::provider::ALL_CLAUDE_MODELS],
         Some("openai") | Some("openai-api") => &[crate::provider::ALL_OPENAI_MODELS],
-        Some("copilot") | Some("cursor") => &[
-            crate::provider::ALL_CLAUDE_MODELS,
-            crate::provider::ALL_OPENAI_MODELS,
-        ],
-        // Azure hosts the OpenAI family.
-        Some("azure-openai") => &[crate::provider::ALL_OPENAI_MODELS],
         // Gemini (Code Assist OAuth) and Antigravity both serve Gemini models.
         Some("gemini") | Some("antigravity") => &[ALL_GEMINI_MODELS],
         _ => &[],
@@ -373,9 +363,7 @@ fn frontier_families(activation: &AuthActivationResult) -> &'static [FrontierFam
     };
     match activation.provider_id.as_deref() {
         Some("claude") | Some("claude-api") => &[CLAUDE, FABLE],
-        Some("openai") | Some("openai-api") | Some("azure-openai") => &[GPT],
-        // Copilot/Cursor proxy both families under canonical ids.
-        Some("copilot") | Some("cursor") => &[CLAUDE, FABLE, GPT],
+        Some("openai") | Some("openai-api") => &[GPT],
         // Hosted catalogs that proxy the Claude family are handled above.
         Some("gemini") | Some("antigravity") => &[GEMINI],
         _ => &[],
@@ -655,12 +643,6 @@ fn route_matches_activation(route: &ModelRoute, activation: &AuthActivationResul
                 crate::provider::ModelRouteApiMethod::CodeAssistOAuth
             );
         }
-        "azure-openai" => {
-            // Azure OpenAI reuses the OpenRouter transport (configured via Azure
-            // env), so its routes carry the `openrouter` api_method while keeping
-            // the `azure-openai` runtime identity.
-            return matches!(api_method, crate::provider::ModelRouteApiMethod::OpenRouter);
-        }
         _ => {}
     }
 
@@ -688,12 +670,7 @@ fn route_matches_activation(route: &ModelRoute, activation: &AuthActivationResul
 
 pub fn normalized_auth_provider_id(provider_hint: Option<&str>) -> Option<&'static str> {
     let provider = provider_hint?.trim();
-    if provider.eq_ignore_ascii_case("azure")
-        || provider.eq_ignore_ascii_case("azure-openai")
-        || provider.eq_ignore_ascii_case("azure openai")
-    {
-        Some("azure-openai")
-    } else if let Some(profile) =
+    if let Some(profile) =
         crate::provider_catalog::resolve_openai_compatible_profile_selection(provider)
     {
         Some(profile.id)
@@ -713,8 +690,6 @@ fn normalized_login_provider_id(provider_id: &str) -> Option<&'static str> {
             Some("openai-api")
         }
         "openrouter" => Some("openrouter"),
-        "cursor" => Some("cursor"),
-        "copilot" => Some("copilot"),
         "gemini" => Some("gemini"),
         "antigravity" => Some("antigravity"),
         _ => None,
@@ -723,9 +698,6 @@ fn normalized_login_provider_id(provider_id: &str) -> Option<&'static str> {
 
 pub fn provider_display_label(provider_id: Option<&str>) -> Option<String> {
     let provider = normalized_auth_provider_id(provider_id)?;
-    if provider == "azure-openai" {
-        return Some("Azure OpenAI".to_string());
-    }
     crate::provider_catalog::openai_compatible_profile_by_id(provider)
         .map(|profile| profile.display_name.to_string())
         .or_else(|| {
@@ -764,7 +736,6 @@ fn api_key_env_bindings_for_provider(provider_id: &str) -> Vec<(String, String)>
             "OPENROUTER_API_KEY".to_string(),
             "openrouter.env".to_string(),
         )],
-        "cursor" => vec![("CURSOR_API_KEY".to_string(), "cursor.env".to_string())],
         "gemini" => super::gemini::GEMINI_API_KEY_ENV_VARS
             .iter()
             .map(|env_key| {
@@ -774,20 +745,6 @@ fn api_key_env_bindings_for_provider(provider_id: &str) -> Vec<(String, String)>
                 )
             })
             .collect(),
-        "azure-openai" => vec![
-            (
-                super::azure::API_KEY_ENV.to_string(),
-                super::azure::ENV_FILE.to_string(),
-            ),
-            (
-                super::azure::ENDPOINT_ENV.to_string(),
-                super::azure::ENV_FILE.to_string(),
-            ),
-            (
-                super::azure::MODEL_ENV.to_string(),
-                super::azure::ENV_FILE.to_string(),
-            ),
-        ],
         other => crate::provider_catalog::openai_compatible_profile_by_id(other)
             .map(|profile| {
                 let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
@@ -872,18 +829,6 @@ fn sync_process_env_from_saved_credentials(
 
 fn apply_auth_provider_runtime(provider_id: Option<&str>) -> Option<String> {
     match normalized_auth_provider_id(provider_id) {
-        Some("azure-openai") => match crate::provider::activation::apply_azure_openai_runtime() {
-            Ok(model) => model,
-            Err(error) => {
-                let message = error.to_string();
-                crate::logging::auth_event(
-                    "auth_changed_runtime_activation_failed",
-                    "azure-openai",
-                    &[("reason", message.as_str())],
-                );
-                None
-            }
-        },
         Some(profile_id)
             if direct_provider_activation(profile_id).is_none()
                 && crate::provider_catalog::openai_compatible_profile_by_id(profile_id)
@@ -943,8 +888,6 @@ fn direct_provider_activation(provider_id: &str) -> Option<ProviderActivation> {
         "openai" => (RuntimeProviderId::OpenAi, ActiveProvider::OpenAI),
         "openai-api" => (RuntimeProviderId::OpenAiApiKey, ActiveProvider::OpenAI),
         "openrouter" => (RuntimeProviderId::OpenRouter, ActiveProvider::OpenRouter),
-        "cursor" => (RuntimeProviderId::Cursor, ActiveProvider::Cursor),
-        "copilot" => (RuntimeProviderId::Copilot, ActiveProvider::Copilot),
         "gemini" => (RuntimeProviderId::Gemini, ActiveProvider::Gemini),
         "antigravity" => (RuntimeProviderId::Antigravity, ActiveProvider::Antigravity),
         _ => return None,
@@ -958,11 +901,8 @@ pub fn model_switch_request_for_provider_id(
     model: &str,
 ) -> String {
     match normalized_auth_provider_id(provider_id) {
-        Some("azure-openai") => format!("openrouter:{}", model),
         Some(profile_id)
-            if profile_id != "azure-openai"
-                && crate::provider_catalog::openai_compatible_profile_by_id(profile_id)
-                    .is_some() =>
+            if crate::provider_catalog::openai_compatible_profile_by_id(profile_id).is_some() =>
         {
             format!("{}:{}", profile_id, model)
         }
@@ -971,8 +911,6 @@ pub fn model_switch_request_for_provider_id(
         Some("openai") => format!("openai-oauth:{}", model),
         Some("openai-api") => format!("openai-api:{}", model),
         Some("openrouter") => format!("openrouter:{}", model),
-        Some("cursor") => format!("cursor:{}", model),
-        Some("copilot") => format!("copilot:{}", model),
         Some("gemini") => format!("gemini:{}", model),
         Some("antigravity") => format!("antigravity:{}", model),
         _ => model.to_string(),
@@ -1179,8 +1117,6 @@ mod tests {
             ("openai", "openai", "OpenAI"),
             ("openai-key", "openai-api", "OpenAI API"),
             ("openrouter", "openrouter", "OpenRouter"),
-            ("cursor", "cursor", "Cursor"),
-            ("copilot", "copilot", "GitHub Copilot"),
             ("gemini", "gemini", "Google Gemini"),
             ("antigravity", "antigravity", "Antigravity"),
         ] {
@@ -1229,8 +1165,6 @@ mod tests {
             ("openai", "openai", "openai"),
             ("openai-api", "openai-api", "openai"),
             ("openrouter", "openrouter", "openrouter"),
-            ("cursor", "cursor", "cursor"),
-            ("copilot", "copilot", "copilot"),
             ("gemini", "gemini", "gemini"),
             ("antigravity", "antigravity", "antigravity"),
         ] {
@@ -1282,12 +1216,6 @@ mod tests {
                 }
                 crate::provider_catalog::LoginProviderTarget::OpenRouter => {
                     Some(("openrouter", "openrouter", "openrouter", "openrouter"))
-                }
-                crate::provider_catalog::LoginProviderTarget::Cursor => {
-                    Some(("cursor", "cursor", "cursor", "cursor"))
-                }
-                crate::provider_catalog::LoginProviderTarget::Copilot => {
-                    Some(("copilot", "copilot", "copilot", "copilot"))
                 }
                 crate::provider_catalog::LoginProviderTarget::Gemini => {
                     Some(("gemini", "gemini", "gemini", "gemini"))
@@ -1362,8 +1290,6 @@ mod tests {
             "openai",
             "openai-api",
             "openrouter",
-            "cursor",
-            "copilot",
             "gemini",
             "antigravity",
         ] {
@@ -1395,9 +1321,6 @@ mod tests {
             ("openai", "openai-oauth:shared-model"),
             ("openai-api", "openai-api:shared-model"),
             ("openrouter", "openrouter:shared-model"),
-            ("azure-openai", "openrouter:shared-model"),
-            ("cursor", "cursor:shared-model"),
-            ("copilot", "copilot:shared-model"),
             ("gemini", "gemini:shared-model"),
             ("antigravity", "antigravity:shared-model"),
             ("cerebras", "cerebras:shared-model"),
@@ -1952,9 +1875,6 @@ mod tests {
         "claude-api",
         "openai",
         "openai-api",
-        "copilot",
-        "cursor",
-        "azure-openai",
         "gemini",
         "antigravity",
     ];
@@ -2047,30 +1967,6 @@ mod tests {
                 "gpt-5.5",
             ),
             (
-                // Copilot proxies Claude under canonical ids: Opus must beat Haiku.
-                "copilot",
-                "copilot",
-                "Copilot",
-                &["claude-haiku-4-5", "gpt-5.5", "claude-opus-4-8"],
-                "claude-opus-4-8",
-            ),
-            (
-                // Cursor likewise: an all-OpenAI catalog still picks the flagship.
-                "cursor",
-                "cursor",
-                "Cursor",
-                &["gpt-5-nano", "gpt-5.1", "gpt-5.5"],
-                "gpt-5.5",
-            ),
-            (
-                // Azure hosts the OpenAI family over the OpenRouter transport.
-                "azure-openai",
-                "openrouter",
-                "Azure OpenAI",
-                &["gpt-5-mini", "gpt-5.1", "gpt-5.5"],
-                "gpt-5.5",
-            ),
-            (
                 // Gemini's flagship tier is `pro`; a flash-first catalog must
                 // still pick the strongest pro model.
                 "gemini",
@@ -2118,19 +2014,4 @@ mod tests {
         }
     }
 
-    /// Copilot proxies both families; the cross-family tie-break must prefer the
-    /// Claude flagship over the OpenAI flagship to mirror jcode's default model.
-    #[test]
-    fn post_auth_model_selection_copilot_prefers_claude_family_over_openai() {
-        let activation = activation_for_provider_id("copilot");
-        let routes = vec![
-            route("gpt-5.5", "Copilot", "copilot", true),
-            route("claude-opus-4-8", "Copilot", "copilot", true),
-        ];
-        assert_eq!(
-            provider_model_to_select_after_auth(&activation, None, &routes).as_deref(),
-            Some("claude-opus-4-8"),
-            "copilot tie-break should prefer the Claude flagship family first"
-        );
-    }
 }

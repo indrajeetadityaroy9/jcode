@@ -79,7 +79,6 @@ fn isolate_openrouter_autodetect_env() -> Vec<EnvVarGuard> {
         EnvVarGuard::remove("JCODE_OPENROUTER_API_BASE"),
         EnvVarGuard::remove("JCODE_OPENROUTER_API_KEY_NAME"),
         EnvVarGuard::remove("JCODE_OPENROUTER_ENV_FILE"),
-        EnvVarGuard::remove("JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER"),
         EnvVarGuard::remove("JCODE_OPENROUTER_MODEL"),
         EnvVarGuard::remove("JCODE_OPENROUTER_CACHE_NAMESPACE"),
         EnvVarGuard::remove("JCODE_OPENROUTER_ALLOW_NO_AUTH"),
@@ -1995,7 +1994,7 @@ fn named_profile_set_model_keeps_builtin_routing_prefixes() {
     for spec in [
         "claude-oauth:claude-opus-4-8",
         "openai-api:gpt-5.4",
-        "copilot:gpt-5.4",
+        "antigravity:gemini-3-flash",
     ] {
         provider.set_model(spec).unwrap();
         assert_eq!(provider.model(), spec, "spec {spec} must be preserved");

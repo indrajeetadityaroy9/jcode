@@ -107,7 +107,7 @@ verdict "$(grep -rnE \
 # §1). Tight for the same reason as above and then some: a bare `subscription`
 # would match `channel_subscriptions` (swarm chat pub/sub, 241 hits in
 # jcode-app-core alone) and every third-party subscription-auth path — Claude
-# Pro/Max, ChatGPT, Copilot, Gemini Code Assist — all of which §1 KEEPS as the
+# Pro/Max, ChatGPT, Gemini Code Assist — all of which §1 KEEPS as the
 # owner's actual working logins.
 section "first-party jcode subscription provider must stay deleted"
 verdict "$(grep -rnE \
@@ -142,7 +142,7 @@ verdict "$(grep -rnE \
 # renamed image-placeholder path, not the encoder.
 section "video media assets must stay deleted"
 verdict "$( { git ls-files | grep -iE '\.(mp4|mov|webm|gif|avi|mkv)$' | sed 's/^/  RESURRECTED: /'
-    git ls-files assets/demos 2>/dev/null | grep -i timeline | sed 's/^/  RESURRECTED: /'; } )"
+    git ls-files assets 2>/dev/null | sed 's/^/  RESURRECTED: /'; } )"
 
 section "dictation / video encoder must stay deleted"
 verdict "$(grep -rnE \
@@ -201,6 +201,34 @@ verdict "$( { grep -rn 'crates/jcode-sdk\|jcode_sdk::' \
 section "network egress endpoints"
 verdict "$(grep -rn 'telemetry\.jcode\.sh\|api\.jcode\.sh/v1/discovery' \
     --include='*.rs' --include='*.sh' --include='*.ps1' . 2>/dev/null | sed 's/^/  /')"
+
+# The Copilot, Cursor, and Azure OpenAI model providers are purged (see
+# docs/FORK_WORKFLOW.md §1). Upstream keeps developing all three, so a sync can
+# reintroduce them by adding a single enum variant or catalog row to a file we
+# kept — which compiles cleanly and breaks no test.
+#
+# Deliberately NOT matched, because they are live behavior:
+#   - Cursor *editor* transcript import: `SessionSource::Cursor`,
+#     `ResumeTarget::CursorSession`, `~/.cursor/projects`, `imported_cursor_*`.
+#     That is an import source, not a model provider.
+#   - `api.githubcopilot.com` in MCP config fixtures — GitHub's MCP endpoint.
+#   - `AZURE_CLIENT_SECRET` in the MCP child-env secret denylist — generic
+#     cloud-credential hygiene for the user's own environment.
+#   - text/scroll cursors and `std::io::Cursor` throughout the TUI.
+section "copilot / cursor / azure providers must stay deleted"
+verdict "$( { ls -d crates/jcode-provider-copilot crates/jcode-provider-copilot-runtime \
+       crates/jcode-provider-cursor-runtime crates/jcode-azure-auth 2>/dev/null \
+       | sed 's/^/  RESURRECTED: /'
+    grep -rnE '(ActiveProvider|RuntimeKey|ModelRouteApiMethod|ProviderChoice|LoginProviderTarget|LoginProviderAuthStateKey|AuthTestTarget|RuntimeProviderId)::(Copilot|Cursor|Azure)' \
+      --include='*.rs' crates/ src/ tests/ 2>/dev/null | sed 's/^/  /'
+    grep -rnE 'PremiumMode|copilot_premium|JCODE_COPILOT_PREMIUM|copilot_pricing|CopilotUsageTracker|apply_azure_openai_runtime|AzureDefaultCredential|JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER' \
+      --include='*.rs' --include='*.toml' --include='*.json' crates/ src/ tests/ scripts/ Cargo.toml 2>/dev/null \
+      | grep -v '^scripts/purge-guard.sh:' | sed 's/^/  /'
+    grep -rnE 'auth::(copilot|cursor|azure)::|provider::(copilot|cursor)::|jcode_provider_(copilot|cursor)|jcode_azure_auth|copilot_usage' \
+      --include='*.rs' --include='*.toml' crates/ src/ tests/ Cargo.toml 2>/dev/null | sed 's/^/  /'
+    grep -rnE '(COPILOT|CURSOR)_(LOGIN_PROVIDER|RUNTIME|GITHUB_TOKEN|API_KEY|ACCESS_TOKEN)|AZURE_LOGIN_PROVIDER|AZURE_OPENAI_(ENDPOINT|MODEL|API_KEY|USE_ENTRA)' \
+      --include='*.rs' --include='*.toml' --include='*.sh' crates/ src/ tests/ scripts/ 2>/dev/null \
+      | grep -vE 'AZURE_CLIENT_SECRET|^scripts/purge-guard.sh:' | sed 's/^/  /'; } )"
 
 echo
 if [ "$fail" -eq 0 ]; then echo "PURGE GUARD: clean"; else echo "PURGE GUARD: REINTRODUCTION DETECTED"; fi

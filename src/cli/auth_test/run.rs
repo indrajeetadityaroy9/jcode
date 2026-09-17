@@ -7,21 +7,6 @@ async fn maybe_run_auth_test_smoke(
     prompt: &str,
 ) {
     if enabled && report.success {
-        // Some providers validate chat but cannot run the tool smoke. The
-        // Cursor native agent transport is text-only (no tool calls over
-        // agent.v1.AgentService/Run), so skip the tool smoke with an
-        // explanation instead of hanging waiting for a tool call.
-        if matches!(kind, AuthTestSmokeKind::Tool) && matches!(target, AuthTestTarget::Cursor) {
-            report.push_step(
-                kind.step_name(),
-                true,
-                "Skipped: the Cursor native agent transport is text-only in jcode (it does not \
-                 expose tool calls over agent.v1.AgentService/Run). Basic provider smoke still \
-                 validates chat."
-                    .to_string(),
-            );
-            return;
-        }
         match kind.run(target, model, prompt).await {
             Ok(output) => {
                 let ok = output.contains("AUTH_TEST_OK");
@@ -567,8 +552,6 @@ async fn populate_auth_test_target_report(
         AuthTestTarget::Openai => probe_openai_auth(&mut report).await,
         AuthTestTarget::Gemini => probe_gemini_auth(&mut report).await,
         AuthTestTarget::Antigravity => probe_antigravity_auth(&mut report).await,
-        AuthTestTarget::Copilot => probe_copilot_auth(&mut report).await,
-        AuthTestTarget::Cursor => probe_cursor_auth(&mut report).await,
     }
 
     maybe_run_auth_test_smoke(

@@ -25,7 +25,7 @@ pub(crate) enum ProviderAuthArg {
 #[command(version = jcode_build_meta::version())]
 #[command(about = "J-Code: A coding agent using Claude Max or ChatGPT Pro subscriptions")]
 pub(crate) struct Args {
-    /// Initial provider to use (claude, openai, openai-api, openrouter, azure, opencode, opencode-go, zai, 302ai, baseten, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, or auto-detect). Interactive sessions can switch providers with /model.
+    /// Initial provider to use (claude, openai, openai-api, openrouter, opencode, opencode-go, zai, 302ai, baseten, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, gemini, antigravity, or auto-detect). Interactive sessions can switch providers with /model.
     #[arg(short, long, default_value = "auto", global = true)]
     pub(crate) provider: ProviderChoice,
 
@@ -174,10 +174,6 @@ pub(crate) enum Command {
         /// Emit machine-readable JSON for script-friendly login flows.
         #[arg(long)]
         json: bool,
-
-        /// Resume a pending scriptable login flow that does not require callback/code input.
-        #[arg(long, conflicts_with_all = ["print_auth_url", "callback_url", "auth_code"])]
-        complete: bool,
 
         /// Save credentials without running the post-login live provider validation.
         /// Useful for offline setup, CI, or when entering credentials before network access is available.

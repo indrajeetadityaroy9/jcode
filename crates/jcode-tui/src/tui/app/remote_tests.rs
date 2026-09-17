@@ -183,10 +183,6 @@ fn client_interaction_restores_focus_so_scroll_redraws_at_full_rate() {
 #[test]
 fn auth_provider_hint_maps_openai_compatible_login_providers() {
     assert_eq!(
-        auth_provider_hint_for_login_provider("Azure OpenAI"),
-        Some("azure-openai")
-    );
-    assert_eq!(
         auth_provider_hint_for_login_provider("cerebras"),
         Some("cerebras")
     );
@@ -251,7 +247,7 @@ fn auth_provider_hint_resolves_every_emitted_login_completed_provider() {
     // src/tui/app/auth.rs) must resolve to a canonical server provider id so the
     // auth-change refresh is attributed to the right provider and the post-login
     // model auto-select runs. Before the loose display-name resolution, only
-    // Azure and OpenAI-compatible logins resolved; every direct provider sent no
+    // OpenAI-compatible logins resolved; every direct provider sent no
     // hint, so the server fell back to the session's active provider (the
     // "OpenAI credentials are active" bug) and skipped the model switch.
     //
@@ -262,15 +258,11 @@ fn auth_provider_hint_resolves_every_emitted_login_completed_provider() {
         ("openai", Some("openai")),
         ("claude", Some("claude")),
         ("gemini", Some("gemini")),
-        ("copilot", Some("copilot")),
         ("antigravity", Some("antigravity")),
-        ("cursor", Some("cursor")),
         // API-key paste logins emit descriptor display labels.
         ("Anthropic API", Some("anthropic-api")),
         ("OpenAI API", Some("openai-api")),
         ("OpenRouter", Some("openrouter")),
-        // Azure keeps its dedicated runtime id mapping.
-        ("Azure OpenAI", Some("azure-openai")),
         // Auto-import has no single runtime to attribute the refresh to.
         ("auto-import", None),
     ];
@@ -295,7 +287,6 @@ fn auth_provider_hint_resolves_every_emitted_login_completed_provider() {
         // mapping, the single source of truth for post-login attribution.
         let expected: Option<String> = match descriptor.target {
             LoginProviderTarget::AutoImport => None,
-            LoginProviderTarget::Azure => Some("azure-openai".to_string()),
             LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id.to_string()),
             _ => Some(descriptor.id.to_string()),
         };

@@ -34,7 +34,6 @@ pub enum AuthCredentialSource {
     TrustedExternalFile,
     TrustedExternalAppState,
     LocalCliSession,
-    AzureDefaultCredential,
     Mixed,
 }
 
@@ -48,7 +47,6 @@ impl AuthCredentialSource {
             Self::TrustedExternalFile => "trusted external file",
             Self::TrustedExternalAppState => "trusted external app state",
             Self::LocalCliSession => "local CLI session",
-            Self::AzureDefaultCredential => "Azure DefaultAzureCredential",
             Self::Mixed => "mixed",
         }
     }

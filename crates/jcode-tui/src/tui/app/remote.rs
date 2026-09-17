@@ -599,7 +599,7 @@ pub(super) async fn handle_bus_event(
             true
         }
         Ok(BusEvent::LoginCompleted(login)) => {
-            let success = login.success && login.provider != "copilot_code";
+            let success = login.success;
             let provider_hint = auth_provider_hint_for_login_provider(&login.provider);
             let auth = auth_changed_event_for_login_provider(&login.provider);
             app.handle_login_completed(login);
@@ -627,26 +627,15 @@ pub(super) async fn handle_bus_event(
 ///
 /// `LoginCompleted.provider` is the login descriptor's display label (e.g.
 /// "Anthropic API"), id, or alias - not the canonical server provider id. This
-/// used to only map Azure and OpenAI-compatible logins, so direct logins
+/// used to only map OpenAI-compatible logins, so direct logins
 /// (Claude OAuth/API key, OpenAI, OpenRouter, ...) sent no hint. With
 /// no hint the server fell back to the session's currently active provider,
 /// mislabeling the catalog-refresh message ("OpenAI credentials are active"
 /// after an Anthropic API-key login) and skipping the post-login model switch.
 fn auth_provider_hint_for_login_provider(provider: &str) -> Option<&'static str> {
-    let provider = provider.trim();
-    // Azure's runtime id ("azure-openai") differs from its login descriptor id
-    // ("azure"); keep the dedicated mapping used across the auth lifecycle.
-    if provider.eq_ignore_ascii_case("azure")
-        || provider.eq_ignore_ascii_case("azure-openai")
-        || provider.eq_ignore_ascii_case("azure openai")
-    {
-        return Some("azure-openai");
-    }
-
     use crate::provider_catalog::LoginProviderTarget;
     let descriptor = crate::provider_catalog::resolve_login_provider_loose(provider)?;
     match descriptor.target {
-        LoginProviderTarget::Azure => Some("azure-openai"),
         // OpenAI-compatible profiles carry their own catalog namespace id.
         LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id),
         // Auto-import has no single runtime to attribute the refresh to.
@@ -681,11 +670,7 @@ fn auth_changed_event_for_login_provider(provider: &str) -> Option<crate::protoc
     // `openai_compatible_profile_by_id`: native providers (`anthropic-api`,
     // `openai-api`) alias doctor-probe compat profiles with the same id, but
     // their auth activation deliberately routes through the native runtime.
-    if provider_id == "azure-openai" {
-        auth.expected_runtime = Some(crate::protocol::RuntimeProviderKey::new("azure-openai"));
-        auth.expected_catalog_namespace =
-            Some(crate::protocol::CatalogNamespace::new("azure-openai"));
-    } else if descriptor
+    if descriptor
         .is_some_and(|d| matches!(d.target, LoginProviderTarget::OpenAiCompatible(_)))
     {
         auth.expected_runtime = Some(crate::protocol::RuntimeProviderKey::new(

@@ -44,7 +44,6 @@ fn tracked_env_vars() -> Vec<String> {
         "JCODE_OPENROUTER_STATIC_MODELS",
         "JCODE_OPENROUTER_AUTH_HEADER",
         "JCODE_OPENROUTER_AUTH_HEADER_NAME",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_OPENROUTER_THINKING",
         "JCODE_OPENAI_COMPAT_API_BASE",
         "JCODE_OPENAI_COMPAT_API_KEY_NAME",
@@ -58,10 +57,6 @@ fn tracked_env_vars() -> Vec<String> {
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
-        "COPILOT_GITHUB_TOKEN",
-        "GH_TOKEN",
-        "GITHUB_TOKEN",
-        "CURSOR_API_KEY",
         "GEMINI_API_KEY",
     ]
     .into_iter()
@@ -394,14 +389,6 @@ fn seed_non_compatible_auto_auth(provider: LoginProviderDescriptor) -> bool {
         }
         LoginProviderTarget::OpenRouter => {
             jcode::env::set_var("OPENROUTER_API_KEY", "sk-test-openrouter-key");
-            true
-        }
-        LoginProviderTarget::Copilot => {
-            jcode::env::set_var("COPILOT_GITHUB_TOKEN", "gho_test-copilot-token");
-            true
-        }
-        LoginProviderTarget::Cursor => {
-            jcode::env::set_var("CURSOR_API_KEY", "sk-test-cursor-key");
             true
         }
         _ => false,

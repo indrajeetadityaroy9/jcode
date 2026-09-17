@@ -42,22 +42,10 @@ pub(crate) enum PendingLogin {
     OpenAiCompatibleApiBase {
         profile: crate::provider_catalog::OpenAiCompatibleProfile,
     },
-    /// Waiting for user to paste a Cursor API key.
-    CursorApiKey,
-    /// GitHub Copilot device flow in progress (polling in background)
-    Copilot,
     /// Waiting for the user to choose which external auth sources to import.
     AutoImportSelection {
         candidates: Vec<crate::external_auth::ExternalAuthReviewCandidate>,
     },
-    /// Waiting for Azure OpenAI endpoint.
-    AzureEndpoint,
-    /// Waiting for Azure OpenAI deployment/model name.
-    AzureModel { endpoint: String },
-    /// Waiting for Azure OpenAI auth method choice.
-    AzureAuthChoice { endpoint: String, model: String },
-    /// Waiting for Azure OpenAI API key.
-    AzureApiKey { endpoint: String, model: String },
 }
 
 impl PendingLogin {}
@@ -109,7 +97,6 @@ pub(crate) enum AccountCommand {
     SetDefaultModel(Option<String>),
     SetOpenAiTransport(Option<String>),
     SetOpenAiEffort(Option<String>),
-    SetCopilotPremium(Option<String>),
     SetOpenAiCompatApiBase(Option<String>),
     SetOpenAiCompatApiKeyName(Option<String>),
     SetOpenAiCompatEnvFile(Option<String>),

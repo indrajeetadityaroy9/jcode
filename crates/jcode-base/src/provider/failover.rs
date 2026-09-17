@@ -62,7 +62,7 @@ impl MultiProvider {
     }
 
     pub(super) fn no_provider_available_error(&self, notes: &[String]) -> anyhow::Error {
-        let mut msg = "No tokens/providers left: no usable provider right now. Anthropic/OpenAI usage may be exhausted and GitHub Copilot is not authenticated or currently unavailable.".to_string();
+        let mut msg = "No tokens/providers left: no usable provider right now. Anthropic/OpenAI usage may be exhausted or currently unavailable.".to_string();
         if !notes.is_empty() {
             msg.push_str(" Details: ");
             msg.push_str(&notes.join(" | "));

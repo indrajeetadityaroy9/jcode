@@ -312,10 +312,8 @@ Start with the highest-leverage cache boundaries:
 
 - 2026-03-24: moved Azure bearer-token retrieval behind the new
   `crates/jcode-azure-auth` workspace crate so the Azure SDK no longer lives
-  directly in the main crate.
-- Note: touched-file timing for `src/auth/azure.rs` needs more instrumentation
-  cleanup; one post-split sample was anomalous and should not be treated as a
-  trustworthy ROI datapoint yet.
+  directly in the main crate. (Historical: the Azure OpenAI provider and that
+  crate were removed from this fork later, so the seam no longer exists.)
 
 - 2026-03-24: moved email notification / IMAP reply transport behind the new
   `crates/jcode-notify-email` workspace crate.
@@ -385,13 +383,15 @@ Start with the highest-leverage cache boundaries:
   tests, and `cargo check -p jcode --quiet` pass.
 - 2026-05-05: moved the Copilot `PremiumMode` provider-control enum into `jcode-provider-core`
   and re-exported it from the root/Copilot facades. The `Provider` trait no longer needs to name
-  the root `copilot` module for this control surface.
+  the root `copilot` module for this control surface. (Historical: the Copilot provider and
+  `PremiumMode` were removed from this fork later.)
 - Validation: `cargo check -p jcode-provider-core --quiet` and `cargo check -p jcode --quiet` pass.
 - 2026-05-05: moved provider-native tool result DTOs/sender aliases into `jcode-provider-core`.
   The global `Provider` trait no longer has to expose types owned by the root Claude module.
 - Validation: `cargo check -p jcode-provider-core --quiet` and `cargo check -p jcode --quiet` pass.
 - 2026-05-05: moved stable provider model constants, static provider/model classification,
-  Copilot model-name normalization, and fallback context-window heuristics into
+  Copilot model-name normalization (now `normalize_dotted_model_version`, kept for Claude model
+  names after the Copilot provider was removed), and fallback context-window heuristics into
   `jcode-provider-core::models`. Root `src/provider/models.rs` now layers dynamic account catalogs,
   runtime availability, and cache hydration on top of those core helpers.
 - Validation: `cargo test -p jcode-provider-core models:: --quiet`,
@@ -504,7 +504,8 @@ Touched-file `cargo check` samples gathered during this batch:
 Notes:
 
 - The post-split touched-file measurement for `src/auth/azure.rs` produced an anomalous
-  result and should not be treated as a reliable ROI datapoint yet.
+  result and was never a reliable ROI datapoint; that file and its crate split have since
+  been removed from the fork.
 - The post-split `src/notifications.rs` timing is not by itself a negative signal: touching
   that root module still rebuilds the main crate, while the intended win is that unrelated edits
   stop dragging mail transport dependencies through the same compile unit.

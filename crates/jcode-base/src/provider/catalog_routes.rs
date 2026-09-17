@@ -4,10 +4,10 @@ use super::pricing::cheapness_for_route;
 use super::{
     ALL_OPENAI_MODELS, AccountModelAvailabilityState, ModelRoute, MultiProvider,
     anthropic_api_key_route_availability, anthropic_oauth_route_availability,
-    build_anthropic_oauth_route, build_copilot_route, build_openai_api_key_route,
+    build_anthropic_oauth_route, build_openai_api_key_route,
     build_openai_oauth_route, build_openrouter_auto_route, build_openrouter_endpoint_route,
     build_openrouter_fallback_provider_route, configured_standard_openrouter_profile_routes,
-    copilot, dedupe_model_routes, direct_openai_compatible_profile_routes,
+    dedupe_model_routes, direct_openai_compatible_profile_routes,
     format_account_model_availability_detail, is_listable_model_name, known_anthropic_model_ids,
     known_openai_model_ids, model_availability_for_account, openrouter,
     openrouter_catalog_model_id, provider_for_model, standard_openrouter_profile_configured,
@@ -96,12 +96,6 @@ pub fn simplified_model_routes_for_picker(
                     "Gemini".to_string(),
                     "code-assist-oauth".to_string(),
                     auth.gemini != AuthState::NotConfigured,
-                    String::new(),
-                ),
-                Some("cursor") => (
-                    "Cursor".to_string(),
-                    "cursor".to_string(),
-                    auth.cursor != AuthState::NotConfigured,
                     String::new(),
                 ),
                 Some("openrouter") => (
@@ -213,10 +207,8 @@ pub(super) fn multiprovider_model_routes(provider: &MultiProvider) -> Vec<ModelR
     append_openai_routes(provider, &mut routes, &openai_auth);
     let added_direct_openai_compatible_routes =
         append_openai_compatible_profile_routes(provider, &mut routes);
-    append_copilot_routes(provider, &mut routes);
     append_gemini_routes(provider, &mut routes);
     append_antigravity_routes(provider, &mut routes);
-    append_cursor_routes(provider, &mut routes);
 
     let has_openrouter_transport = provider.openrouter_provider().is_some();
     let has_openrouter_provider_features = provider
@@ -512,28 +504,6 @@ fn named_provider_profile_routes(
     routes
 }
 
-/// GitHub Copilot models, or a placeholder when credentials exist but the
-/// provider is not initialized.
-fn append_copilot_routes(provider: &MultiProvider, routes: &mut Vec<ModelRoute>) {
-    if let Some(copilot) = provider.copilot_provider() {
-        let copilot_models = copilot.available_models_display();
-        let detail = copilot.model_catalog_detail();
-        let copilot_models_empty = copilot_models.is_empty();
-        for model in copilot_models {
-            routes.push(build_copilot_route(&model, true, detail.clone()));
-        }
-        if copilot_models_empty && copilot::has_credentials() {
-            routes.push(build_copilot_route("copilot models", false, detail));
-        }
-    } else if copilot::has_credentials() {
-        routes.push(build_copilot_route(
-            "copilot models",
-            false,
-            "not initialized yet",
-        ));
-    }
-}
-
 fn append_gemini_routes(provider: &MultiProvider, routes: &mut Vec<ModelRoute>) {
     if let Some(gemini) = provider.gemini_provider() {
         for model in gemini.available_models_display() {
@@ -552,21 +522,6 @@ fn append_gemini_routes(provider: &MultiProvider, routes: &mut Vec<ModelRoute>) 
 fn append_antigravity_routes(provider: &MultiProvider, routes: &mut Vec<ModelRoute>) {
     if let Some(antigravity) = provider.antigravity_provider() {
         routes.extend(antigravity.model_routes());
-    }
-}
-
-fn append_cursor_routes(provider: &MultiProvider, routes: &mut Vec<ModelRoute>) {
-    if let Some(cursor) = provider.cursor_provider() {
-        for model in cursor.available_models_display() {
-            routes.push(ModelRoute {
-                model,
-                provider: "Cursor".to_string(),
-                api_method: "cursor".to_string(),
-                available: true,
-                detail: String::new(),
-                cheapness: None,
-            });
-        }
     }
 }
 
@@ -945,15 +900,6 @@ pub fn remote_model_routes_fallback(
             added_any = true;
         }
 
-        if !added_any && remote_model_should_offer_copilot_route(model) && !model.contains("[1m]") {
-            routes.push(build_copilot_route(
-                model,
-                auth.copilot == AuthState::Available || remote_model_is_server_copilot_only(model),
-                String::new(),
-            ));
-            added_any = true;
-        }
-
         if super::gemini::is_gemini_model_id(model) {
             routes.push(ModelRoute {
                 model: model.clone(),
@@ -1051,12 +997,6 @@ pub fn remote_current_openai_compatible_route_for_model(
     })
 }
 
-pub fn remote_model_should_offer_copilot_route(model: &str) -> bool {
-    remote_openai_compatible_route_for_model(model).is_none()
-        && (remote_model_is_server_copilot_only(model)
-            || super::copilot::is_known_display_model(model))
-}
-
 pub fn remote_openai_compatible_route_for_model(model: &str) -> Option<ModelRoute> {
     for profile in crate::provider_catalog::openai_compatible_profiles()
         .iter()
@@ -1099,9 +1039,8 @@ pub fn remote_openai_compatible_route_for_model(model: &str) -> Option<ModelRout
 ///
 /// Built-in OpenAI-compatible profiles are handled above; without this, a
 /// bare model id from a custom profile (e.g. a local MLX server) matches no
-/// known provider and falls through to the Copilot heuristic, which then
-/// labels it `Copilot` and builds a `copilot:<model>` id that no runtime can
-/// resolve (issue #694).
+/// known provider and falls through to the unknown-route placeholder instead
+/// of its own profile (issue #694).
 fn named_provider_profile_route_for_model(model: &str) -> Option<ModelRoute> {
     named_provider_profile_route_for_model_in(model, &crate::config::config().providers)
 }
@@ -1172,16 +1111,6 @@ fn remote_openai_compatible_profile_models(
     models
 }
 
-pub fn remote_model_is_server_copilot_only(model: &str) -> bool {
-    !model.is_empty()
-        && !model.contains('/')
-        && remote_openai_compatible_route_for_model(model).is_none()
-        && !matches!(
-            provider_for_model(model),
-            Some("claude" | "openai" | "gemini" | "cursor")
-        )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1250,8 +1179,8 @@ mod tests {
     }
 
     /// Issue #694: a bare model id from a user-defined `[providers.<name>]`
-    /// profile must resolve to that profile, not fall through to the Copilot
-    /// heuristic (which mislabels it and builds an unresolvable `copilot:` id).
+    /// profile must resolve to that profile rather than falling through to the
+    /// unknown-route placeholder.
     #[test]
     fn named_provider_profile_model_routes_to_its_own_profile() {
         let mut providers = std::collections::BTreeMap::new();
@@ -1270,7 +1199,6 @@ mod tests {
         assert_eq!(route.provider, "omlx");
         assert_eq!(route.api_method, "openai-compatible:omlx");
         assert_eq!(route.detail, "http://127.0.0.1:18000/v1");
-        assert!(!route.api_method.starts_with("copilot"));
         assert!(matches!(
             route.api_method_kind(),
             jcode_provider_core::ModelRouteApiMethod::OpenAiCompatible { .. }
@@ -1373,9 +1301,9 @@ mod tests {
 
     /// Issue #694 through the real path a user hits: a custom
     /// `[providers.<name>]` profile in config.toml. The picker must route the
-    /// model to that profile, and must not offer it a Copilot route.
+    /// model to that profile.
     #[test]
-    fn custom_config_profile_model_is_routed_and_not_offered_a_copilot_route() {
+    fn custom_config_profile_model_is_routed_to_its_profile() {
         let _guard = EnvGuard::new();
         let jcode_home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME set");
         std::fs::write(
@@ -1390,74 +1318,15 @@ mod tests {
             .expect("custom config profile model must be routed to its profile");
         assert_eq!(route.provider, "omlx");
         assert_eq!(route.api_method, "openai-compatible:omlx");
-        assert!(
-            !remote_model_should_offer_copilot_route(model),
-            "a custom profile's model must never be offered a Copilot route"
-        );
 
         // The full fallback builder (what the picker renders) agrees.
         let routes = remote_model_routes_fallback(Some("omlx"), &[model.to_string()]);
         assert!(
             routes
                 .iter()
-                .all(|route| !route.api_method.contains("copilot")),
-            "picker routes must not contain a copilot route: {routes:?}"
-        );
-        assert!(
-            routes
-                .iter()
                 .any(|route| route.api_method == "openai-compatible:omlx"),
             "picker routes must include the profile route: {routes:?}"
         );
-    }
-
-    /// Issue #694 across both route sources. The picker is fed either by the
-    /// server-built catalog (named profile routes) or, before that frame
-    /// arrives, by the client-side fallback. Neither may attach a Copilot
-    /// route to a custom profile model, otherwise the label flickers to
-    /// Copilot and the selected id becomes a copilot-prefixed id.
-    #[test]
-    fn custom_config_profile_model_never_gets_a_copilot_route_from_either_source() {
-        let _guard = EnvGuard::new();
-        let jcode_home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME set");
-        std::fs::write(
-            std::path::PathBuf::from(jcode_home).join("config.toml"),
-            "[providers.omlx]\ntype = \"openai-compatible\"\nbase_url = \"http://127.0.0.1:18000/v1\"\ndefault_model = \"KAT-Coder-V2.5-Dev-OptiQ-4bit\"\n",
-        )
-        .expect("write config.toml");
-        crate::config::invalidate_config_cache();
-
-        let model = "KAT-Coder-V2.5-Dev-OptiQ-4bit";
-
-        // Source 1: the named-profile routes the server contributes.
-        let named = named_provider_profile_routes(
-            "omlx",
-            crate::config::config()
-                .providers
-                .get("omlx")
-                .expect("omlx profile"),
-        );
-        assert!(
-            named
-                .iter()
-                .any(|route| route.model == model && route.api_method == "openai-compatible:omlx"),
-            "server catalog must offer the profile route: {named:?}"
-        );
-
-        // Source 2: the client-side fallback, including the lightweight
-        // variant used while route details are still refreshing.
-        for routes in [
-            remote_model_routes_fallback(Some("omlx"), &[model.to_string()]),
-            remote_model_routes_lightweight_fallback(Some("omlx"), &[model.to_string()], model),
-        ] {
-            assert!(!routes.is_empty(), "fallback must offer the model");
-            assert!(
-                routes.iter().all(|route| {
-                    !route.api_method.contains("copilot") && route.provider != "Copilot"
-                }),
-                "no source may attach a Copilot route: {routes:?}"
-            );
-        }
     }
 
     #[test]

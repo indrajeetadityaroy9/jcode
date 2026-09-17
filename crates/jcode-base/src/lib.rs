@@ -27,7 +27,6 @@ pub mod client_input;
 pub mod compaction;
 pub mod config;
 pub mod console;
-pub mod copilot_usage;
 #[cfg(feature = "embeddings")]
 pub mod embedding;
 pub mod embedding_backend;

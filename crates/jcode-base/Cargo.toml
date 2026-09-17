@@ -60,13 +60,11 @@ hex = "0.4"
 url = "2"
 open = "5"               # Open URLs in browser
 jcode-auth-types = { path = "../jcode-auth-types" }
-jcode-azure-auth = { path = "../jcode-azure-auth" }
 jcode-agent-runtime = { path = "../jcode-agent-runtime" }
 jcode-provider-metadata = { path = "../jcode-provider-metadata" }
 jcode-provider-env = { path = "../jcode-provider-env" }
 jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-provider-antigravity = { path = "../jcode-provider-antigravity" }
-jcode-provider-copilot = { path = "../jcode-provider-copilot" }
 jcode-provider-openai = { path = "../jcode-provider-openai" }
 jcode-provider-openrouter = { path = "../jcode-provider-openrouter" }
 jcode-provider-gemini = { path = "../jcode-provider-gemini" }

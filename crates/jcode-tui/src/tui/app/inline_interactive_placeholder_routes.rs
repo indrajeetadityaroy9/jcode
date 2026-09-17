@@ -29,8 +29,8 @@ where
 }
 
 /// Whether a picker route's runtime can apply a per-request reasoning effort.
-/// Effort rows are only rendered for these routes; other routes (Copilot,
-/// Antigravity CLI, remote-catalog placeholders, ...) get one plain
+/// Effort rows are only rendered for these routes; other routes (named
+/// OpenAI-compatible profiles, Antigravity CLI, remote-catalog placeholders, ...) get one plain
 /// row per model because a picked effort could not actually be applied.
 pub(super) fn route_supports_reasoning_effort(api_method: &str) -> bool {
     use crate::provider::ModelRouteApiMethod as Method;
@@ -43,9 +43,7 @@ pub(super) fn route_supports_reasoning_effort(api_method: &str) -> bool {
         // Named OpenAI-compatible profiles expose effort through `/effort`.
         // Expanding them here creates one duplicate picker row per effort.
         Method::OpenAiCompatible { .. } => false,
-        Method::Copilot
-        | Method::Cursor
-        | Method::CodeAssistOAuth
+        Method::CodeAssistOAuth
         | Method::AntigravityHttps
         | Method::RemoteCatalog
         | Method::Current

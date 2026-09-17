@@ -1,113 +1,4 @@
 #[test]
-fn test_model_picker_copilot_selection_prefixes_model() {
-    let mut app = create_test_app();
-    configure_test_remote_models_with_copilot(&mut app);
-
-    app.open_model_picker();
-
-    let picker = app
-        .inline_interactive_state
-        .as_ref()
-        .expect("model picker should be open");
-
-    // Find deepseek-v4-flash (which should only be a copilot route)
-    let copilot_only_idx = picker
-        .entries
-        .iter()
-        .position(|m| m.name == "deepseek-v4-flash")
-        .expect("deepseek-v4-flash should be in picker");
-
-    // Navigate to it and select
-    let filtered_pos = picker
-        .filtered
-        .iter()
-        .position(|&i| i == copilot_only_idx)
-        .expect("deepseek-v4-flash should be in filtered list");
-
-    // Set the selected position to that model's position
-    app.inline_interactive_state.as_mut().unwrap().selected = filtered_pos;
-
-    // Press Enter to select
-    app.handle_key(KeyCode::Enter, KeyModifiers::empty())
-        .unwrap();
-
-    // In remote mode, selection should produce a pending_model_switch with copilot: prefix
-    if let Some(ref spec) = app.pending_model_switch {
-        assert!(
-            spec.starts_with("copilot:"),
-            "copilot model should be prefixed with 'copilot:', got: {}",
-            spec
-        );
-    }
-    // Picker should be closed
-    assert!(app.inline_interactive_state.is_none());
-}
-
-#[test]
-fn test_model_picker_cursor_models_have_cursor_route() {
-    let mut app = create_test_app();
-    configure_test_remote_models_with_cursor(&mut app);
-
-    app.open_model_picker();
-
-    let picker = app
-        .inline_interactive_state
-        .as_ref()
-        .expect("model picker should be open");
-
-    let composer_entry = picker
-        .entries
-        .iter()
-        .find(|m| m.name == "composer-2-fast")
-        .expect("composer-2-fast should be in picker");
-
-    assert!(
-        composer_entry
-            .options
-            .iter()
-            .any(|r| r.api_method == "cursor"),
-        "composer-2-fast should have a cursor route, got: {:?}",
-        composer_entry.options
-    );
-}
-
-#[test]
-fn test_model_picker_cursor_selection_prefixes_model() {
-    let mut app = create_test_app();
-    configure_test_remote_models_with_cursor(&mut app);
-
-    app.open_model_picker();
-
-    let picker = app
-        .inline_interactive_state
-        .as_ref()
-        .expect("model picker should be open");
-
-    let composer_idx = picker
-        .entries
-        .iter()
-        .position(|m| m.name == "composer-2-fast")
-        .expect("composer-2-fast should be in picker");
-
-    let filtered_pos = picker
-        .filtered
-        .iter()
-        .position(|&i| i == composer_idx)
-        .expect("composer-2-fast should be in filtered list");
-
-    app.inline_interactive_state.as_mut().unwrap().selected = filtered_pos;
-
-    app.handle_key(KeyCode::Enter, KeyModifiers::empty())
-        .unwrap();
-
-    assert_eq!(
-        app.pending_model_switch.as_deref(),
-        Some("cursor:composer-2-fast")
-    );
-    assert!(app.inline_interactive_state.is_none());
-}
-
-#[test]
 fn test_remote_placeholder_only_openai_routes_are_replaced_with_real_routes() {
     // A poisoned persisted catalog can pin OpenAI models to placeholder
     // "remote-catalog" routes (provider "OpenAI", detail "refreshing route
@@ -150,7 +41,7 @@ fn test_remote_placeholder_only_openai_routes_are_replaced_with_real_routes() {
 }
 
 #[test]
-fn test_remote_current_fpt_live_model_uses_fpt_route_not_copilot_without_cache() {
+fn test_remote_current_fpt_live_model_uses_fpt_route_without_cache() {
     with_temp_jcode_home(|| {
         crate::env::set_var("FPT_API_KEY", "test-fpt-key");
 
@@ -169,12 +60,6 @@ fn test_remote_current_fpt_live_model_uses_fpt_route_not_copilot_without_cache()
                     && route.api_method == "openai-compatible:fpt"
             }),
             "FPT current-provider live model should use FPT route, got {routes:?}"
-        );
-        assert!(
-            !routes
-                .iter()
-                .any(|route| route.model == "GLM-5.1" && route.api_method == "copilot"),
-            "FPT current-provider live model must not be guessed as Copilot: {routes:?}"
         );
 
         crate::env::remove_var("FPT_API_KEY");
@@ -275,15 +160,15 @@ fn test_remote_cached_oauth_only_claude_route_gains_api_key_route_in_picker() {
 }
 
 #[test]
-fn test_model_picker_ctrl_o_cursor_selection_saves_cursor_default() {
+fn test_model_picker_ctrl_o_selection_saves_provider_qualified_default() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.is_remote = true;
-        app.remote_available_entries = vec!["composer-2-fast".to_string()];
+        app.remote_available_entries = vec!["glm-51-nvfp4".to_string()];
         app.remote_model_options = vec![crate::provider::ModelRoute {
-            model: "composer-2-fast".to_string(),
-            provider: "Cursor".to_string(),
-            api_method: "cursor".to_string(),
+            model: "glm-51-nvfp4".to_string(),
+            provider: "Comtegra GPU Cloud".to_string(),
+            api_method: "openai-compatible:comtegra".to_string(),
             available: true,
             detail: String::new(),
             cheapness: None,
@@ -298,13 +183,13 @@ fn test_model_picker_ctrl_o_cursor_selection_saves_cursor_default() {
         let model_idx = picker
             .entries
             .iter()
-            .position(|m| m.name == "composer-2-fast")
-            .expect("Cursor model should be in picker");
+            .position(|m| m.name == "glm-51-nvfp4")
+            .expect("Comtegra model should be in picker");
         let filtered_pos = picker
             .filtered
             .iter()
             .position(|&i| i == model_idx)
-            .expect("Cursor model should be in filtered list");
+            .expect("Comtegra model should be in filtered list");
         app.inline_interactive_state.as_mut().unwrap().selected = filtered_pos;
 
         // Ctrl+O replaced Ctrl+B so the picker no longer steals tmux's prefix.
@@ -314,9 +199,9 @@ fn test_model_picker_ctrl_o_cursor_selection_saves_cursor_default() {
         let cfg = crate::config::Config::load();
         assert_eq!(
             cfg.provider.default_model.as_deref(),
-            Some("cursor:composer-2-fast")
+            Some("glm-51-nvfp4")
         );
-        assert_eq!(cfg.provider.default_provider.as_deref(), Some("cursor"));
+        assert_eq!(cfg.provider.default_provider.as_deref(), Some("comtegra"));
     });
 }
 
@@ -1329,18 +1214,19 @@ fn test_model_picker_effort_variants_follow_each_route_vocabulary() {
 }
 
 /// Plain model rows (no effort suffix) must not stage a reasoning effort.
-/// Routes whose runtime cannot apply a reasoning effort (e.g. Copilot) get
-/// plain rows even for models that have an effort ladder elsewhere.
+/// Routes whose runtime cannot apply a reasoning effort (e.g. an unclassified
+/// provider route) get plain rows even for models that have an effort ladder
+/// elsewhere.
 #[test]
 fn test_model_picker_plain_selection_stages_no_effort_in_remote_mode() {
     let mut app = create_test_app();
     configure_test_remote_models_with_openai_recommendations(&mut app);
-    // A Copilot-backed route cannot apply per-request reasoning effort, so it
-    // must render as a plain row (issue #458 route gating).
+    // An unclassified provider route cannot apply per-request reasoning
+    // effort, so it must render as a plain row (issue #458 route gating).
     app.remote_model_options.push(crate::provider::ModelRoute {
         model: "claude-opus-4-8".to_string(),
-        provider: "Copilot".to_string(),
-        api_method: "copilot".to_string(),
+        provider: "Gemini".to_string(),
+        api_method: "gemini".to_string(),
         available: true,
         detail: String::new(),
         cheapness: None,

@@ -129,8 +129,6 @@ pub fn redact_secrets(text: &str) -> String {
             r"(?m)^\s*(OPENAI_COMPAT_API_KEY\s*=\s*)[^\r\n]+",
             r"(?m)^\s*(ANTHROPIC_API_KEY\s*=\s*)[^\r\n]+",
             r"(?m)^\s*(OPENAI_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(AZURE_OPENAI_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(CURSOR_API_KEY\s*=\s*)[^\r\n]+",
             r"(?m)^\s*(GITHUB_TOKEN\s*=\s*)[^\r\n]+",
             r"(?im)^\s*([A-Z][A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|COOKIE)\s*=\s*)[^\r\n]+",
             r"(?im)^\s*(AUTHORIZATION\s*[:=]\s*)[^\r\n]+",
@@ -167,8 +165,6 @@ pub fn redact_secrets(text: &str) -> String {
         "OPENAI_COMPAT_API_KEY",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
-        "AZURE_OPENAI_API_KEY",
-        "CURSOR_API_KEY",
         "GITHUB_TOKEN",
     ]
     .iter()

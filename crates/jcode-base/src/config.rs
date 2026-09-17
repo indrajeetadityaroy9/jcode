@@ -46,7 +46,6 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_CHAT_NATIVE_SCROLLBAR",
     "JCODE_COMPACT_NOTIFICATIONS",
     "JCODE_COPY_BADGE_ALT_LABEL",
-    "JCODE_COPILOT_PREMIUM",
     "JCODE_CROSS_PROVIDER_FAILOVER",
     "JCODE_DEBUG_SOCKET",
     "JCODE_DEFAULT_REASONING_DISPLAY",
@@ -161,8 +160,8 @@ struct ConfigCache {
 
 static CONFIG_CACHE: LazyLock<RwLock<ConfigCache>> = LazyLock::new(|| {
     let config = leak_config(Config::load());
-    // Fingerprint after the load: applying env overrides may set env vars
-    // (e.g. copilot_premium -> JCODE_COPILOT_PREMIUM), and fingerprinting
+    // Fingerprint after the load: applying env overrides can itself mutate the
+    // fingerprinted inputs (config file, JCODE_* env vars), and fingerprinting
     // first would guarantee a spurious full reload on the next check.
     let fingerprint = ConfigCacheFingerprint::current();
     // Seed the global context-limit cache from named provider configs on first
@@ -230,9 +229,9 @@ pub fn config() -> &'static Config {
                 &fingerprint,
             ));
             cache.config = leak_config(Config::load());
-            // Loading applies env overrides that can themselves set env vars
-            // (e.g. copilot_premium propagates config -> JCODE_COPILOT_PREMIUM).
-            // Re-fingerprint after the load so those self-inflicted env changes
+            // Loading applies env overrides that can themselves mutate the
+            // fingerprinted inputs (config file, JCODE_* env vars).
+            // Re-fingerprint after the load so those self-inflicted changes
             // don't trigger a guaranteed second reload on the next check.
             cache.fingerprint = ConfigCacheFingerprint::current();
             cache.force_reload = false;

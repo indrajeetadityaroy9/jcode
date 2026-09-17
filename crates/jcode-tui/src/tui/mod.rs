@@ -1629,7 +1629,7 @@ mod tests {
     fn unsupported_provider_zero_cache_read_does_not_warn_even_if_metric_present() {
         let ttl = warm_cache_ttl();
         assert_eq!(
-            detect_kv_cache_problem("copilot", None, 3, 8_000, Some(0), None, Some(&ttl)),
+            detect_kv_cache_problem("cerebras", None, 3, 8_000, Some(0), None, Some(&ttl)),
             None
         );
     }

@@ -144,18 +144,6 @@ impl App {
                 Self::clear_api_key_login("OPENROUTER_API_KEY", "openrouter.env")?;
                 Ok("Logged out of OpenRouter API key.".to_string())
             }
-            LoginProviderTarget::Azure => {
-                Self::clear_api_key_login(
-                    crate::auth::azure::API_KEY_ENV,
-                    crate::auth::azure::ENV_FILE,
-                )?;
-                crate::provider_catalog::save_env_value_to_env_file(
-                    crate::auth::azure::USE_ENTRA_ENV,
-                    crate::auth::azure::ENV_FILE,
-                    None,
-                )?;
-                Ok("Logged out of Azure OpenAI API key / Entra configuration.".to_string())
-            }
             LoginProviderTarget::OpenAiCompatible(profile) => {
                 let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
                 Self::clear_api_key_login(&resolved.api_key_env, &resolved.env_file)?;
@@ -165,10 +153,6 @@ impl App {
                     None,
                 )?;
                 Ok(format!("Logged out of {} API key.", resolved.display_name))
-            }
-            LoginProviderTarget::Cursor => {
-                crate::auth::cursor::clear_api_key()?;
-                Ok("Logged out of Cursor API key.".to_string())
             }
             LoginProviderTarget::Gemini => {
                 crate::auth::gemini::clear_tokens()?;
@@ -232,20 +216,6 @@ impl App {
             "OPENROUTER_API_KEY",
             "openrouter.env",
         );
-        Self::clear_api_key_logout_summary(
-            &mut summary,
-            &mut errors,
-            "Azure OpenAI API key",
-            crate::auth::azure::API_KEY_ENV,
-            crate::auth::azure::ENV_FILE,
-        );
-        if let Err(err) = crate::provider_catalog::save_env_value_to_env_file(
-            crate::auth::azure::USE_ENTRA_ENV,
-            crate::auth::azure::ENV_FILE,
-            None,
-        ) {
-            errors.push(format!("Azure OpenAI Entra config: {}", err));
-        }
         for profile in crate::provider_catalog::openai_compatible_profiles() {
             let resolved = crate::provider_catalog::resolve_openai_compatible_profile(*profile);
             Self::clear_api_key_logout_summary(
@@ -265,12 +235,6 @@ impl App {
                     resolved.display_name, err
                 ));
             }
-        }
-        let cursor_configured = crate::auth::cursor::load_api_key().is_ok();
-        match crate::auth::cursor::clear_api_key() {
-            Ok(()) if cursor_configured => summary.push("Cursor API key".to_string()),
-            Ok(()) => {}
-            Err(err) => errors.push(format!("Cursor API key: {}", err)),
         }
         match crate::auth::gemini::clear_tokens() {
             Ok(()) => summary.push("Gemini".to_string()),
@@ -366,12 +330,9 @@ impl App {
             crate::provider_catalog::LoginProviderTarget::OpenRouter => {
                 self.start_openrouter_login()
             }
-            crate::provider_catalog::LoginProviderTarget::Azure => self.start_azure_login(),
             crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
                 self.start_openai_compatible_profile_login(profile)
             }
-            crate::provider_catalog::LoginProviderTarget::Cursor => self.start_cursor_login(),
-            crate::provider_catalog::LoginProviderTarget::Copilot => self.start_copilot_login(),
             crate::provider_catalog::LoginProviderTarget::Gemini => self.start_gemini_login(),
             crate::provider_catalog::LoginProviderTarget::Antigravity => {
                 self.start_antigravity_login()
@@ -1168,134 +1129,6 @@ impl App {
         });
     }
 
-    fn start_azure_login(&mut self) {
-        self.push_display_message(DisplayMessage::system(
-            "Azure OpenAI Login\n\n\
-             jcode uses Azure OpenAI's /openai/v1 API with either Microsoft Entra ID or an API key.\n\n\
-             Enter your Azure OpenAI endpoint, for example https://your-resource.openai.azure.com, or type /cancel to abort."
-                .to_string(),
-        ));
-        self.set_status_notice("Login: Azure endpoint...");
-        self.begin_pending_login(PendingLogin::AzureEndpoint);
-    }
-
-    fn start_cursor_login(&mut self) {
-        self.push_display_message(DisplayMessage::system(
-            "Cursor API Key\n\n\
-             Get your API key from: https://cursor.com/settings\n\
-             (Dashboard > Integrations > User API Keys)\n\n\
-             jcode will save it securely and use the native Cursor HTTPS transport.\n\n\
-             Paste your API key below, or type /cancel to abort."
-                .to_string(),
-        ));
-        self.set_status_notice("Login: paste cursor key...");
-        self.begin_pending_login(PendingLogin::CursorApiKey);
-    }
-
-    fn start_copilot_login(&mut self) {
-        self.set_status_notice("Login: copilot device flow...");
-        self.begin_pending_login(PendingLogin::Copilot);
-
-        tokio::spawn(async move {
-            let client = crate::provider::shared_http_client();
-
-            let device_resp = match crate::auth::copilot::initiate_device_flow(&client).await {
-                Ok(resp) => resp,
-                Err(e) => {
-                    Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
-                        provider: "copilot".to_string(),
-                        success: false,
-                        message: format!("Copilot device flow failed: {}", e),
-                    }));
-                    return;
-                }
-            };
-
-            let user_code = device_resp.user_code.clone();
-            let verification_uri = device_resp.verification_uri.clone();
-
-            let clipboard_ok = copy_to_clipboard(&user_code);
-            let clipboard_msg = if clipboard_ok {
-                " (copied to clipboard - just paste it!)"
-            } else {
-                ""
-            };
-
-            Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
-                provider: "copilot_code".to_string(),
-                success: true,
-                message: {
-                    let qr_section = crate::login_qr::markdown_section_for_tui(
-                        &verification_uri,
-                        "Scan this on another device to open the GitHub verification page:",
-                    )
-                    .map(|section| format!("\n\n{section}"))
-                    .unwrap_or_default();
-                    format!(
-                        "GitHub Copilot Login\n\n\
-                         Your code: {}{}\n\n\
-                         Opening browser to {} ...\n\
-                         Paste the code there and authorize.{}\n\n\
-                         Waiting for authorization... (type /cancel to abort)",
-                        user_code, clipboard_msg, verification_uri, qr_section
-                    )
-                },
-            }));
-
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            let _ = Self::open_auth_browser(&verification_uri);
-
-            let token = match crate::auth::copilot::poll_for_access_token(
-                &client,
-                &device_resp.device_code,
-                device_resp.interval,
-            )
-            .await
-            {
-                Ok(t) => t,
-                Err(e) => {
-                    Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
-                        provider: "copilot".to_string(),
-                        success: false,
-                        message: format!("Copilot login failed: {}", e),
-                    }));
-                    return;
-                }
-            };
-
-            let username = crate::auth::copilot::fetch_github_username(&client, &token)
-                .await
-                .unwrap_or_else(|_| "unknown".to_string());
-
-            match crate::auth::copilot::save_github_token(&token, &username) {
-                Ok(()) => {
-                    Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
-                        provider: "copilot".to_string(),
-                        success: true,
-                        message: format!(
-                            "Authenticated as {} via GitHub Copilot.\n\n\
-                             Copilot models are now available in /model.",
-                            username
-                        ),
-                    }));
-                }
-                Err(e) => {
-                    Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
-                        provider: "copilot".to_string(),
-                        success: false,
-                        message: format!("Failed to save Copilot token: {}", e),
-                    }));
-                }
-            }
-        });
-
-        self.push_display_message(DisplayMessage::system(
-            "GitHub Copilot Login\n\n\
-             Starting device flow... please wait. Type /cancel to abort."
-                .to_string(),
-        ));
-    }
-
     fn start_antigravity_login(&mut self) {
         let (verifier, challenge) = crate::auth::oauth::generate_pkce_public();
         let expected_state = crate::auth::oauth::generate_state_public();
@@ -1914,148 +1747,6 @@ impl App {
                 }
                 self.start_openai_compatible_key_login(profile);
             }
-            PendingLogin::AzureEndpoint => {
-                let endpoint_raw = input.trim();
-                let Some(endpoint) = crate::auth::azure::normalize_endpoint(endpoint_raw) else {
-                    self.push_display_message(DisplayMessage::error(
-                        "Invalid Azure OpenAI endpoint. Use https://<resource>.openai.azure.com or the full /openai/v1 URL."
-                            .to_string(),
-                    ));
-                    self.pending_login = Some(PendingLogin::AzureEndpoint);
-                    return;
-                };
-                self.push_display_message(DisplayMessage::system(
-                    "Azure endpoint accepted. Now enter the Azure deployment/model name, for example gpt-4.1-nano."
-                        .to_string(),
-                ));
-                self.set_status_notice("Login: Azure model...");
-                self.pending_login = Some(PendingLogin::AzureModel { endpoint });
-            }
-            PendingLogin::AzureModel { endpoint } => {
-                let model = input.trim().to_string();
-                if model.is_empty() {
-                    self.push_display_message(DisplayMessage::error(
-                        "Azure deployment/model name cannot be empty.".to_string(),
-                    ));
-                    self.pending_login = Some(PendingLogin::AzureModel { endpoint });
-                    return;
-                }
-                self.push_display_message(DisplayMessage::system(
-                    "Authentication method:\n\n\
-                     1 Microsoft Entra ID via DefaultAzureCredential, for example az login\n\
-                     2 Azure OpenAI API key\n\n\
-                     Enter 1 or 2 [1]."
-                        .to_string(),
-                ));
-                self.set_status_notice("Login: Azure auth method...");
-                self.pending_login = Some(PendingLogin::AzureAuthChoice { endpoint, model });
-            }
-            PendingLogin::AzureAuthChoice { endpoint, model } => {
-                let choice = input.trim();
-                let use_entra = match choice {
-                    "" | "1" => true,
-                    "2" => false,
-                    other
-                        if other.eq_ignore_ascii_case("entra")
-                            || other.eq_ignore_ascii_case("oauth") =>
-                    {
-                        true
-                    }
-                    other
-                        if other.eq_ignore_ascii_case("key")
-                            || other.eq_ignore_ascii_case("api-key") =>
-                    {
-                        false
-                    }
-                    _ => {
-                        self.push_display_message(DisplayMessage::error(
-                            "Invalid auth choice. Enter 1 for Entra ID or 2 for API key."
-                                .to_string(),
-                        ));
-                        self.pending_login =
-                            Some(PendingLogin::AzureAuthChoice { endpoint, model });
-                        return;
-                    }
-                };
-                if use_entra {
-                    match Self::save_azure_config(&endpoint, &model, true, None) {
-                        Ok(()) => self.finish_azure_login(true),
-                        Err(err) => {
-                            self.push_display_message(DisplayMessage::error(format!(
-                                "Failed to save Azure OpenAI configuration: {}",
-                                err
-                            )));
-                            self.pending_login =
-                                Some(PendingLogin::AzureAuthChoice { endpoint, model });
-                        }
-                    }
-                } else {
-                    self.push_display_message(DisplayMessage::system(
-                        "Paste your Azure OpenAI API key, or type /cancel to abort.".to_string(),
-                    ));
-                    self.set_status_notice("Login: Azure API key...");
-                    self.pending_login = Some(PendingLogin::AzureApiKey { endpoint, model });
-                }
-            }
-            PendingLogin::AzureApiKey { endpoint, model } => {
-                let key = input.trim().to_string();
-                if key.is_empty() {
-                    self.push_display_message(DisplayMessage::error(
-                        "Azure OpenAI API key cannot be empty.".to_string(),
-                    ));
-                    self.pending_login = Some(PendingLogin::AzureApiKey { endpoint, model });
-                    return;
-                }
-                match Self::save_azure_config(&endpoint, &model, false, Some(&key)) {
-                    Ok(()) => self.finish_azure_login(false),
-                    Err(err) => {
-                        self.push_display_message(DisplayMessage::error(format!(
-                            "Failed to save Azure OpenAI configuration: {}",
-                            err
-                        )));
-                        self.pending_login = Some(PendingLogin::AzureApiKey { endpoint, model });
-                    }
-                }
-            }
-            PendingLogin::CursorApiKey => {
-                let key = input.trim().to_string();
-                if key.is_empty() {
-                    self.push_display_message(DisplayMessage::error(
-                        "API key cannot be empty.".to_string(),
-                    ));
-                    self.pending_login = Some(PendingLogin::CursorApiKey);
-                    return;
-                }
-
-                match crate::auth::cursor::save_api_key(&key) {
-                    Ok(()) => {
-                        crate::auth::AuthStatus::invalidate_cache();
-                        Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
-                            provider: "cursor".to_string(),
-                            success: true,
-                            message: "Cursor API key saved.\n\n\
-                             Stored at ~/.config/jcode/cursor.env.\n\
-                             jcode will use it with the native Cursor HTTPS transport."
-                                .to_string(),
-                        }));
-                    }
-                    Err(e) => {
-                        self.push_display_message(DisplayMessage::error(format!(
-                            "Failed to save Cursor API key: {}",
-                            e
-                        )));
-                        self.pending_login = Some(PendingLogin::CursorApiKey);
-                    }
-                }
-            }
-            PendingLogin::Copilot => {
-                self.push_display_message(DisplayMessage::system(
-                    "Copilot login is waiting for browser authorization.\n\
-                     Complete the login in your browser, or type /cancel to abort."
-                        .to_string(),
-                ));
-                self.pending_login = Some(PendingLogin::Copilot);
-            }
             PendingLogin::AutoImportSelection { candidates } => {
                 let selected = match crate::external_auth::parse_external_auth_review_selection(
                     &input,
@@ -2192,71 +1883,6 @@ impl App {
                 }
             }
             self.finish_auth_catalog_refresh();
-        }
-    }
-
-    fn login_provider_is_azure(provider: &str) -> bool {
-        let provider = provider.trim();
-        provider.eq_ignore_ascii_case("azure")
-            || provider.eq_ignore_ascii_case("azure-openai")
-            || provider.eq_ignore_ascii_case("azure openai")
-    }
-
-    fn activate_azure_runtime_model_after_login(&mut self) {
-        let activated_model = match crate::provider::activation::apply_azure_openai_runtime() {
-            Ok(model) => model,
-            Err(error) => {
-                let message = error.to_string();
-                crate::logging::auth_event(
-                    "auth_changed_runtime_activation_failed",
-                    "azure-openai",
-                    &[("surface", "tui"), ("reason", message.as_str())],
-                );
-                self.trigger_provider_auth_changed(Some("azure-openai"), true);
-                return;
-            }
-        };
-
-        // Rebuild the OpenAI-compatible transport under the Azure runtime before
-        // selecting the configured deployment. This is local-only state; it does
-        // not send a prompt or resume an upstream conversation.
-        self.provider.on_auth_changed();
-
-        let Some(model) = activated_model
-            .as_deref()
-            .map(str::trim)
-            .filter(|model| !model.is_empty())
-        else {
-            crate::bus::Bus::global().publish_models_updated();
-            return;
-        };
-
-        let model_request = if self.provider.name().eq_ignore_ascii_case("openrouter") {
-            model.to_string()
-        } else {
-            format!("openrouter:{}", model)
-        };
-
-        match self.provider.set_model(&model_request) {
-            Ok(()) => {
-                let active_model = self.finalize_model_switch(&model_request);
-                crate::bus::Bus::global().publish_models_updated();
-                crate::logging::auth_event(
-                    "auth_changed_runtime_model_applied",
-                    "azure-openai",
-                    &[("surface", "tui"), ("provider_session", "reset")],
-                );
-                self.set_status_notice(format!("Login: Azure OpenAI ready ({})", active_model));
-            }
-            Err(error) => {
-                let message = error.to_string();
-                crate::logging::auth_event(
-                    "auth_changed_runtime_model_failed",
-                    "azure-openai",
-                    &[("surface", "tui"), ("reason", message.as_str())],
-                );
-                crate::bus::Bus::global().publish_models_updated();
-            }
         }
     }
 
@@ -2473,18 +2099,6 @@ impl App {
     }
 
     pub(super) fn handle_login_completed(&mut self, login: LoginCompleted) {
-        if login.provider == "copilot_code" {
-            self.push_display_message(DisplayMessage::system(login.message.clone()));
-            if let Some(code) = login
-                .message
-                .split("Your code: ")
-                .nth(1)
-                .and_then(|s| s.split_whitespace().next())
-            {
-                self.set_status_notice(format!("Login: enter {} at GitHub", code));
-            }
-            return;
-        }
         crate::auth::AuthStatus::invalidate_cache();
         crate::logging::event_info(
             "login_completed",
@@ -2502,24 +2116,20 @@ impl App {
             self.invalidate_model_picker_cache();
             self.push_display_message(DisplayMessage::system(login.message));
             self.set_status_notice(format!("Login: {} ready", login.provider));
-            if Self::login_provider_is_azure(&login.provider) {
-                self.activate_azure_runtime_model_after_login();
-            } else {
-                // Direct OpenAI-compatible logins already launched the
-                // profile-specific catalog refresh and model activation before
-                // publishing LoginCompleted. The generic auth refresh still
-                // needs to rebuild routes and release the picker loading state,
-                // but must not race it with a second model selection.
-                let profile_activation_owns_selection =
-                    crate::provider_catalog::resolve_openai_compatible_profile_selection(
-                        &login.provider,
-                    )
-                    .is_some();
-                self.trigger_provider_auth_changed(
-                    Some(&login.provider),
-                    !profile_activation_owns_selection,
-                );
-            }
+            // Direct OpenAI-compatible logins already launched the
+            // profile-specific catalog refresh and model activation before
+            // publishing LoginCompleted. The generic auth refresh still
+            // needs to rebuild routes and release the picker loading state,
+            // but must not race it with a second model selection.
+            let profile_activation_owns_selection =
+                crate::provider_catalog::resolve_openai_compatible_profile_selection(
+                    &login.provider,
+                )
+                .is_some();
+            self.trigger_provider_auth_changed(
+                Some(&login.provider),
+                !profile_activation_owns_selection,
+            );
         } else {
             let message = crate::auth::login_diagnostics::augment_auth_error_message(
                 &login.provider,
@@ -2587,68 +2197,6 @@ impl App {
         crate::storage::upsert_env_file_value(&file_path, key_name, Some(key))?;
         crate::env::set_var(key_name, key);
         Ok(())
-    }
-
-    fn save_azure_config(
-        endpoint: &str,
-        model: &str,
-        use_entra: bool,
-        api_key: Option<&str>,
-    ) -> anyhow::Result<()> {
-        use crate::auth::azure;
-
-        crate::provider_catalog::save_env_value_to_env_file(
-            azure::ENDPOINT_ENV,
-            azure::ENV_FILE,
-            Some(endpoint),
-        )?;
-        crate::provider_catalog::save_env_value_to_env_file(
-            azure::MODEL_ENV,
-            azure::ENV_FILE,
-            Some(model),
-        )?;
-        crate::provider_catalog::save_env_value_to_env_file(
-            azure::USE_ENTRA_ENV,
-            azure::ENV_FILE,
-            Some(if use_entra { "1" } else { "0" }),
-        )?;
-        if let Some(api_key) = api_key {
-            crate::provider_catalog::save_env_value_to_env_file(
-                azure::API_KEY_ENV,
-                azure::ENV_FILE,
-                Some(api_key),
-            )?;
-        }
-        azure::apply_runtime_env()?;
-        Ok(())
-    }
-
-    fn finish_azure_login(&mut self, use_entra: bool) {
-        crate::auth::AuthStatus::invalidate_cache();
-        if let Err(err) = crate::provider::activation::apply_azure_openai_runtime() {
-            self.push_display_message(DisplayMessage::error(format!(
-                "Failed to activate Azure OpenAI runtime: {}",
-                err
-            )));
-            return;
-        }
-        let auth_note = if use_entra {
-            "Using Microsoft Entra ID through Azure DefaultAzureCredential. If you use Azure CLI auth, run az login and make sure the identity has the Cognitive Services OpenAI User role."
-        } else {
-            "Using the saved Azure OpenAI API key."
-        };
-        Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
-            provider: "Azure OpenAI".to_string(),
-            success: true,
-            message: format!(
-                "Azure OpenAI configuration saved.\n\n\
-                 Stored at ~/.config/jcode/{}.\n\
-                 {}\n\n\
-                 Use /model after your Azure deployment exists. If the model list looks stale, run /refresh-model-list.",
-                crate::auth::azure::ENV_FILE,
-                auth_note,
-            ),
-        }));
     }
 }
 

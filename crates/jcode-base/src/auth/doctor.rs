@@ -7,8 +7,7 @@ pub const VALIDATION_STALE_AFTER_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 /// `provider_id` (a provider whose live path is not OpenAI-compatible and so
 /// cannot be exercised by the generic OpenAI-compatible doctor). Today this is
 /// the Claude OAuth/subscription provider, the Antigravity (Google OAuth Cloud
-/// Code) provider, and the generic native-runtime providers (OpenAI, Gemini,
-/// Cursor, Copilot, Azure OpenAI).
+/// Code) provider, and the generic native-runtime providers (OpenAI, Gemini).
 ///
 /// The drivers themselves live downstream in the `jcode-provider-doctor`
 /// crate (which re-exports this predicate); this roster lives here so
@@ -18,9 +17,7 @@ pub const VALIDATION_STALE_AFTER_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 pub fn native_doctor_supports_provider(provider_id: &str) -> bool {
     matches!(
         crate::auth::lifecycle::normalized_auth_provider_id(Some(provider_id)),
-        Some(
-            "claude" | "antigravity" | "openai" | "gemini" | "cursor" | "copilot" | "azure-openai"
-        )
+        Some("claude" | "antigravity" | "openai" | "gemini")
     )
 }
 
@@ -288,11 +285,7 @@ mod tests {
                 .to_string();
 
         let actions = recommended_actions(
-            crate::provider_catalog::login_providers()
-                .iter()
-                .copied()
-                .find(|provider| provider.id == "copilot")
-                .unwrap(),
+            crate::provider_catalog::CLAUDE_LOGIN_PROVIDER,
             &assessment,
             None,
         );

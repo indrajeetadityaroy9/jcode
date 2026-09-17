@@ -555,19 +555,6 @@ pub const OPENROUTER_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDesc
     order: LoginProviderSurfaceOrder::new(Some(4), Some(3), Some(4), Some(3), Some(3)),
 };
 
-pub const AZURE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
-    id: "azure",
-    display_name: "Azure OpenAI",
-    auth_kind: LoginProviderAuthKind::Hybrid,
-    auth_state_key: LoginProviderAuthStateKey::Azure,
-    auth_status_method: "Entra ID / API key",
-    aliases: &["azure-openai", "azure_openai", "aoai"],
-    menu_detail: "Microsoft Entra ID or Azure OpenAI API key",
-    recommended: false,
-    target: LoginProviderTarget::Azure,
-    order: LoginProviderSurfaceOrder::new(Some(5), Some(5), None, None, Some(4)),
-};
-
 pub const OPENCODE_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "opencode",
     display_name: "OpenCode Zen",
@@ -964,32 +951,6 @@ pub const OPENAI_COMPAT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderD
     order: LoginProviderSurfaceOrder::new(Some(10), Some(9), None, None, Some(9)),
 };
 
-pub const CURSOR_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
-    id: "cursor",
-    display_name: "Cursor",
-    auth_kind: LoginProviderAuthKind::Hybrid,
-    auth_state_key: LoginProviderAuthStateKey::Cursor,
-    auth_status_method: "API key / CLI",
-    aliases: &[],
-    menu_detail: "browser login or API key",
-    recommended: false,
-    target: LoginProviderTarget::Cursor,
-    order: LoginProviderSurfaceOrder::new(Some(11), Some(12), None, Some(9), Some(12)),
-};
-
-pub const COPILOT_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
-    id: "copilot",
-    display_name: "GitHub Copilot",
-    auth_kind: LoginProviderAuthKind::DeviceCode,
-    auth_state_key: LoginProviderAuthStateKey::Copilot,
-    auth_status_method: "device code",
-    aliases: &[],
-    menu_detail: "GitHub device flow",
-    recommended: false,
-    target: LoginProviderTarget::Copilot,
-    order: LoginProviderSurfaceOrder::new(Some(3), Some(10), Some(3), Some(10), Some(10)),
-};
-
 pub const GEMINI_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescriptor {
     id: "gemini",
     display_name: "Google Gemini",
@@ -1073,14 +1034,13 @@ pub const CELERIS_LOGIN_PROVIDER: LoginProviderDescriptor = LoginProviderDescrip
     order: LoginProviderSurfaceOrder::new(Some(38), Some(38), Some(38), Some(38), Some(38)),
 };
 
-pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 45] = [
+pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 42] = [
     AUTO_IMPORT_LOGIN_PROVIDER,
     CLAUDE_LOGIN_PROVIDER,
     ANTHROPIC_API_LOGIN_PROVIDER,
     OPENAI_LOGIN_PROVIDER,
     OPENAI_API_LOGIN_PROVIDER,
     OPENROUTER_LOGIN_PROVIDER,
-    AZURE_LOGIN_PROVIDER,
     OPENCODE_LOGIN_PROVIDER,
     OPENCODE_GO_LOGIN_PROVIDER,
     ZAI_LOGIN_PROVIDER,
@@ -1114,8 +1074,6 @@ pub(crate) const LOGIN_PROVIDERS: [LoginProviderDescriptor; 45] = [
     LMSTUDIO_LOGIN_PROVIDER,
     OLLAMA_LOGIN_PROVIDER,
     OPENAI_COMPAT_LOGIN_PROVIDER,
-    CURSOR_LOGIN_PROVIDER,
-    COPILOT_LOGIN_PROVIDER,
     GEMINI_LOGIN_PROVIDER,
     GEMINI_API_LOGIN_PROVIDER,
     ANTIGRAVITY_LOGIN_PROVIDER,

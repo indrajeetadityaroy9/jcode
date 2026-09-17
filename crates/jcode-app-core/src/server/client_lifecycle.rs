@@ -653,7 +653,7 @@ pub(super) async fn handle_client(
         Arc::new(Mutex::new(HashMap::new()));
 
     // Subscribe to bus events so we can forward ModelsUpdated to this client
-    // (e.g. when Copilot finishes async init after the initial History was sent)
+    // (e.g. when a provider finishes async init after the initial History was sent)
     let mut bus_rx = Bus::global().subscribe();
 
     // Set up stdin request forwarding: tools send StdinInputRequest, we forward to TUI

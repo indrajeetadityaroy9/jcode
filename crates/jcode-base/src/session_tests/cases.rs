@@ -32,13 +32,13 @@ fn test_session_exists_roundtrip() -> Result<()> {
 #[test]
 fn derive_session_provider_key_prefers_runtime_identity_over_transport() {
     let _lock = lock_env();
-    let _runtime = EnvVarGuard::set("JCODE_RUNTIME_PROVIDER", "azure-openai");
-    let _namespace = EnvVarGuard::set("JCODE_OPENROUTER_CACHE_NAMESPACE", "azure-cache");
+    let _runtime = EnvVarGuard::set("JCODE_RUNTIME_PROVIDER", "custom-gateway");
+    let _namespace = EnvVarGuard::set("JCODE_OPENROUTER_CACHE_NAMESPACE", "custom-cache");
     let _active = EnvVarGuard::set("JCODE_ACTIVE_PROVIDER", "openrouter");
 
     assert_eq!(
         derive_session_provider_key("openrouter").as_deref(),
-        Some("azure-openai")
+        Some("custom-gateway")
     );
 }
 
@@ -46,12 +46,12 @@ fn derive_session_provider_key_prefers_runtime_identity_over_transport() {
 fn derive_session_provider_key_falls_back_to_openrouter_namespace() {
     let _lock = lock_env();
     let _runtime = EnvVarGuard::remove("JCODE_RUNTIME_PROVIDER");
-    let _namespace = EnvVarGuard::set("JCODE_OPENROUTER_CACHE_NAMESPACE", "azure-openai");
+    let _namespace = EnvVarGuard::set("JCODE_OPENROUTER_CACHE_NAMESPACE", "custom-gateway");
     let _active = EnvVarGuard::set("JCODE_ACTIVE_PROVIDER", "openrouter");
 
     assert_eq!(
         derive_session_provider_key("openrouter").as_deref(),
-        Some("azure-openai")
+        Some("custom-gateway")
     );
 }
 

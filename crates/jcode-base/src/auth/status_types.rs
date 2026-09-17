@@ -16,8 +16,6 @@ pub struct AuthStatus {
     pub anthropic: ProviderAuth,
     /// OpenRouter provider - via API key
     pub openrouter: AuthState,
-    /// Azure OpenAI provider - via Entra ID or API key
-    pub azure: AuthState,
     /// OpenAI provider - via OAuth or API key
     pub openai: AuthState,
     /// OpenAI has OAuth credentials
@@ -28,20 +26,10 @@ pub struct AuthStatus {
     pub openai_oauth_state: AuthState,
     /// OpenAI has API key available
     pub openai_has_api_key: bool,
-    /// Azure OpenAI has API key available
-    pub azure_has_api_key: bool,
-    /// Azure OpenAI is configured for Entra ID authentication
-    pub azure_uses_entra: bool,
-    /// Copilot API available (GitHub OAuth token found)
-    pub copilot: AuthState,
-    /// Copilot has API token (from hosts.json/apps.json/GITHUB_TOKEN)
-    pub copilot_has_api_token: bool,
     /// Antigravity OAuth configured
     pub antigravity: AuthState,
     /// Gemini CLI available
     pub gemini: AuthState,
-    /// Cursor provider configured via Cursor Agent plus API key or CLI session
-    pub cursor: AuthState,
 }
 
 /// Auth state for Anthropic which has multiple auth methods

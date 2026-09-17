@@ -238,20 +238,6 @@ impl App {
                         },
                     ));
                 }
-                "copilot" => {
-                    items.push(AccountPickerItem::action(
-                        provider.id,
-                        provider.display_name,
-                        "Premium requests",
-                        cfg.provider.copilot_premium.as_deref().unwrap_or("normal"),
-                        AccountPickerCommand::PromptValue {
-                            prompt: "Enter Copilot premium mode: normal, one, or zero.".to_string(),
-                            command_prefix: "/account copilot premium".to_string(),
-                            empty_value: Some("normal".to_string()),
-                            status_notice: "Account: editing Copilot premium mode...".to_string(),
-                        },
-                    ));
-                }
                 _ => {}
             }
         }
@@ -262,7 +248,7 @@ impl App {
             "Default provider",
             cfg.provider.default_provider.as_deref().unwrap_or("auto"),
             AccountPickerCommand::PromptValue {
-                prompt: "Enter the default provider: claude, openai, copilot, gemini, openrouter, or auto.".to_string(),
+                prompt: "Enter the default provider: claude, openai, gemini, openrouter, or auto.".to_string(),
                 command_prefix: "/account default-provider".to_string(),
                 empty_value: Some("auto".to_string()),
                 status_notice: "Account: editing default provider...".to_string(),

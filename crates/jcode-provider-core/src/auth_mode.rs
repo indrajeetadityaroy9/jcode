@@ -131,7 +131,7 @@ impl AuthRoute {
     /// (runtime env, route stable-id, CLI `--provider`, or bare model prefix).
     ///
     /// Returns `None` for tokens that do not pin a dual-auth credential route,
-    /// including bare aliases for non-dual providers (`openrouter`, `copilot`,
+    /// including bare aliases for non-dual providers (`openrouter`, `gemini`,
     /// ...), unknown strings, and the empty string. A `None` result is what the
     /// providers treat as "auto" (no explicit OAuth-vs-API pin).
     ///
@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn non_dual_and_unknown_tokens_are_none() {
-        for token in ["", "openrouter", "copilot", "gemini", "nonsense"] {
+        for token in ["", "openrouter", "antigravity", "gemini", "nonsense"] {
             assert_eq!(AuthRoute::parse(token), None, "{token:?} must be None");
         }
     }

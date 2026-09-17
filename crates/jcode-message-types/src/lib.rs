@@ -526,7 +526,7 @@ pub fn messages_with_dynamic_system_context(
 ///
 /// Different providers generate tool IDs in different formats. When switching
 /// from one provider to another mid-conversation, the historical tool IDs may
-/// contain characters that the new provider rejects (e.g., dots in Copilot IDs
+/// contain characters that the new provider rejects (e.g., dots in some IDs
 /// sent to Anthropic). This function replaces any invalid characters with
 /// underscores.
 pub fn sanitize_tool_id(id: &str) -> String {

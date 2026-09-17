@@ -116,10 +116,6 @@ pub fn register_external_provider_runtimes() {
         || std::sync::Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new()),
     );
     crate::provider::external::register_external_provider(
-        crate::provider::external::CURSOR_RUNTIME,
-        || std::sync::Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new()),
-    );
-    crate::provider::external::register_external_provider(
         crate::provider::external::ANTIGRAVITY_RUNTIME,
         || std::sync::Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new()),
     );
@@ -176,28 +172,6 @@ pub fn register_external_provider_runtimes() {
                     credentials,
                 )) as std::sync::Arc<dyn crate::provider::Provider>,
             )
-        },
-    );
-    // Copilot's constructor is fallible (needs a GitHub token) and the runtime
-    // wants tier detection scheduled right after construction, eagerly for
-    // interactive sessions and deferred for non-interactive ones. That policy
-    // lives here in the composition root so base stays provider-agnostic.
-    crate::provider::external::register_external_provider_fallible(
-        crate::provider::external::COPILOT_RUNTIME,
-        || {
-            let provider = std::sync::Arc::new(
-                jcode_provider_copilot_runtime::CopilotApiProvider::new().ok()?,
-            );
-            let eager_tier_detection = std::env::var("JCODE_NON_INTERACTIVE").is_err();
-            if eager_tier_detection && tokio::runtime::Handle::try_current().is_ok() {
-                let p_clone = std::sync::Arc::clone(&provider);
-                tokio::spawn(async move {
-                    p_clone.detect_tier_and_set_default().await;
-                });
-            } else {
-                provider.complete_init_without_tier_detection();
-            }
-            Some(provider as std::sync::Arc<dyn crate::provider::Provider>)
         },
     );
 }
@@ -284,7 +258,6 @@ mod tests {
         register_external_provider_runtimes();
         for (key, expected_name) in [
             (crate::provider::external::GEMINI_RUNTIME, "gemini"),
-            (crate::provider::external::CURSOR_RUNTIME, "cursor"),
             (
                 crate::provider::external::ANTIGRAVITY_RUNTIME,
                 "antigravity",
@@ -299,12 +272,5 @@ mod tests {
             assert_eq!(provider.name(), expected_name);
             assert!(!provider.model().is_empty());
         }
-
-        // Copilot's factory is fallible (requires a GitHub token), so only
-        // assert registration; instantiation legitimately returns None when no
-        // Copilot credentials exist on the machine running the tests.
-        assert!(crate::provider::external::external_provider_registered(
-            crate::provider::external::COPILOT_RUNTIME
-        ));
     }
 }

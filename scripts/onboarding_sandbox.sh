@@ -57,7 +57,7 @@ Commands:
   fresh [args...]        Reset sandbox, then launch jcode with args
   seed-real-logins [--with-transcripts|--transcripts-only]
                          Copy your REAL external logins (Codex/Claude/Gemini/
-                         Copilot/Cursor/OpenCode/pi) into the sandbox so the
+                         OpenCode/pi) into the sandbox so the
                          onboarding import step can import them. Add
                          --with-transcripts to also copy Codex/Claude
                          transcripts (so "continue where you left off" has data).
@@ -239,12 +239,6 @@ seed_real_logins() {
     ".local/share/opencode/auth.json"
     ".pi/agent/auth.json"
     ".gemini/oauth_creds.json"
-    ".config/github-copilot/hosts.json"
-    ".config/github-copilot/apps.json"
-    ".cursor/auth.json"
-    ".config/cursor/auth.json"
-    ".config/Cursor/User/globalStorage/state.vscdb"
-    ".config/cursor/User/globalStorage/state.vscdb"
   )
 
   # Transcript stores the "continue where you left off" picker reads.

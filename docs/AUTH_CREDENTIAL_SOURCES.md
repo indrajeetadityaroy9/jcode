@@ -122,9 +122,8 @@ Notes:
 - Hermes stores literal API keys in the `access_token` field of `api_key`
   credential-pool entries; many of its providers store only env-var *names*, so
   those import nothing unless the env var is set.
-- Other tool-specific importers exist for Claude Code, Codex, Gemini CLI,
-  GitHub Copilot, and Cursor (see `auth/claude.rs`, `auth/codex.rs`,
-  `auth/gemini.rs`, `auth/copilot.rs`, `auth/cursor.rs`).
+- Other tool-specific importers exist for Claude Code, Codex, and Gemini CLI
+  (see `auth/claude.rs`, `auth/codex.rs`, `auth/gemini.rs`).
 
 ## Credential lifecycle: `CredState`
 

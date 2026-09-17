@@ -318,34 +318,7 @@ fn test_remote_catalog_activity_notification_upserts_progress_card() {
 }
 
 #[test]
-fn test_model_picker_copilot_models_have_copilot_route() {
-    let mut app = create_test_app();
-    configure_test_remote_models_with_copilot(&mut app);
-
-    app.open_model_picker();
-
-    let picker = app
-        .inline_interactive_state
-        .as_ref()
-        .expect("model picker should be open");
-
-    // deepseek-v4-flash is NOT in ALL_CLAUDE_MODELS or ALL_OPENAI_MODELS,
-    // so it should get a copilot route
-    let entry = picker
-        .entries
-        .iter()
-        .find(|m| m.name == "deepseek-v4-flash")
-        .expect("deepseek-v4-flash should be in picker");
-
-    assert!(
-        entry.options.iter().any(|r| r.api_method == "copilot"),
-        "deepseek-v4-flash should have a copilot route, got: {:?}",
-        entry.options
-    );
-}
-
-#[test]
-fn test_model_picker_remote_comtegra_model_uses_comtegra_route_not_copilot() {
+fn test_model_picker_remote_comtegra_model_uses_comtegra_route() {
     let prev_key = std::env::var("COMTEGRA_API_KEY").ok();
     crate::env::set_var("COMTEGRA_API_KEY", "test-key");
 
@@ -377,11 +350,6 @@ fn test_model_picker_remote_comtegra_model_uses_comtegra_route_not_copilot() {
                 && r.available
         }),
         "glm route should be Comtegra/api key, got: {:?}",
-        glm_entry.options
-    );
-    assert!(
-        !glm_entry.options.iter().any(|r| r.api_method == "copilot"),
-        "glm route should not fall back to Copilot, got: {:?}",
         glm_entry.options
     );
 }

@@ -123,14 +123,12 @@ pub(super) fn picker_route_model_spec(entry: &PickerEntry, route: &PickerOption)
     let bare_name = model_entry_base_name(entry);
     let api_method = crate::provider::ModelRouteApiMethod::parse(&route.api_method);
     match api_method {
-        crate::provider::ModelRouteApiMethod::Copilot => format!("copilot:{}", bare_name),
         crate::provider::ModelRouteApiMethod::ClaudeOAuth => {
             format!("claude-oauth:{}", bare_name)
         }
         crate::provider::ModelRouteApiMethod::AnthropicApiKey if route.provider == "Anthropic" => {
             format!("claude-api:{}", bare_name)
         }
-        crate::provider::ModelRouteApiMethod::Cursor => format!("cursor:{}", bare_name),
         crate::provider::ModelRouteApiMethod::OpenAIApiKey => format!("openai-api:{}", bare_name),
         crate::provider::ModelRouteApiMethod::OpenAIOAuth => {
             format!("openai-oauth:{}", bare_name)
@@ -299,11 +297,6 @@ mod tests {
                 "glm-51-nvfp4",
                 route("Comtegra GPU Cloud", "openai-compatible:comtegra"),
                 "comtegra:glm-51-nvfp4",
-            ),
-            (
-                "claude-sonnet-4-6",
-                route("Copilot", "copilot"),
-                "copilot:claude-sonnet-4-6",
             ),
         ] {
             let entry = entry(model, route.clone());

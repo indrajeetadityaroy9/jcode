@@ -73,7 +73,7 @@ pub fn resolve_dual_credential_auth(
     runtime_provider: Option<&str>,
 ) -> Option<ResolvedProviderAuth> {
     // Map the execution slot onto the canonical dual-auth provider. Anything
-    // without an OAuth-vs-API decision (Copilot, Gemini, ...) returns None.
+    // without an OAuth-vs-API decision (Gemini, Antigravity, ...) returns None.
     let dual = jcode_provider_core::DualAuthProvider::from_active_provider(provider)?;
 
     // A single canonical parser decides whether `runtime_provider` explicitly
@@ -191,7 +191,6 @@ mod tests {
     #[test]
     fn non_dual_providers_return_none() {
         let auth = AuthStatus::default();
-        assert!(resolve_dual_credential_auth(ActiveProvider::Copilot, &auth, None).is_none());
         assert!(resolve_dual_credential_auth(ActiveProvider::Gemini, &auth, None).is_none());
     }
 }

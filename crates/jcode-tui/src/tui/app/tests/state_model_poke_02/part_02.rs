@@ -38,11 +38,7 @@ fn test_agents_review_picker_saves_config_override() {
                 entry.name.clone()
             };
             let route = &entry.options[entry.selected_option];
-            if route.api_method == "copilot" {
-                format!("copilot:{}", base)
-            } else if route.api_method == "cursor" {
-                format!("cursor:{}", base)
-            } else if route.api_method == "openai-oauth" {
+            if route.api_method == "openai-oauth" {
                 format!("openai-oauth:{}", base)
             } else if route.api_method == "openai-api" {
                 format!("openai-api:{}", base)

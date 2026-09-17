@@ -59,10 +59,7 @@ pub fn runtime_id_for_login_provider(
         LoginProviderTarget::OpenAi => Some(RuntimeProviderId::OpenAi),
         LoginProviderTarget::OpenAiApiKey => Some(RuntimeProviderId::OpenAiApiKey),
         LoginProviderTarget::OpenRouter => Some(RuntimeProviderId::OpenRouter),
-        LoginProviderTarget::Azure => Some(RuntimeProviderId::AzureOpenAi),
         LoginProviderTarget::OpenAiCompatible(_) => Some(RuntimeProviderId::OpenAiCompatible),
-        LoginProviderTarget::Cursor => Some(RuntimeProviderId::Cursor),
-        LoginProviderTarget::Copilot => Some(RuntimeProviderId::Copilot),
         LoginProviderTarget::Gemini => Some(RuntimeProviderId::Gemini),
         LoginProviderTarget::Antigravity => Some(RuntimeProviderId::Antigravity),
     }
@@ -71,7 +68,7 @@ pub fn runtime_id_for_login_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider_catalog::{AZURE_LOGIN_PROVIDER, OPENAI_COMPAT_LOGIN_PROVIDER};
+    use crate::provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER;
     use std::collections::HashSet;
 
     #[test]
@@ -96,10 +93,6 @@ mod tests {
 
     #[test]
     fn integration_registry_preserves_runtime_identity() {
-        assert_eq!(
-            runtime_id_for_login_provider(AZURE_LOGIN_PROVIDER),
-            Some(RuntimeProviderId::AzureOpenAi)
-        );
         assert_eq!(
             runtime_id_for_login_provider(OPENAI_COMPAT_LOGIN_PROVIDER),
             Some(RuntimeProviderId::OpenAiCompatible)

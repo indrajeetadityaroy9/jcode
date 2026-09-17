@@ -6,11 +6,6 @@ use super::{
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-const MACOS_APP_ICON_FILE_NAME: &str = "Jcode.icns";
-const MACOS_APP_ICON_BYTES: &[u8] = include_bytes!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../assets/app-icons/Jcode.icns"
-));
 const MACOS_NOTIFICATION_APP_NAME: &str = "Jcode Notifications.app";
 const MACOS_NOTIFICATION_EXECUTABLE: &str = "jcode-notification-broker";
 const MACOS_NOTIFICATION_VERSION_MARKER: &str = "jcode-broker-version";
@@ -52,10 +47,6 @@ pub(super) fn install_macos_app_launcher() -> Result<(PathBuf, MacTerminalKind)>
     let launcher_path = macos_dir.join("jcode-launcher");
     let launcher_script = macos_launcher_script(terminal, &exe_path, &app_dir);
     std::fs::write(&launcher_path, launcher_script)?;
-    std::fs::write(
-        resources_dir.join(MACOS_APP_ICON_FILE_NAME),
-        MACOS_APP_ICON_BYTES,
-    )?;
 
     {
         use std::os::unix::fs::PermissionsExt;
@@ -79,8 +70,6 @@ pub(super) fn install_macos_app_launcher() -> Result<(PathBuf, MacTerminalKind)>
     <string>{version}</string>
     <key>CFBundleExecutable</key>
     <string>jcode-launcher</string>
-    <key>CFBundleIconFile</key>
-    <string>{icon_file}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSApplicationCategoryType</key>
@@ -89,7 +78,6 @@ pub(super) fn install_macos_app_launcher() -> Result<(PathBuf, MacTerminalKind)>
 </plist>
 "#,
         version = jcode_build_meta::version(),
-        icon_file = MACOS_APP_ICON_FILE_NAME,
     );
     std::fs::write(contents_dir.join("Info.plist"), info_plist)?;
 
@@ -136,18 +124,10 @@ fn macos_notification_broker_marker_path(app_dir: &Path) -> PathBuf {
         .join(MACOS_NOTIFICATION_VERSION_MARKER)
 }
 
-fn macos_notification_broker_icon_path(app_dir: &Path) -> PathBuf {
-    app_dir
-        .join("Contents")
-        .join("Resources")
-        .join(MACOS_APP_ICON_FILE_NAME)
-}
-
 fn macos_notification_broker_is_valid(app_dir: &Path) -> bool {
     app_dir.is_dir()
         && app_dir.join("Contents").join("Info.plist").is_file()
         && macos_notification_broker_executable_path(app_dir).is_file()
-        && macos_notification_broker_icon_path(app_dir).is_file()
         && std::fs::read_to_string(macos_notification_broker_marker_path(app_dir))
             .is_ok_and(|version| version.trim() == jcode_build_meta::version())
 }
@@ -187,10 +167,6 @@ fn install_macos_notification_broker(jcode_executable: &Path) -> Result<PathBuf>
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&broker_executable, std::fs::Permissions::from_mode(0o755))?;
     }
-    std::fs::write(
-        resources.join(MACOS_APP_ICON_FILE_NAME),
-        MACOS_APP_ICON_BYTES,
-    )?;
     std::fs::write(
         resources.join(MACOS_NOTIFICATION_VERSION_MARKER),
         format!("{}\n", jcode_build_meta::version()),
@@ -234,8 +210,6 @@ fn macos_notification_info_plist() -> String {
     <string>{version}</string>
     <key>CFBundleExecutable</key>
     <string>{executable}</string>
-    <key>CFBundleIconFile</key>
-    <string>{icon}</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSUIElement</key>
@@ -249,7 +223,6 @@ fn macos_notification_info_plist() -> String {
 "#,
         version = jcode_build_meta::version(),
         executable = MACOS_NOTIFICATION_EXECUTABLE,
-        icon = MACOS_APP_ICON_FILE_NAME,
     )
 }
 
@@ -264,18 +237,10 @@ fn macos_app_launcher_executable_path(app_dir: &Path) -> PathBuf {
         .join("jcode-launcher")
 }
 
-fn macos_app_launcher_icon_path(app_dir: &Path) -> PathBuf {
-    app_dir
-        .join("Contents")
-        .join("Resources")
-        .join(MACOS_APP_ICON_FILE_NAME)
-}
-
 fn macos_app_launcher_is_valid(app_dir: &Path) -> bool {
     app_dir.is_dir()
         && macos_app_launcher_info_plist_path(app_dir).is_file()
         && macos_app_launcher_executable_path(app_dir).is_file()
-        && macos_app_launcher_icon_path(app_dir).is_file()
 }
 
 fn remove_path_if_exists(path: &Path) -> Result<()> {

@@ -123,17 +123,15 @@ pub fn provider_key_from_hint(provider_hint: Option<&str>) -> Option<&'static st
         "anthropic" | "claude" => Some("claude"),
         "openai" => Some("openai"),
         "openrouter" => Some("openrouter"),
-        "copilot" | "github copilot" => Some("copilot"),
         "antigravity" => Some("antigravity"),
         "gemini" | "google gemini" => Some("gemini"),
-        "cursor" => Some("cursor"),
         _ => None,
     }
 }
 
 pub fn is_listable_model_name(model: &str) -> bool {
     let trimmed = model.trim();
-    !trimmed.is_empty() && !matches!(trimmed, "copilot models" | "openrouter models")
+    !trimmed.is_empty() && !matches!(trimmed, "openrouter models")
 }
 
 fn model_id_for_capability_lookup(model: &str, provider: Option<&str>) -> (String, bool) {
@@ -149,24 +147,6 @@ fn model_id_for_capability_lookup(model: &str, provider: Option<&str>) -> (Strin
     (lookup, is_1m)
 }
 
-fn copilot_context_limit_for_model(model: &str) -> usize {
-    match model {
-        "claude-sonnet-4" | "claude-sonnet-4-6" | "claude-sonnet-4.6" => 128_000,
-        "claude-opus-4-6" | "claude-opus-4.6" | "claude-opus-4.6-fast" => 200_000,
-        "claude-opus-4.5" | "claude-opus-4-5" => 200_000,
-        "claude-sonnet-4.5" | "claude-sonnet-4-5" => 200_000,
-        "claude-haiku-4.5" | "claude-haiku-4-5" => 200_000,
-        "gpt-4o" | "gpt-4o-mini" => 128_000,
-        m if m.starts_with("gpt-4o") => 128_000,
-        m if m.starts_with("gpt-4.1") => 128_000,
-        m if m.starts_with("gpt-5") => 128_000,
-        "o3-mini" | "o4-mini" => 128_000,
-        m if m.starts_with("gemini-2.0-flash") => 1_000_000,
-        m if m.starts_with("gemini-2.5") => 1_000_000,
-        m if m.starts_with("gemini-3") => 1_000_000,
-        _ => 128_000,
-    }
-}
 
 /// Return the static provider class for a built-in model name.
 ///
@@ -227,10 +207,6 @@ pub fn context_limit_for_model_with_provider_and_cache(
     let provider = provider_key_from_hint(provider_hint).or_else(|| provider_for_model(model));
     let (model, is_1m) = model_id_for_capability_lookup(model, provider);
     let model = model.as_str();
-
-    if matches!(provider, Some("copilot")) {
-        return Some(copilot_context_limit_for_model(model));
-    }
 
     // Claude models: classify long-context behavior centrally. For generations
     // verified against the live API this is authoritative, because the live
@@ -473,11 +449,11 @@ pub fn context_limit_for_model(model: &str) -> Option<usize> {
     context_limit_for_model_with_provider(model, None)
 }
 
-/// Normalize a Copilot-style model name to the canonical form used by our
-/// provider model lists. Copilot uses dots in version numbers (e.g.
+/// Normalize a dotted model version to the canonical form used by our provider
+/// model lists. Some upstream catalogs use dots in version numbers (e.g.
 /// `claude-opus-4.6`) while canonical lists use hyphens (`claude-opus-4-6`).
 /// Returns None if no normalization is needed (model already canonical or unknown).
-pub fn normalize_copilot_model_name(model: &str) -> Option<&'static str> {
+pub fn normalize_dotted_model_version(model: &str) -> Option<&'static str> {
     for canonical in ALL_CLAUDE_MODELS.iter().chain(ALL_OPENAI_MODELS.iter()) {
         if *canonical == model {
             return None;
@@ -734,18 +710,6 @@ mod tests {
     }
 
     #[test]
-    fn context_limit_handles_copilot_hint() {
-        assert_eq!(
-            context_limit_for_model_with_provider("gpt-5.4", Some("copilot")),
-            Some(128_000)
-        );
-        assert_eq!(
-            context_limit_for_model_with_provider("gemini-2.5-pro", Some("copilot")),
-            Some(1_000_000)
-        );
-    }
-
-    #[test]
     fn context_limit_uses_cache_for_unknown_models() {
         assert_eq!(
             context_limit_for_model_with_provider_and_cache("custom-model", None, |model| {
@@ -786,13 +750,6 @@ mod tests {
             }),
             Some(1_050_000)
         );
-        // Copilot provider limits still take precedence over the cache.
-        assert_eq!(
-            context_limit_for_model_with_provider_and_cache("gpt-5.4", Some("copilot"), |_| {
-                Some(1_050_000)
-            }),
-            Some(128_000)
-        );
         // Fallbacks still apply when no cached value exists.
         assert_eq!(
             context_limit_for_model_with_provider_and_cache("gpt-5.4", None, |_| None),
@@ -801,12 +758,12 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_copilot_model_names() {
+    fn normalizes_dotted_model_versions() {
         assert_eq!(
-            normalize_copilot_model_name("claude-opus-4.6"),
+            normalize_dotted_model_version("claude-opus-4.6"),
             Some("claude-opus-4-6")
         );
-        assert_eq!(normalize_copilot_model_name("claude-opus-4-6"), None);
+        assert_eq!(normalize_dotted_model_version("claude-opus-4-6"), None);
     }
 
     #[test]

@@ -212,9 +212,8 @@ impl App {
                     && auth_status.openai_has_api_key
                     && !auth_status.openai_has_oauth)
         } else {
-            provider_name.contains("azure-openai")
-                || crate::provider_catalog::openai_compatible_profile_by_id(provider_name.trim())
-                    .is_some_and(|profile| profile.requires_api_key)
+            crate::provider_catalog::openai_compatible_profile_by_id(provider_name.trim())
+                .is_some_and(|profile| profile.requires_api_key)
         };
 
         if !billed_per_token {

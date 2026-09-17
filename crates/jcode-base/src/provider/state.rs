@@ -1,6 +1,5 @@
 use super::MultiProvider;
 use super::selection::{ActiveProvider, ConfigProviderSelection, ProviderAvailability};
-use crate::auth::AuthStatus;
 use crate::config::Config;
 
 /// Canonical aggregate view of provider-related state.
@@ -12,7 +11,6 @@ use crate::config::Config;
 /// each reinterpret provider strings differently.
 pub(crate) struct ProviderState<'a> {
     config: &'a Config,
-    auth_status: &'a AuthStatus,
 }
 
 /// The source of the currently selected runtime model.
@@ -108,15 +106,8 @@ impl ProviderRuntimeState {
 }
 
 impl<'a> ProviderState<'a> {
-    pub(crate) fn from_parts(config: &'a Config, auth_status: &'a AuthStatus) -> Self {
-        Self {
-            config,
-            auth_status,
-        }
-    }
-
-    pub(crate) fn auth_status(&self) -> &'a AuthStatus {
-        self.auth_status
+    pub(crate) fn from_parts(config: &'a Config) -> Self {
+        Self { config }
     }
 
     pub(crate) fn default_model(&self) -> Option<&'a str> {
@@ -161,8 +152,7 @@ mod tests {
         let mut cfg = Config::default();
         cfg.provider.default_provider = Some("kimi".to_string());
         cfg.provider.default_model = Some("moonshot-v1-8k".to_string());
-        let auth = AuthStatus::default();
-        let state = ProviderState::from_parts(&cfg, &auth);
+        let state = ProviderState::from_parts(&cfg);
 
         assert_eq!(state.default_provider_key(), Some("kimi"));
         assert_eq!(state.default_model(), Some("moonshot-v1-8k"));

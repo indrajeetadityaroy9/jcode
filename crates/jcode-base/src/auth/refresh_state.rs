@@ -237,9 +237,6 @@ pub fn error_is_permanent_rejection(error: &str) -> bool {
         "refresh token not found",
         "invalid refresh token",
         "token has been revoked",
-        // Cursor answers a dead refresh token with an explicit logout request
-        // rather than an OAuth error code.
-        "requested logout/login",
         // OpenAI's user-facing phrasing for a revoked session.
         "your session has ended",
         "unauthorized_client",
@@ -420,8 +417,8 @@ mod tests {
     #[test]
     fn absent_and_rejected_never_share_a_user_facing_label() {
         // The live bug this prevents: the onboarding banner said
-        // "GitHub Copilot - login expired" while auth status reported
-        // `copilot=not_configured`. One label function, one answer.
+        // "login expired" while auth status reported `not_configured`.
+        // One label function, one answer.
         assert_ne!(
             CredState::Absent.user_facing_label(),
             CredState::Rejected.user_facing_label()
@@ -484,10 +481,6 @@ mod tests {
             (
                 "claude",
                 "{\"error\": \"invalid_grant\", \"error_description\": \"Refresh token not found or invalid\"}",
-            ),
-            (
-                "cursor",
-                "Cursor refresh token was rejected; Cursor requested logout/login. Re-run Cursor login, then retry auth-test.",
             ),
             (
                 "gemini",

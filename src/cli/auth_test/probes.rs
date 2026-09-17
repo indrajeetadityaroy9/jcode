@@ -12,9 +12,6 @@ fn generic_credential_paths_for_provider(
         crate::provider_catalog::LoginProviderTarget::OpenAiApiKey => {
             vec![config_dir.join("openai.env")]
         }
-        crate::provider_catalog::LoginProviderTarget::Azure => {
-            vec![config_dir.join(crate::auth::azure::ENV_FILE)]
-        }
         crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
             // When a named config profile is active (selected via
             // `--provider-profile`), its credentials come from the profile's
@@ -66,7 +63,7 @@ fn probe_generic_provider_auth(
     report: &mut AuthTestProviderReport,
 ) {
     // Keep generic provider probes provider-local. A DeepSeek/Z.AI/OpenRouter
-    // auth-test should never be delayed or wedged by an unrelated Cursor/Gemini
+    // auth-test should never be delayed or wedged by an unrelated Gemini
     // external auth probe.
     let status = crate::auth::AuthStatus::check_fast();
     let assessment = status.assessment_for_provider(provider);
@@ -219,52 +216,4 @@ async fn probe_antigravity_auth(report: &mut AuthTestProviderReport) {
             },
         );
     }
-}
-
-async fn probe_copilot_auth(report: &mut AuthTestProviderReport) {
-    if let Some(token) = push_result_step(
-        report,
-        "credential_probe",
-        crate::auth::copilot::load_github_token(),
-        |token| {
-            format!(
-                "Loaded GitHub OAuth token for Copilot ({} chars).",
-                token.len()
-            )
-        },
-    ) {
-        let client = crate::provider::shared_http_client();
-        push_result_step(
-            report,
-            "refresh_probe",
-            crate::auth::copilot::exchange_github_token(&client, &token).await,
-            |api_token| {
-                format!(
-                    "Exchanged GitHub token for Copilot API token (expires_at={}).",
-                    api_token.expires_at
-                )
-            },
-        );
-    }
-}
-
-async fn probe_cursor_auth(report: &mut AuthTestProviderReport) {
-    let has_api_key = crate::auth::cursor::has_cursor_api_key();
-    let has_auth_file = crate::auth::cursor::has_cursor_auth_file_token();
-    let has_vscdb = crate::auth::cursor::has_cursor_vscdb_token();
-    let ok = has_api_key || has_auth_file || has_vscdb;
-    report.push_step(
-        "credential_probe",
-        ok,
-        format!(
-            "Cursor native auth sources: api_key={}, auth_json={}, vscdb_token={}",
-            has_api_key, has_auth_file, has_vscdb
-        ),
-    );
-    report.push_step(
-        "refresh_probe",
-        true,
-        "Skipped: Cursor provider does not expose a native refresh-token probe in jcode today."
-            .to_string(),
-    );
 }

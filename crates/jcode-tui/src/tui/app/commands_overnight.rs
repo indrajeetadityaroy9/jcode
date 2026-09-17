@@ -129,7 +129,7 @@ fn overnight_provider_for_app(app: &mut App) -> Arc<dyn Provider> {
     // launching TUI process, so it needs a real local provider instead of the
     // remote placeholder. Restore the displayed session model when possible and
     // otherwise fall back to the local default provider.
-    let provider: Arc<dyn Provider> = Arc::new(crate::provider::MultiProvider::new_fast());
+    let provider: Arc<dyn Provider> = Arc::new(crate::provider::MultiProvider::new());
     if let Some(model) = app
         .session
         .model

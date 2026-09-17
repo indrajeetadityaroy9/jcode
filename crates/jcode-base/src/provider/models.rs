@@ -1,5 +1,4 @@
 use crate::auth;
-use crate::provider::cursor;
 
 #[path = "models_catalog.rs"]
 mod catalog;
@@ -1117,8 +1116,6 @@ pub fn provider_for_model_with_hint(
         Some(provider)
     } else if crate::provider::antigravity::is_known_model(model) {
         Some("antigravity")
-    } else if cursor::is_known_model(model) {
-        Some("cursor")
     } else {
         None
     }

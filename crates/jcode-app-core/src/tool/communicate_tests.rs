@@ -1185,8 +1185,8 @@ fn credential_login_fix_hint_maps_provider_names() {
         "`jcode login --provider openai`"
     );
     assert_eq!(
-        super::credential_login_fix_hint(Some("copilot")),
-        "`jcode login --provider copilot`"
+        super::credential_login_fix_hint(Some("gemini")),
+        "`jcode login --provider gemini`"
     );
     assert_eq!(
         super::credential_login_fix_hint(None),

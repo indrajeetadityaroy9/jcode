@@ -62,8 +62,6 @@ fn history_provider_name_from_session(session: &crate::session::Session) -> Opti
         "openai" => "OpenAI".to_string(),
         "claude" | "anthropic" => "Anthropic".to_string(),
         "openrouter" => "OpenRouter".to_string(),
-        "copilot" => "GitHub Copilot".to_string(),
-        "cursor" => "Cursor".to_string(),
         "gemini" => "Gemini".to_string(),
         "antigravity" => "Antigravity".to_string(),
         other => other.to_string(),

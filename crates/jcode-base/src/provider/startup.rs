@@ -82,10 +82,10 @@ impl MultiProvider {
         }
     }
 
-    pub(super) fn new_with_auth_status(auth_status: auth::AuthStatus) -> Self {
+    fn new_detecting_credentials() -> Self {
         let provider_init_start = std::time::Instant::now();
         let cfg = crate::config::config();
-        let provider_state = ProviderState::from_parts(cfg, &auth_status);
+        let provider_state = ProviderState::from_parts(cfg);
         let mut default_named_provider_profile: Option<String> = None;
         if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none()
             && std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_none()
@@ -115,13 +115,8 @@ impl MultiProvider {
         let has_claude_creds =
             auth::claude::load_credentials().is_ok() || anthropic::has_anthropic_api_key();
         let has_openai_creds = auth::codex::load_credentials().is_ok();
-        let has_copilot_api = provider_state.auth_status().copilot_has_api_token;
         let has_antigravity_creds = auth::antigravity::load_tokens().is_ok();
         let has_gemini_creds = auth::gemini::load_tokens().is_ok() || auth::gemini::has_api_key();
-        let has_cursor_creds = provider_state
-            .auth_status()
-            .assessment_for_provider(crate::provider_catalog::CURSOR_LOGIN_PROVIDER)
-            .is_available();
         let has_openrouter_creds = openrouter::has_credentials();
 
         let use_claude_cli = std::env::var("JCODE_USE_CLAUDE_CLI")
@@ -168,25 +163,6 @@ impl MultiProvider {
             None
         };
 
-        let copilot_api = if has_copilot_api {
-            // The composition-root factory handles construction, tier-detection
-            // scheduling (eager vs non-interactive deferral), and init-done
-            // signaling; None means credentials were missing or invalid.
-            let copilot_init_start = std::time::Instant::now();
-            let provider =
-                external::instantiate_expected_external_provider(external::COPILOT_RUNTIME);
-            match &provider {
-                Some(_) => crate::logging::info(&format!(
-                    "Copilot API provider initialized (direct API) in {}ms",
-                    copilot_init_start.elapsed().as_millis()
-                )),
-                None => crate::logging::info("Failed to initialize Copilot API (no credentials)"),
-            }
-            provider
-        } else {
-            None
-        };
-
         let antigravity_provider = if has_antigravity_creds {
             external::instantiate_expected_external_provider(external::ANTIGRAVITY_RUNTIME)
         } else {
@@ -195,12 +171,6 @@ impl MultiProvider {
 
         let gemini_provider = if has_gemini_creds {
             external::instantiate_expected_external_provider(external::GEMINI_RUNTIME)
-        } else {
-            None
-        };
-
-        let cursor_provider = if has_cursor_creds {
-            external::instantiate_expected_external_provider(external::CURSOR_RUNTIME)
         } else {
             None
         };
@@ -241,25 +211,14 @@ impl MultiProvider {
             None
         };
 
-        let copilot_premium_zero =
-            matches!(std::env::var("JCODE_COPILOT_PREMIUM").as_deref(), Ok("0"));
         let availability = ProviderAvailability {
             openai: openai.is_some(),
             claude: claude.is_some() || anthropic.is_some(),
-            copilot: copilot_api.is_some(),
             antigravity: antigravity_provider.is_some(),
             gemini: gemini_provider.is_some(),
-            cursor: cursor_provider.is_some(),
             openrouter: openrouter.is_some(),
-            copilot_premium_zero,
         };
         let mut active = Self::auto_default_provider(availability);
-
-        if copilot_premium_zero && matches!(active, ActiveProvider::Copilot) {
-            crate::logging::info(
-                "Copilot premium mode is Zero (free requests) - defaulting to Copilot provider",
-            );
-        }
 
         let initial_provider = Self::initial_provider_from_env();
         if let Some(initial) = initial_provider {
@@ -305,7 +264,7 @@ impl MultiProvider {
                 }
             } else {
                 crate::logging::warn(&format!(
-                    "Unknown default_provider '{}' in config (expected: claude|openai|copilot|antigravity|gemini|cursor|openrouter or an OpenAI-compatible profile such as deepseek|comtegra|zai|openai-compatible)",
+                    "Unknown default_provider '{}' in config (expected: claude|openai|antigravity|gemini|openrouter or an OpenAI-compatible profile such as deepseek|comtegra|zai|openai-compatible)",
                     pref
                 ));
             }
@@ -315,10 +274,8 @@ impl MultiProvider {
             claude: RwLock::new(claude),
             anthropic: RwLock::new(anthropic),
             openai: RwLock::new(openai),
-            copilot_api: RwLock::new(copilot_api),
             antigravity: RwLock::new(antigravity_provider),
             gemini: RwLock::new(gemini_provider),
-            cursor: RwLock::new(cursor_provider),
             openrouter: RwLock::new(openrouter),
             openai_compatible_profiles: RwLock::new(HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -347,7 +304,7 @@ impl MultiProvider {
         result.spawn_openai_catalog_refresh_if_needed();
         result.auto_select_active_multi_account();
         crate::logging::info(&format!(
-            "[TIMING] provider_init: claude={}, anthropic={}, openai={}, copilot={}, antigravity={}, gemini={}, cursor={}, openrouter={}, total={}ms",
+            "[TIMING] provider_init: claude={}, anthropic={}, openai={}, antigravity={}, gemini={}, openrouter={}, total={}ms",
             result
                 .claude
                 .read()
@@ -364,22 +321,12 @@ impl MultiProvider {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .is_some(),
             result
-                .copilot_api
-                .read()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .is_some(),
-            result
                 .antigravity
                 .read()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .is_some(),
             result
                 .gemini
-                .read()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .is_some(),
-            result
-                .cursor
                 .read()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .is_some(),
@@ -436,18 +383,12 @@ impl MultiProvider {
         });
     }
 
-    /// Create a new MultiProvider, detecting available credentials
+    /// Create a new MultiProvider, detecting available credentials.
+    ///
+    /// Credential presence is probed directly per slot (`auth::claude::load_credentials`,
+    /// `auth::codex::load_credentials`, ...), so no `AuthStatus` snapshot is needed.
     pub fn new() -> Self {
-        Self::new_with_auth_status(auth::AuthStatus::check())
-    }
-
-    /// Create a startup-optimized MultiProvider that avoids expensive auth probes.
-    pub fn new_fast() -> Self {
-        Self::new_with_auth_status(auth::AuthStatus::check_fast())
-    }
-
-    pub fn from_auth_status(auth_status: auth::AuthStatus) -> Self {
-        Self::new_with_auth_status(auth_status)
+        Self::new_detecting_credentials()
     }
 
     /// Create with explicit initial provider preference
@@ -466,7 +407,7 @@ impl MultiProvider {
     }
 
     pub fn with_preference_fast(prefer_openai: bool) -> Self {
-        let provider = Self::new_fast();
+        let provider = Self::new();
         if provider.initial_provider.is_none()
             && prefer_openai
             && provider.openai_provider().is_some()

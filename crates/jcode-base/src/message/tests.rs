@@ -233,7 +233,7 @@ fn sanitize_tool_id_empty_returns_unknown() {
 }
 
 #[test]
-fn sanitize_tool_id_copilot_to_anthropic() {
+fn sanitize_tool_id_replaces_dots_with_underscores() {
     assert_eq!(
         sanitize_tool_id("chatcmpl-BF2xX.tool_call.0"),
         "chatcmpl-BF2xX_tool_call_0"
@@ -271,7 +271,7 @@ fn redact_secrets_redacts_known_direct_token_formats() {
 
 #[test]
 fn redact_secrets_redacts_env_style_assignments() {
-    let input = "OPENROUTER_API_KEY=sk-or-v1-abc123abc123abc123abc123\nOPENCODE_API_KEY=oc_test_secret\nOPENCODE_GO_API_KEY=ocgo_test_secret\nZAI_API_KEY=zai_secret\nCHUTES_API_KEY=chutes_secret\nCEREBRAS_API_KEY=cerebras_secret\nOPENAI_COMPAT_API_KEY=compat_secret\nCURSOR_API_KEY='my_cursor_secret_value'\nOPENAI_API_KEY=sk-test-openai-example\nAZURE_OPENAI_API_KEY=azure-openai-secret\n";
+    let input = "OPENROUTER_API_KEY=sk-or-v1-abc123abc123abc123abc123\nOPENCODE_API_KEY=oc_test_secret\nOPENCODE_GO_API_KEY=ocgo_test_secret\nZAI_API_KEY=zai_secret\nCHUTES_API_KEY=chutes_secret\nCEREBRAS_API_KEY=cerebras_secret\nOPENAI_COMPAT_API_KEY=compat_secret\nXAI_API_KEY='my_quoted_secret_value'\nOPENAI_API_KEY=sk-test-openai-example\n";
     let out = redact_secrets(input);
     assert!(out.contains("OPENROUTER_API_KEY=[REDACTED_SECRET]"));
     assert!(out.contains("OPENCODE_API_KEY=[REDACTED_SECRET]"));
@@ -280,10 +280,9 @@ fn redact_secrets_redacts_env_style_assignments() {
     assert!(out.contains("CHUTES_API_KEY=[REDACTED_SECRET]"));
     assert!(out.contains("CEREBRAS_API_KEY=[REDACTED_SECRET]"));
     assert!(out.contains("OPENAI_COMPAT_API_KEY=[REDACTED_SECRET]"));
-    assert!(out.contains("CURSOR_API_KEY=[REDACTED_SECRET]"));
+    assert!(out.contains("XAI_API_KEY=[REDACTED_SECRET]"));
     assert!(out.contains("OPENAI_API_KEY=[REDACTED_SECRET]"));
-    assert!(out.contains("AZURE_OPENAI_API_KEY=[REDACTED_SECRET]"));
-    assert!(!out.contains("my_cursor_secret_value"));
+    assert!(!out.contains("my_quoted_secret_value"));
 }
 
 #[test]

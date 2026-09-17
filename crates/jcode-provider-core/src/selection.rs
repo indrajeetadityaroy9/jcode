@@ -1,14 +1,12 @@
-use crate::{ModelRoute, normalize_copilot_model_name};
+use crate::{ModelRoute, normalize_dotted_model_version};
 use std::borrow::Cow;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ActiveProvider {
     Claude,
     OpenAI,
-    Copilot,
     Antigravity,
     Gemini,
-    Cursor,
     OpenRouter,
 }
 
@@ -16,12 +14,9 @@ pub enum ActiveProvider {
 pub struct ProviderAvailability {
     pub openai: bool,
     pub claude: bool,
-    pub copilot: bool,
     pub antigravity: bool,
     pub gemini: bool,
-    pub cursor: bool,
     pub openrouter: bool,
-    pub copilot_premium_zero: bool,
 }
 
 impl ProviderAvailability {
@@ -29,30 +24,22 @@ impl ProviderAvailability {
         match provider {
             ActiveProvider::Claude => self.claude,
             ActiveProvider::OpenAI => self.openai,
-            ActiveProvider::Copilot => self.copilot,
             ActiveProvider::Antigravity => self.antigravity,
             ActiveProvider::Gemini => self.gemini,
-            ActiveProvider::Cursor => self.cursor,
             ActiveProvider::OpenRouter => self.openrouter,
         }
     }
 }
 
 pub fn auto_default_provider(availability: ProviderAvailability) -> ActiveProvider {
-    if availability.copilot_premium_zero && availability.copilot {
-        ActiveProvider::Copilot
-    } else if availability.claude {
+    if availability.claude {
         ActiveProvider::Claude
     } else if availability.openai {
         ActiveProvider::OpenAI
-    } else if availability.copilot {
-        ActiveProvider::Copilot
     } else if availability.antigravity {
         ActiveProvider::Antigravity
     } else if availability.gemini {
         ActiveProvider::Gemini
-    } else if availability.cursor {
-        ActiveProvider::Cursor
     } else if availability.openrouter {
         ActiveProvider::OpenRouter
     } else {
@@ -64,10 +51,8 @@ pub fn parse_provider_hint(value: &str) -> Option<ActiveProvider> {
     match value.trim().to_ascii_lowercase().as_str() {
         "claude" | "anthropic" => Some(ActiveProvider::Claude),
         "openai" => Some(ActiveProvider::OpenAI),
-        "copilot" => Some(ActiveProvider::Copilot),
         "antigravity" => Some(ActiveProvider::Antigravity),
         "gemini" => Some(ActiveProvider::Gemini),
-        "cursor" => Some(ActiveProvider::Cursor),
         "openrouter" => Some(ActiveProvider::OpenRouter),
         _ => None,
     }
@@ -77,10 +62,8 @@ pub fn provider_label(provider: ActiveProvider) -> &'static str {
     match provider {
         ActiveProvider::Claude => "Anthropic",
         ActiveProvider::OpenAI => "OpenAI",
-        ActiveProvider::Copilot => "GitHub Copilot",
         ActiveProvider::Antigravity => "Antigravity",
         ActiveProvider::Gemini => "Gemini",
-        ActiveProvider::Cursor => "Cursor",
         ActiveProvider::OpenRouter => "OpenRouter",
     }
 }
@@ -89,10 +72,8 @@ pub fn provider_key(provider: ActiveProvider) -> &'static str {
     match provider {
         ActiveProvider::Claude => "claude",
         ActiveProvider::OpenAI => "openai",
-        ActiveProvider::Copilot => "copilot",
         ActiveProvider::Antigravity => "antigravity",
         ActiveProvider::Gemini => "gemini",
-        ActiveProvider::Cursor => "cursor",
         ActiveProvider::OpenRouter => "openrouter",
     }
 }
@@ -101,10 +82,8 @@ pub fn provider_from_model_key(key: &str) -> Option<ActiveProvider> {
     match key {
         "claude" => Some(ActiveProvider::Claude),
         "openai" => Some(ActiveProvider::OpenAI),
-        "copilot" => Some(ActiveProvider::Copilot),
         "antigravity" => Some(ActiveProvider::Antigravity),
         "gemini" => Some(ActiveProvider::Gemini),
-        "cursor" => Some(ActiveProvider::Cursor),
         "openrouter" => Some(ActiveProvider::OpenRouter),
         _ => None,
     }
@@ -139,9 +118,7 @@ pub fn cli_provider_arg_for_session_key(key: &str) -> Option<&'static str> {
     }
     match base {
         "openrouter" => Some("openrouter"),
-        "copilot" => Some("copilot"),
         "gemini" => Some("gemini"),
-        "cursor" => Some("cursor"),
         "antigravity" => Some("antigravity"),
         "code-assist-oauth" | "google" => Some("google"),
         // openai-compatible / custom profiles, remote-catalog, current, and any
@@ -166,14 +143,10 @@ pub fn explicit_model_provider_prefix(model: &str) -> Option<(ActiveProvider, &'
         Some((ActiveProvider::OpenAI, "openai-oauth:", rest))
     } else if let Some(rest) = model.strip_prefix("openai:") {
         Some((ActiveProvider::OpenAI, "openai:", rest))
-    } else if let Some(rest) = model.strip_prefix("copilot:") {
-        Some((ActiveProvider::Copilot, "copilot:", rest))
     } else if let Some(rest) = model.strip_prefix("antigravity:") {
         Some((ActiveProvider::Antigravity, "antigravity:", rest))
     } else if let Some(rest) = model.strip_prefix("gemini:") {
         Some((ActiveProvider::Gemini, "gemini:", rest))
-    } else if let Some(rest) = model.strip_prefix("cursor:") {
-        Some((ActiveProvider::Cursor, "cursor:", rest))
     } else if let Some(rest) = model.strip_prefix("openrouter:") {
         Some((ActiveProvider::OpenRouter, "openrouter:", rest))
     } else {
@@ -183,7 +156,7 @@ pub fn explicit_model_provider_prefix(model: &str) -> Option<(ActiveProvider, &'
 
 pub fn model_name_for_provider(provider: ActiveProvider, model: &str) -> Cow<'_, str> {
     if matches!(provider, ActiveProvider::Claude)
-        && let Some(canonical) = normalize_copilot_model_name(model)
+        && let Some(canonical) = normalize_dotted_model_version(model)
     {
         return Cow::Borrowed(canonical);
     }
@@ -304,35 +277,20 @@ pub fn fallback_sequence(active: ActiveProvider) -> Vec<ActiveProvider> {
         ActiveProvider::Claude => vec![
             ActiveProvider::Claude,
             ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
             ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
             ActiveProvider::OpenRouter,
         ],
         ActiveProvider::OpenAI => vec![
             ActiveProvider::OpenAI,
             ActiveProvider::Claude,
-            ActiveProvider::Copilot,
             ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
-            ActiveProvider::OpenRouter,
-        ],
-        ActiveProvider::Copilot => vec![
-            ActiveProvider::Copilot,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Antigravity,
-            ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
             ActiveProvider::OpenRouter,
         ],
         ActiveProvider::Antigravity => vec![
             ActiveProvider::Antigravity,
             ActiveProvider::Claude,
             ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
             ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
             ActiveProvider::OpenRouter,
         ],
         ActiveProvider::Gemini => vec![
@@ -340,27 +298,14 @@ pub fn fallback_sequence(active: ActiveProvider) -> Vec<ActiveProvider> {
             ActiveProvider::Claude,
             ActiveProvider::OpenAI,
             ActiveProvider::Antigravity,
-            ActiveProvider::Copilot,
-            ActiveProvider::Cursor,
-            ActiveProvider::OpenRouter,
-        ],
-        ActiveProvider::Cursor => vec![
-            ActiveProvider::Cursor,
-            ActiveProvider::Claude,
-            ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
-            ActiveProvider::Antigravity,
-            ActiveProvider::Gemini,
             ActiveProvider::OpenRouter,
         ],
         ActiveProvider::OpenRouter => vec![
             ActiveProvider::OpenRouter,
             ActiveProvider::Claude,
             ActiveProvider::OpenAI,
-            ActiveProvider::Copilot,
             ActiveProvider::Antigravity,
             ActiveProvider::Gemini,
-            ActiveProvider::Cursor,
         ],
     }
 }
@@ -411,7 +356,6 @@ mod tests {
             cli_provider_arg_for_session_key("openrouter"),
             Some("openrouter")
         );
-        assert_eq!(cli_provider_arg_for_session_key("copilot"), Some("copilot"));
         assert_eq!(cli_provider_arg_for_session_key("gemini"), Some("gemini"));
         // Case-insensitive and whitespace tolerant.
         assert_eq!(
@@ -472,12 +416,6 @@ mod tests {
                 "gpt-5",
             ),
             (
-                "copilot:gpt-5",
-                ActiveProvider::Copilot,
-                "copilot:",
-                "gpt-5",
-            ),
-            (
                 "antigravity:default",
                 ActiveProvider::Antigravity,
                 "antigravity:",
@@ -488,12 +426,6 @@ mod tests {
                 ActiveProvider::Gemini,
                 "gemini:",
                 "gemini-2.5-pro",
-            ),
-            (
-                "cursor:composer-1.5",
-                ActiveProvider::Cursor,
-                "cursor:",
-                "composer-1.5",
             ),
             (
                 "openrouter:meta/llama",
@@ -638,17 +570,6 @@ mod tests {
     }
 
     #[test]
-    fn auto_default_prefers_copilot_zero_mode() {
-        let provider = auto_default_provider(ProviderAvailability {
-            openai: true,
-            copilot: true,
-            copilot_premium_zero: true,
-            ..ProviderAvailability::default()
-        });
-        assert_eq!(provider, ActiveProvider::Copilot);
-    }
-
-    #[test]
     fn auto_default_prefers_claude_when_both_frontier_providers_are_available() {
         let provider = auto_default_provider(ProviderAvailability {
             openai: true,
@@ -663,7 +584,6 @@ mod tests {
         let sequence = fallback_sequence(ActiveProvider::OpenRouter);
         assert_eq!(sequence.first(), Some(&ActiveProvider::OpenRouter));
         assert!(sequence.contains(&ActiveProvider::Claude));
-        assert!(sequence.contains(&ActiveProvider::Cursor));
     }
 
     /// Regression: `--provider antigravity` (and the other direct runtimes)
@@ -675,7 +595,7 @@ mod tests {
     #[test]
     fn strip_own_model_prefix_covers_the_routing_spec_state_space() {
         // (case, input, own prefix) -> stored model id
-        let cases: [(&str, &str, &str, &str); 9] = [
+        let cases: [(&str, &str, &str, &str); 8] = [
             (
                 "own prefix is stripped",
                 "antigravity:gemini-3-flash",
@@ -724,7 +644,6 @@ mod tests {
                 "gemini:",
                 "gemini-2.5-pro",
             ),
-            ("copilot runtime", "copilot:gpt-5", "copilot:", "gpt-5"),
         ];
 
         for (case, input, own_prefix, expected) in cases {

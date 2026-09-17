@@ -136,8 +136,6 @@ fn resolution_is_deterministic() {
 /// than an accident of hint parsing.
 #[test]
 fn provider_hints_do_not_silently_widen_windows() {
-    // Copilot deliberately re-declares windows for models it re-serves, so it
-    // is an explicit, reviewed exception rather than an accidental widening.
     let hints = [Some("openrouter"), Some("anthropic"), Some("openai"), None];
 
     for (model, _) in representative_models() {

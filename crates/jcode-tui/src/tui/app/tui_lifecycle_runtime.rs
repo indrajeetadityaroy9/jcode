@@ -37,7 +37,6 @@ impl App {
             Some("openai") => "openai",
             Some("openrouter") => "openrouter",
             Some("gemini") => "gemini",
-            Some("cursor") => "cursor",
             Some("antigravity") => "antigravity",
             Some(other) => other,
             None => "claude",

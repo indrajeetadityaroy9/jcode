@@ -60,15 +60,15 @@ fn derive_session_provider_key_keeps_the_anthropic_api_key_route() {
 }
 
 /// An unclassifiable runtime value is no evidence against the env, so custom
-/// and Azure-style runtimes keep naming their own sessions.
+/// gateway-style runtimes keep naming their own sessions.
 #[test]
 fn derive_session_provider_key_keeps_an_unclassifiable_runtime_value() {
     let _lock = lock_env();
-    let _env = runtime_env(Some("azure-openai"), None, None);
+    let _env = runtime_env(Some("custom-gateway"), None, None);
 
     assert_eq!(
         derive_session_provider_key("OpenAI").as_deref(),
-        Some("azure-openai")
+        Some("custom-gateway")
     );
 }
 

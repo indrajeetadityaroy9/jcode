@@ -2165,8 +2165,6 @@ fn overscroll_provider_display(provider: &str) -> String {
         "openrouter" => "OpenRouter".to_string(),
         "opencode" => "OpenCode".to_string(),
         "gemini" => "Gemini".to_string(),
-        "copilot" => "GitHub Copilot".to_string(),
-        "cursor" => "Cursor".to_string(),
         "antigravity" => "Antigravity".to_string(),
         _ => provider.to_string(),
     }
@@ -2186,7 +2184,6 @@ fn overscroll_auth_label(
         }
         AuthMethod::AnthropicOAuth => Some(("OAuth", rgb(255, 160, 100))),
         AuthMethod::OpenAIOAuth => Some(("OAuth", rgb(100, 200, 180))),
-        AuthMethod::CopilotOAuth => Some(("OAuth", rgb(110, 200, 140))),
         AuthMethod::GeminiOAuth => Some(("OAuth", rgb(120, 190, 255))),
     }
 }

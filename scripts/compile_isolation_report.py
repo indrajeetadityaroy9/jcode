@@ -149,7 +149,6 @@ def target_state_violations(stats_by_name: dict[str, CrateStats]) -> list[str]:
     if base:
         for dep in base.normal_workspace_deps:
             if dep in {
-                "jcode-azure-auth",
                 "jcode-provider-gemini",
                 "jcode-provider-openai",
                 "jcode-provider-openrouter",

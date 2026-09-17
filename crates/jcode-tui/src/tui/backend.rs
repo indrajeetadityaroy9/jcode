@@ -1358,7 +1358,7 @@ mod tests {
         let (reader, _writer) = peer.into_split();
         let mut reader = BufReader::new(reader);
 
-        remote.notify_auth_changed_for_provider_detached(Some("azure-openai"));
+        remote.notify_auth_changed_for_provider_detached(Some("openrouter"));
 
         let mut line = String::new();
         tokio::time::timeout(Duration::from_secs(1), reader.read_line(&mut line))
@@ -1373,7 +1373,7 @@ mod tests {
                 id: 1,
                 provider: Some(provider),
                 auth: None,
-            } if provider == "azure-openai"
+            } if provider == "openrouter"
         ));
     }
 

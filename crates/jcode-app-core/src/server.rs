@@ -743,7 +743,7 @@ impl Server {
         // can make cheap model calls on whatever provider the user is running.
         // Without this, the sidecar only works on OpenAI/Claude OAuth and
         // silently degrades (rerank -> hybrid order, no relevance/extraction) on
-        // Copilot, Antigravity, Gemini, Cursor, and OpenRouter.
+        // Antigravity, Gemini, and OpenRouter.
         crate::provider::set_active_provider(Arc::clone(&provider));
 
         let (client_debug_response_tx, _) = broadcast::channel(64);

@@ -6,8 +6,6 @@ pub mod antigravity;
 mod catalog_routes;
 pub mod catalog_scheduler;
 pub mod claude;
-pub mod copilot;
-pub mod cursor;
 mod dispatch;
 pub mod external;
 mod failover;
@@ -44,8 +42,7 @@ use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
 pub use catalog_routes::{
     append_simplified_anthropic_model_routes, remote_current_openai_compatible_route_for_model,
-    remote_model_is_server_copilot_only, remote_model_routes_fallback,
-    remote_model_routes_lightweight_fallback, remote_model_should_offer_copilot_route,
+    remote_model_routes_fallback, remote_model_routes_lightweight_fallback,
     remote_openai_compatible_route_for_model, simplified_model_routes_for_picker,
 };
 pub use jcode_provider_core::attempt_tracker;
@@ -55,10 +52,10 @@ pub use jcode_provider_core::{
     CHEAPNESS_REFERENCE_OUTPUT_TOKENS, CredentialMode, DEFAULT_CONTEXT_LIMIT, EventStream,
     JCODE_USER_AGENT, ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute,
     ModelRouteApiMethod, NativeCompactionResult, NativeToolResult, NativeToolResultSender,
-    PremiumMode, Provider, RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence,
+    Provider, RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence,
     RouteCostSource, RouteSelection, RuntimeKey, dedupe_model_routes,
     explicit_model_provider_prefix, fresh_transport_client, inferred_reasoning_efforts,
-    model_name_for_provider, normalize_copilot_model_name, provider_from_model_key,
+    model_name_for_provider, normalize_dotted_model_version, provider_from_model_key,
     shared_http_client, summarize_model_catalog_refresh,
 };
 pub use jcode_provider_core::{
@@ -68,7 +65,7 @@ pub use jcode_provider_core::{
 };
 pub use jcode_provider_core::{ProviderFailoverPrompt, parse_failover_prompt_message};
 pub use route_builders::{
-    build_anthropic_oauth_route, build_copilot_route, build_openai_api_key_route,
+    build_anthropic_oauth_route, build_openai_api_key_route,
     build_openai_oauth_route, build_openrouter_auto_route, build_openrouter_endpoint_route,
     build_openrouter_fallback_provider_route, is_listable_model_name,
     listable_model_names_from_routes, openrouter_catalog_model_id,
@@ -82,7 +79,7 @@ pub(crate) use routing::{
 /// The memory sidecar ([`crate::sidecar::Sidecar`]) needs to make small,
 /// cheap model calls (rerank / relevance / extraction). It has dedicated fast
 /// paths for OpenAI (codex-spark) and Claude (haiku) OAuth, but jcode also runs
-/// on Copilot, Antigravity, Gemini, Cursor, and OpenRouter. For those
+/// on Antigravity, Gemini, and OpenRouter. For those
 /// providers there is no standalone sidecar HTTP client, so the sidecar falls
 /// back to *this* handle and dispatches through the already-working
 /// [`Provider::complete_simple`] path. `Server::new` registers the active
@@ -331,11 +328,6 @@ pub struct MultiProvider {
     /// Direct Anthropic API provider (no Python dependency)
     anthropic: RwLock<Option<Arc<dyn Provider>>>,
     openai: RwLock<Option<Arc<dyn Provider>>>,
-    /// GitHub Copilot API provider (direct API, hot-swappable after login).
-    /// Held as `dyn Provider`: the concrete runtime lives downstream in
-    /// `jcode-provider-copilot-runtime` and is instantiated through
-    /// `external::instantiate_external_provider`.
-    copilot_api: RwLock<Option<Arc<dyn Provider>>>,
     /// Antigravity provider (direct HTTPS, hot-swappable after login). Held as
     /// `dyn Provider`: the concrete runtime lives downstream in
     /// `jcode-provider-antigravity-runtime` and is instantiated through
@@ -345,11 +337,6 @@ pub struct MultiProvider {
     /// the concrete runtime lives downstream in `jcode-provider-gemini-runtime`
     /// and is instantiated through `external::instantiate_external_provider`.
     gemini: RwLock<Option<Arc<dyn Provider>>>,
-    /// Cursor provider (native/direct API, hot-swappable after login). Held as
-    /// `dyn Provider`: the concrete runtime lives downstream in
-    /// `jcode-provider-cursor-runtime` and is instantiated through
-    /// `external::instantiate_external_provider`.
-    cursor: RwLock<Option<Arc<dyn Provider>>>,
     /// OpenRouter API provider
     openrouter: RwLock<Option<Arc<dyn Provider>>>,
     /// Direct OpenAI-compatible runtimes keyed by profile id.
@@ -488,10 +475,8 @@ impl MultiProvider {
             ("cl", self.claude_provider().is_some()),
             ("an", self.anthropic_provider().is_some()),
             ("oa", self.openai_provider().is_some()),
-            ("co", self.copilot_provider().is_some()),
             ("ag", self.antigravity_provider().is_some()),
             ("ge", self.gemini_provider().is_some()),
-            ("cu", self.cursor_provider().is_some()),
             ("or", self.openrouter_provider().is_some()),
         ]
         .iter()
@@ -1106,16 +1091,6 @@ impl MultiProvider {
                 self.set_active_provider(ActiveProvider::OpenAI);
                 Ok(())
             }
-            ActiveProvider::Copilot => {
-                let Some(copilot) = self.copilot_provider() else {
-                    anyhow::bail!(
-                        "GitHub Copilot credentials not available. Run `jcode login --provider copilot` first."
-                    );
-                };
-                copilot.set_model(model)?;
-                self.set_active_provider(ActiveProvider::Copilot);
-                Ok(())
-            }
             ActiveProvider::Antigravity => {
                 let Some(antigravity) = self.antigravity_provider() else {
                     anyhow::bail!(
@@ -1134,16 +1109,6 @@ impl MultiProvider {
                 };
                 gemini.set_model(model)?;
                 self.set_active_provider(ActiveProvider::Gemini);
-                Ok(())
-            }
-            ActiveProvider::Cursor => {
-                let Some(cursor) = self.cursor_provider() else {
-                    anyhow::bail!(
-                        "Cursor credentials not available. Run `jcode login --provider cursor` first."
-                    );
-                };
-                cursor.set_model(model)?;
-                self.set_active_provider(ActiveProvider::Cursor);
                 Ok(())
             }
             ActiveProvider::OpenRouter => {
@@ -1385,22 +1350,6 @@ impl MultiProvider {
             }
         }
 
-        let already_has = self.copilot_provider().is_some();
-        if !already_has {
-            let status = crate::auth::AuthStatus::check_fast();
-            // The composition-root factory schedules tier detection itself.
-            if status.copilot_has_api_token
-                && let Some(provider) =
-                    external::instantiate_expected_external_provider(external::COPILOT_RUNTIME)
-            {
-                crate::logging::info("Hot-initialized Copilot API provider after login");
-                *self
-                    .copilot_api
-                    .write()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(provider);
-            }
-        }
-
         let already_has_antigravity = self.antigravity_provider().is_some();
         if !already_has_antigravity
             && crate::auth::antigravity::load_tokens().is_ok()
@@ -1427,21 +1376,6 @@ impl MultiProvider {
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(gemini);
         }
 
-        let already_has_cursor = self.cursor_provider().is_some();
-        if !already_has_cursor
-            && crate::auth::AuthStatus::check_fast()
-                .assessment_for_provider(crate::provider_catalog::CURSOR_LOGIN_PROVIDER)
-                .is_available()
-            && let Some(cursor) =
-                external::instantiate_expected_external_provider(external::CURSOR_RUNTIME)
-        {
-            crate::logging::info("Hot-initialized Cursor provider after login");
-            *self
-                .cursor
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(cursor);
-        }
-
         if let Some(anthropic) = self.anthropic_provider() {
             self.spawn_post_auth_model_refresh(anthropic, "Anthropic");
         }
@@ -1456,9 +1390,6 @@ impl MultiProvider {
         }
         if let Some(gemini) = self.gemini_provider() {
             self.spawn_post_auth_model_refresh(gemini, "Gemini");
-        }
-        if let Some(cursor) = self.cursor_provider() {
-            self.spawn_post_auth_model_refresh(cursor, "Cursor");
         }
         if let Some(openrouter) = self.openrouter_provider() {
             self.spawn_post_auth_model_refresh(openrouter, "OpenRouter");
@@ -1596,10 +1527,8 @@ impl MultiProvider {
                     "openai"
                 }
             }
-            ActiveProvider::Copilot => "copilot",
             ActiveProvider::Antigravity => "antigravity",
             ActiveProvider::Gemini => "gemini",
-            ActiveProvider::Cursor => "cursor",
             ActiveProvider::OpenRouter => {
                 if let Some(openrouter) = self.active_openrouter_execution_provider()
                     && let Some((_provider, api_method, _detail)) =
@@ -1672,10 +1601,8 @@ impl Provider for MultiProvider {
         match self.active_provider() {
             ActiveProvider::Claude => "Claude",
             ActiveProvider::OpenAI => "OpenAI",
-            ActiveProvider::Copilot => "Copilot",
             ActiveProvider::Antigravity => "Antigravity",
             ActiveProvider::Gemini => "Gemini",
-            ActiveProvider::Cursor => "Cursor",
             ActiveProvider::OpenRouter => "OpenRouter",
         }
     }
@@ -1709,10 +1636,6 @@ impl Provider for MultiProvider {
                 .openai_provider()
                 .map(|o| o.model())
                 .unwrap_or_else(|| jcode_provider_core::DEFAULT_OPENAI_MODEL.to_string()),
-            ActiveProvider::Copilot => self
-                .copilot_provider()
-                .map(|o| o.model())
-                .unwrap_or_else(|| "claude-sonnet-4".to_string()),
             ActiveProvider::Antigravity => self
                 .antigravity_provider()
                 .map(|o| o.model())
@@ -1721,10 +1644,6 @@ impl Provider for MultiProvider {
                 .gemini_provider()
                 .map(|o| o.model())
                 .unwrap_or_else(|| "gemini-2.5-pro".to_string()),
-            ActiveProvider::Cursor => self
-                .cursor_provider()
-                .map(|o| o.model())
-                .unwrap_or_else(|| "composer-2.5".to_string()),
             ActiveProvider::OpenRouter => self
                 .active_openrouter_execution_provider()
                 .map(|o| o.model())
@@ -1848,20 +1767,12 @@ impl Provider for MultiProvider {
                 .openai_provider()
                 .map(|provider| provider.supports_image_input())
                 .unwrap_or(false),
-            ActiveProvider::Copilot => self
-                .copilot_provider()
-                .map(|provider| provider.supports_image_input())
-                .unwrap_or(false),
             ActiveProvider::Antigravity => self
                 .antigravity_provider()
                 .map(|provider| provider.supports_image_input())
                 .unwrap_or(false),
             ActiveProvider::Gemini => self
                 .gemini_provider()
-                .map(|provider| provider.supports_image_input())
-                .unwrap_or(false),
-            ActiveProvider::Cursor => self
-                .cursor_provider()
                 .map(|provider| provider.supports_image_input())
                 .unwrap_or(false),
             ActiveProvider::OpenRouter => self
@@ -1956,9 +1867,9 @@ impl Provider for MultiProvider {
             return self.set_model_on_provider(ActiveProvider::OpenRouter, requested_model);
         }
 
-        // Normalize Copilot-style model names (dots -> hyphens) to canonical form.
+        // Normalize dotted model versions (dots -> hyphens) to canonical form.
         // e.g. "claude-opus-4.6" -> "claude-opus-4-6" so Anthropic accepts it.
-        let model = if let Some(canonical) = normalize_copilot_model_name(requested_model) {
+        let model = if let Some(canonical) = normalize_dotted_model_version(requested_model) {
             canonical
         } else {
             requested_model
@@ -2026,10 +1937,6 @@ impl Provider for MultiProvider {
                 .openai_provider()
                 .map(|openai| openai.available_models_for_switching())
                 .unwrap_or_default(),
-            ActiveProvider::Copilot => self
-                .copilot_provider()
-                .map(|copilot| copilot.available_models_for_switching())
-                .unwrap_or_default(),
             ActiveProvider::Antigravity => self
                 .antigravity_provider()
                 .map(|antigravity| antigravity.available_models_for_switching())
@@ -2037,10 +1944,6 @@ impl Provider for MultiProvider {
             ActiveProvider::Gemini => self
                 .gemini_provider()
                 .map(|gemini| gemini.available_models_for_switching())
-                .unwrap_or_default(),
-            ActiveProvider::Cursor => self
-                .cursor_provider()
-                .map(|cursor| cursor.available_models_for_switching())
                 .unwrap_or_default(),
             ActiveProvider::OpenRouter => self
                 .active_openrouter_execution_provider()
@@ -2095,24 +1998,16 @@ impl Provider for MultiProvider {
         let claude = self.claude_provider();
         let openai = self.openai_provider();
         let openrouter = self.openrouter_provider();
-        let copilot = self
-            .copilot_api
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
         let antigravity = self.antigravity_provider();
         let gemini = self.gemini_provider();
-        let cursor = self.cursor_provider();
 
         let (
             anthropic_result,
             claude_result,
             openai_result,
             openrouter_result,
-            copilot_result,
             antigravity_result,
             gemini_result,
-            cursor_result,
         ) = tokio::join!(
             async {
                 match anthropic {
@@ -2139,12 +2034,6 @@ impl Provider for MultiProvider {
                 }
             },
             async {
-                match copilot {
-                    Some(provider) => provider.prefetch_models().await,
-                    None => Ok(()),
-                }
-            },
-            async {
                 match antigravity {
                     Some(provider) => provider.prefetch_models().await,
                     None => Ok(()),
@@ -2152,12 +2041,6 @@ impl Provider for MultiProvider {
             },
             async {
                 match gemini {
-                    Some(provider) => provider.prefetch_models().await,
-                    None => Ok(()),
-                }
-            },
-            async {
-                match cursor {
                     Some(provider) => provider.prefetch_models().await,
                     None => Ok(()),
                 }
@@ -2172,10 +2055,8 @@ impl Provider for MultiProvider {
             ("claude", claude_result),
             ("openai", openai_result),
             ("openrouter", openrouter_result),
-            ("copilot", copilot_result),
             ("antigravity", antigravity_result),
             ("gemini", gemini_result),
-            ("cursor", cursor_result),
         ] {
             if let Err(err) = result {
                 let is_active = matches!(
@@ -2183,10 +2064,8 @@ impl Provider for MultiProvider {
                     (ActiveProvider::Claude, "anthropic" | "claude")
                         | (ActiveProvider::OpenAI, "openai")
                         | (ActiveProvider::OpenRouter, "openrouter")
-                        | (ActiveProvider::Copilot, "copilot")
                         | (ActiveProvider::Antigravity, "antigravity")
                         | (ActiveProvider::Gemini, "gemini")
-                        | (ActiveProvider::Cursor, "cursor")
                 );
                 if !is_active {
                     optional_errors.push(format!("{provider_name}: {err}"));
@@ -2251,16 +2130,8 @@ impl Provider for MultiProvider {
                 .openai_provider()
                 .map(|o| o.handles_tools_internally())
                 .unwrap_or(false),
-            ActiveProvider::Copilot => self
-                .copilot_provider()
-                .map(|o| o.handles_tools_internally())
-                .unwrap_or(false),
             ActiveProvider::Antigravity => false,
             ActiveProvider::Gemini => false,
-            ActiveProvider::Cursor => self
-                .cursor_provider()
-                .map(|o| o.handles_tools_internally())
-                .unwrap_or(false),
             ActiveProvider::OpenRouter => false, // jcode executes tools
         }
     }
@@ -2271,7 +2142,6 @@ impl Provider for MultiProvider {
                 .anthropic_provider()
                 .and_then(|provider| provider.reasoning_effort()),
             ActiveProvider::OpenAI => self.openai_provider().and_then(|o| o.reasoning_effort()),
-            ActiveProvider::Copilot => self.copilot_provider().and_then(|o| o.reasoning_effort()),
             ActiveProvider::OpenRouter => self
                 .active_openrouter_execution_provider()
                 .and_then(|o| o.reasoning_effort()),
@@ -2288,10 +2158,6 @@ impl Provider for MultiProvider {
             ActiveProvider::OpenAI => self
                 .openai_provider()
                 .ok_or_else(|| anyhow::anyhow!("OpenAI provider not available"))?
-                .set_reasoning_effort(effort),
-            ActiveProvider::Copilot => self
-                .copilot_provider()
-                .ok_or_else(|| anyhow::anyhow!("Copilot provider not available"))?
                 .set_reasoning_effort(effort),
             ActiveProvider::OpenRouter => self
                 .active_openrouter_execution_provider()
@@ -2317,10 +2183,6 @@ impl Provider for MultiProvider {
                 .active_openrouter_execution_provider()
                 .map(|o| o.available_efforts())
                 .unwrap_or_default(),
-            ActiveProvider::Copilot => match self.copilot_provider() {
-                Some(provider) => provider.available_efforts(),
-                None => vec![],
-            },
             _ => vec![],
         }
     }
@@ -2376,7 +2238,6 @@ impl Provider for MultiProvider {
                 .map(|o| o.available_transports())
                 .unwrap_or_default(),
             ActiveProvider::Gemini => vec![],
-            ActiveProvider::Cursor => vec![],
             _ => vec![],
         }
     }
@@ -2396,20 +2257,12 @@ impl Provider for MultiProvider {
                 .openai_provider()
                 .map(|o| o.supports_compaction())
                 .unwrap_or(false),
-            ActiveProvider::Copilot => self
-                .copilot_provider()
-                .map(|o| o.supports_compaction())
-                .unwrap_or(false),
             ActiveProvider::Antigravity => self
                 .antigravity_provider()
                 .map(|o| o.supports_compaction())
                 .unwrap_or(false),
             ActiveProvider::Gemini => self
                 .gemini_provider()
-                .map(|o| o.supports_compaction())
-                .unwrap_or(false),
-            ActiveProvider::Cursor => self
-                .cursor_provider()
                 .map(|o| o.supports_compaction())
                 .unwrap_or(false),
             ActiveProvider::OpenRouter => self
@@ -2434,20 +2287,12 @@ impl Provider for MultiProvider {
                 .openai_provider()
                 .map(|o| o.uses_jcode_compaction())
                 .unwrap_or(false),
-            ActiveProvider::Copilot => self
-                .copilot_provider()
-                .map(|o| o.uses_jcode_compaction())
-                .unwrap_or(false),
             ActiveProvider::Antigravity => self
                 .antigravity_provider()
                 .map(|o| o.uses_jcode_compaction())
                 .unwrap_or(false),
             ActiveProvider::Gemini => self
                 .gemini_provider()
-                .map(|o| o.uses_jcode_compaction())
-                .unwrap_or(false),
-            ActiveProvider::Cursor => self
-                .cursor_provider()
                 .map(|o| o.uses_jcode_compaction())
                 .unwrap_or(false),
             ActiveProvider::OpenRouter => self
@@ -2498,20 +2343,6 @@ impl Provider for MultiProvider {
                     Err(anyhow::anyhow!("OpenAI provider unavailable"))
                 }
             }
-            ActiveProvider::Copilot => {
-                let provider = self.copilot_provider();
-                if let Some(copilot) = provider {
-                    copilot
-                        .native_compact(
-                            messages,
-                            existing_summary_text,
-                            existing_openai_encrypted_content,
-                        )
-                        .await
-                } else {
-                    Err(anyhow::anyhow!("Copilot provider unavailable"))
-                }
-            }
             ActiveProvider::Antigravity => Err(anyhow::anyhow!(
                 "Antigravity does not support native compaction"
             )),
@@ -2529,20 +2360,6 @@ impl Provider for MultiProvider {
                     Err(anyhow::anyhow!("Gemini provider unavailable"))
                 }
             }
-            ActiveProvider::Cursor => {
-                let provider = self.cursor_provider();
-                if let Some(cursor) = provider {
-                    cursor
-                        .native_compact(
-                            messages,
-                            existing_summary_text,
-                            existing_openai_encrypted_content,
-                        )
-                        .await
-                } else {
-                    Err(anyhow::anyhow!("Cursor provider unavailable"))
-                }
-            }
             ActiveProvider::OpenRouter => {
                 let provider = self.active_openrouter_execution_provider();
                 if let Some(openrouter) = provider {
@@ -2557,20 +2374,6 @@ impl Provider for MultiProvider {
                     Err(anyhow::anyhow!("OpenRouter provider unavailable"))
                 }
             }
-        }
-    }
-
-    fn set_premium_mode(&self, mode: PremiumMode) {
-        if let Some(copilot) = self.copilot_provider() {
-            copilot.set_premium_mode(mode);
-        }
-    }
-
-    fn premium_mode(&self) -> PremiumMode {
-        if let Some(copilot) = self.copilot_provider() {
-            copilot.premium_mode()
-        } else {
-            PremiumMode::Normal
         }
     }
 
@@ -2598,20 +2401,12 @@ impl Provider for MultiProvider {
                 .openai_provider()
                 .map(|o| o.context_window())
                 .unwrap_or(DEFAULT_CONTEXT_LIMIT),
-            ActiveProvider::Copilot => self
-                .copilot_provider()
-                .map(|o| o.context_window())
-                .unwrap_or(DEFAULT_CONTEXT_LIMIT),
             ActiveProvider::Antigravity => self
                 .antigravity_provider()
                 .map(|o| o.context_window())
                 .unwrap_or(DEFAULT_CONTEXT_LIMIT),
             ActiveProvider::Gemini => self
                 .gemini_provider()
-                .map(|o| o.context_window())
-                .unwrap_or(DEFAULT_CONTEXT_LIMIT),
-            ActiveProvider::Cursor => self
-                .cursor_provider()
                 .map(|o| o.context_window())
                 .unwrap_or(DEFAULT_CONTEXT_LIMIT),
             ActiveProvider::OpenRouter => self
@@ -2641,11 +2436,6 @@ impl Provider for MultiProvider {
         } else {
             None
         };
-        let copilot_api = self
-            .copilot_api
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone();
         let antigravity_provider = self
             .antigravity
             .read()
@@ -2656,16 +2446,6 @@ impl Provider for MultiProvider {
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone();
-        let cursor_provider = if self
-            .cursor
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .is_some()
-        {
-            external::instantiate_expected_external_provider(external::CURSOR_RUNTIME)
-        } else {
-            None
-        };
         let openrouter = if self
             .openrouter
             .read()
@@ -2681,10 +2461,8 @@ impl Provider for MultiProvider {
             claude: RwLock::new(claude),
             anthropic: RwLock::new(anthropic),
             openai: RwLock::new(openai),
-            copilot_api: RwLock::new(copilot_api),
             antigravity: RwLock::new(antigravity_provider),
             gemini: RwLock::new(gemini_provider),
-            cursor: RwLock::new(cursor_provider),
             openrouter: RwLock::new(openrouter),
             openai_compatible_profiles: RwLock::new(HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
@@ -2710,7 +2488,7 @@ impl Provider for MultiProvider {
         // in-flight helper work but stale for a brand-new session. Reconstruct the
         // orchestrator so the reloadable config cache and current auth state choose
         // the provider/model again.
-        let provider = Self::new_fast();
+        let provider = Self::new();
 
         // An explicit CLI initial provider/model remains the starting selection
         // for new sessions, while each session can switch freely afterward.
@@ -2741,10 +2519,8 @@ impl Provider for MultiProvider {
                 }
             }
             ActiveProvider::OpenAI => None,
-            ActiveProvider::Copilot => None,
             ActiveProvider::Antigravity => None,
             ActiveProvider::Gemini => None,
-            ActiveProvider::Cursor => None,
             ActiveProvider::OpenRouter => None,
         }
     }
@@ -2794,8 +2570,6 @@ pub fn cache_ttl_for_provider_model(provider: &str, model: Option<&str>) -> Opti
         }
         "openrouter" => Some(300),
         "gemini" => Some(300),
-        "copilot" => None,
-        "cursor" => None,
         "antigravity" => None,
         _ => None,
     }

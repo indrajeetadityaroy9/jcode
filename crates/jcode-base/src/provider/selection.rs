@@ -94,11 +94,9 @@ impl MultiProvider {
             LoginProviderTarget::OpenAi | LoginProviderTarget::OpenAiApiKey => Some("openai"),
             LoginProviderTarget::OpenRouter => Some("openrouter"),
             LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id),
-            LoginProviderTarget::Cursor => Some("cursor"),
-            LoginProviderTarget::Copilot => Some("copilot"),
             LoginProviderTarget::Gemini => Some("gemini"),
             LoginProviderTarget::Antigravity => Some("antigravity"),
-            LoginProviderTarget::AutoImport | LoginProviderTarget::Azure => None,
+            LoginProviderTarget::AutoImport => None,
         }
     }
 
@@ -142,12 +140,10 @@ impl MultiProvider {
             _ => None,
         };
         let model_spec = match &api_method_kind {
-            ModelRouteApiMethod::Copilot => format!("copilot:{}", bare_name),
             ModelRouteApiMethod::ClaudeOAuth => format!("claude-oauth:{}", bare_name),
             ModelRouteApiMethod::AnthropicApiKey if provider_display == "Anthropic" => {
                 format!("claude-api:{}", bare_name)
             }
-            ModelRouteApiMethod::Cursor => format!("cursor:{}", bare_name),
             ModelRouteApiMethod::OpenAIApiKey => format!("openai-api:{}", bare_name),
             ModelRouteApiMethod::OpenAIOAuth => format!("openai-oauth:{}", bare_name),
             _ if provider_display == "Antigravity" => format!("antigravity:{}", bare_name),
@@ -178,8 +174,6 @@ impl MultiProvider {
             }
             ModelRouteApiMethod::OpenAIApiKey => Some("openai-api".to_string()),
             ModelRouteApiMethod::OpenAIOAuth => Some("openai-oauth".to_string()),
-            ModelRouteApiMethod::Copilot => Some("copilot".to_string()),
-            ModelRouteApiMethod::Cursor => Some("cursor".to_string()),
             ModelRouteApiMethod::Other(method)
                 if method == "cli" && provider_display == "Antigravity" =>
             {
@@ -235,7 +229,7 @@ impl MultiProvider {
                     return Some(route.session_provider_key().to_string());
                 }
                 match prefix {
-                    "copilot" | "antigravity" | "gemini" | "cursor" | "openrouter" => {
+                    "antigravity" | "gemini" | "openrouter" => {
                         return Some(prefix.to_string());
                     }
                     _ => {
@@ -304,9 +298,7 @@ impl MultiProvider {
         let key = match normalized.as_str() {
             "anthropic" | "claude" | "claude cli" => "claude",
             "openai" => "openai",
-            "github copilot" | "copilot" => "copilot",
             "openrouter" => "openrouter",
-            "cursor" => "cursor",
             "gemini" | "google" => "gemini",
             "antigravity" => "antigravity",
             "" => return None,
@@ -489,7 +481,7 @@ impl MultiProvider {
         let provider_key = Self::canonical_session_provider_key(provider_key);
 
         match provider_key {
-            "copilot" | "antigravity" | "gemini" | "cursor" | "openrouter" => {
+            "antigravity" | "gemini" | "openrouter" => {
                 format!("{provider_key}:{model}")
             }
             _ => {
@@ -535,8 +527,6 @@ impl MultiProvider {
                 ModelRouteApiMethod::OpenAiCompatible {
                     profile_id: Some(profile_id),
                 } => return format!("{profile_id}:{model}"),
-                ModelRouteApiMethod::Copilot => return format!("copilot:{model}"),
-                ModelRouteApiMethod::Cursor => return format!("cursor:{model}"),
                 ModelRouteApiMethod::AntigravityHttps => return format!("antigravity:{model}"),
                 ModelRouteApiMethod::OpenAiCompatible { profile_id: None }
                 | ModelRouteApiMethod::CodeAssistOAuth
@@ -622,12 +612,6 @@ mod tests {
             ),
             Some("opencode")
         );
-        assert_eq!(
-            MultiProvider::config_default_provider_for_login_provider(
-                crate::provider_catalog::AZURE_LOGIN_PROVIDER,
-            ),
-            None
-        );
     }
 
     #[test]
@@ -667,13 +651,6 @@ mod tests {
                 "Comtegra GPU Cloud",
                 "glm-51-nvfp4",
                 Some("comtegra"),
-            ),
-            (
-                "claude-sonnet-4-6",
-                "copilot",
-                "Copilot",
-                "copilot:claude-sonnet-4-6",
-                Some("copilot"),
             ),
         ] {
             let selection =
@@ -901,14 +878,6 @@ mod tests {
 
     #[test]
     fn route_defaults_are_derived_consistently() {
-        let copilot = MultiProvider::default_model_selection_from_route(
-            "gpt-5.1-codex",
-            "copilot",
-            "GitHub Copilot",
-        );
-        assert_eq!(copilot.model_spec, "copilot:gpt-5.1-codex");
-        assert_eq!(copilot.provider_key.as_deref(), Some("copilot"));
-
         let profile = MultiProvider::default_model_selection_from_route(
             "moonshot-v1-8k",
             "openai-compatible:kimi",

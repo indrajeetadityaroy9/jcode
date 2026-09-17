@@ -298,7 +298,7 @@ tool_profile = "acp"
 # Default model (optional, uses provider default if not set)
 # Set via /model picker with Ctrl+B to save as default
 # default_model = "claude-opus-5"
-# Default provider (optional: claude|anthropic-api|openai|openai-api|copilot|openrouter|...)
+# Default provider (optional: claude|anthropic-api|openai|openai-api|openrouter|...)
 # When set, this provider is preferred on startup if available.
 #   claude        = Claude via OAuth/subscription (token in ~/.jcode/auth.json)
 #   anthropic-api = Claude via direct Anthropic API key (ANTHROPIC_API_KEY env
@@ -306,7 +306,7 @@ tool_profile = "acp"
 #                   back to OAuth; configure the key first.
 # `claude` and `anthropic-api` are distinct providers with distinct credentials.
 # See docs/AUTH_CREDENTIAL_SOURCES.md for where each credential lives.
-# default_provider = "copilot"
+# default_provider = "claude"
 # OpenAI reasoning effort (none|minimal|low|medium|high|xhigh|max)
 openai_reasoning_effort = "low"
 # Anthropic reasoning effort for Claude reasoning models (none|low|medium|high|xhigh|max)
@@ -329,11 +329,8 @@ preserve_reasoning_context = true
 # Try another account on the same provider before switching providers (default: true)
 # same_provider_account_failover = false
 cross_provider_failover = "countdown"
-# Copilot premium mode: "normal" (default), "one" (first msg only), "zero" (all free)
-# Set to "zero" if you have premium Copilot and want free requests
-# copilot_premium = "zero"
 # Only list these providers in the /model picker (issue #460). Entries match
-# provider labels ("openai", "anthropic", "copilot", "openrouter", ...), route
+# provider labels ("openai", "anthropic", "openrouter", ...), route
 # api methods ("claude-oauth", "openai-compatible:myprofile"), or bare
 # openai-compatible profile ids ("myprofile"). The active model's routes always
 # stay visible. Unset or empty = show everything.
@@ -341,7 +338,7 @@ cross_provider_failover = "countdown"
 # Max seconds to wait for streaming data before timing out a request with no
 # data received. Raise this for slow reasoning models (e.g. DeepSeek) that think
 # silently for minutes before emitting tokens. Default: 180.
-# Applies to every streaming provider path (OpenAI native, Anthropic, Copilot,
+# Applies to every streaming provider path (OpenAI native, Anthropic,
 # OpenRouter/OpenAI-compatible). The TUI's client-side stall guard also extends
 # to match this value. Also overridable per-launch via JCODE_STREAM_IDLE_TIMEOUT_SECS.
 # This is the base budget: high reasoning efforts scale it up automatically

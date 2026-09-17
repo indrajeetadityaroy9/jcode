@@ -90,22 +90,6 @@ impl MultiProvider {
                     ))
                 }
             }
-            ActiveProvider::Copilot => {
-                let copilot = self
-                    .copilot_api
-                    .read()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .clone();
-                if let Some(copilot) = copilot {
-                    copilot
-                        .complete(messages, tools, system, resume_session_id)
-                        .await
-                } else {
-                    Err(anyhow::anyhow!(
-                        "GitHub Copilot is not available. Run `jcode login --provider copilot`."
-                    ))
-                }
-            }
             ActiveProvider::Antigravity => {
                 let antigravity = self.antigravity_provider();
                 if let Some(antigravity) = antigravity {
@@ -131,22 +115,6 @@ impl MultiProvider {
                 } else {
                     Err(anyhow::anyhow!(
                         "Gemini is not available. Run `jcode login --provider gemini`."
-                    ))
-                }
-            }
-            ActiveProvider::Cursor => {
-                let cursor = self
-                    .cursor
-                    .read()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .clone();
-                if let Some(cursor) = cursor {
-                    cursor
-                        .complete(messages, tools, system, resume_session_id)
-                        .await
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Cursor is not available. Run `jcode login --provider cursor`."
                     ))
                 }
             }
@@ -220,28 +188,6 @@ impl MultiProvider {
                     ))
                 }
             }
-            ActiveProvider::Copilot => {
-                let copilot = self
-                    .copilot_api
-                    .read()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .clone();
-                if let Some(copilot) = copilot {
-                    copilot
-                        .complete_split(
-                            messages,
-                            tools,
-                            system_static,
-                            system_dynamic,
-                            resume_session_id,
-                        )
-                        .await
-                } else {
-                    Err(anyhow::anyhow!(
-                        "GitHub Copilot is not available. Run `jcode login --provider copilot`."
-                    ))
-                }
-            }
             ActiveProvider::Antigravity => {
                 let antigravity = self.antigravity_provider();
                 if let Some(antigravity) = antigravity {
@@ -279,28 +225,6 @@ impl MultiProvider {
                 } else {
                     Err(anyhow::anyhow!(
                         "Gemini is not available. Run `jcode login --provider gemini`."
-                    ))
-                }
-            }
-            ActiveProvider::Cursor => {
-                let cursor = self
-                    .cursor
-                    .read()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                    .clone();
-                if let Some(cursor) = cursor {
-                    cursor
-                        .complete_split(
-                            messages,
-                            tools,
-                            system_static,
-                            system_dynamic,
-                            resume_session_id,
-                        )
-                        .await
-                } else {
-                    Err(anyhow::anyhow!(
-                        "Cursor is not available. Run `jcode login --provider cursor`."
                     ))
                 }
             }

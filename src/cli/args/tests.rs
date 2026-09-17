@@ -171,7 +171,6 @@ fn login_no_browser_flag_parses() {
             callback_url,
             auth_code,
             json,
-            complete,
             api_base,
             api_key,
             api_key_env,
@@ -184,7 +183,6 @@ fn login_no_browser_flag_parses() {
             assert!(callback_url.is_none());
             assert!(auth_code.is_none());
             assert!(!json);
-            assert!(!complete);
             assert!(api_base.is_none());
             assert!(api_key.is_none());
             assert!(api_key_env.is_none());
@@ -274,14 +272,12 @@ fn login_scriptable_flags_parse() {
             json,
             callback_url,
             auth_code,
-            complete,
             ..
         }) => {
             assert!(print_auth_url);
             assert!(json);
             assert!(callback_url.is_none());
             assert!(auth_code.is_none());
-            assert!(!complete);
         }
         other => panic!("unexpected command: {:?}", other),
     }
@@ -307,14 +303,6 @@ fn login_scriptable_flags_parse() {
     match args.command {
         Some(Command::Login { auth_code, .. }) => {
             assert_eq!(auth_code.as_deref(), Some("abc123"));
-        }
-        other => panic!("unexpected command: {:?}", other),
-    }
-
-    let args = Args::try_parse_from(["jcode", "login", "--complete"]).unwrap();
-    match args.command {
-        Some(Command::Login { complete, .. }) => {
-            assert!(complete);
         }
         other => panic!("unexpected command: {:?}", other),
     }

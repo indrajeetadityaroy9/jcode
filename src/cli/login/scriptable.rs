@@ -5,7 +5,7 @@ pub(super) fn auto_scriptable_flow_reason(
     options: &LoginOptions,
     stdin_is_terminal: bool,
 ) -> Option<&'static str> {
-    if options.print_auth_url || options.complete || options.has_provided_input() {
+    if options.print_auth_url || options.has_provided_input() {
         return None;
     }
 
@@ -15,7 +15,6 @@ pub(super) fn auto_scriptable_flow_reason(
             | LoginProviderTarget::OpenAi
             | LoginProviderTarget::Gemini
             | LoginProviderTarget::Antigravity
-            | LoginProviderTarget::Copilot
     );
     if !supports_scriptable {
         return None;
@@ -40,11 +39,6 @@ pub(super) async fn run_scriptable_login_provider(
     }
 
     let input = options.resolve_provided_input()?;
-    if options.complete && input.is_some() {
-        anyhow::bail!(
-            "Use either --complete or an explicit --callback-url / --auth-code input, not both."
-        );
-    }
     complete_scriptable_login(provider, account_label, options, input).await
 }
 
@@ -53,7 +47,7 @@ pub(super) async fn start_scriptable_login(
     account_label: Option<&str>,
     options: &LoginOptions,
 ) -> Result<LoginFlowOutcome> {
-    let (pending, auth_url, input_kind, user_code, expires_at_ms) = match provider.target {
+    let (pending, auth_url, input_kind, expires_at_ms) = match provider.target {
         LoginProviderTarget::Claude => {
             let label = auth::claude::login_target_label(account_label)?;
             let (verifier, challenge) = auth::oauth::generate_pkce_public();
@@ -67,7 +61,6 @@ pub(super) async fn start_scriptable_login(
                 },
                 auth_url,
                 "auth_code_or_callback_url",
-                None,
                 PendingScriptableLogin::Claude {
                     account_label: String::new(),
                     verifier: String::new(),
@@ -96,7 +89,6 @@ pub(super) async fn start_scriptable_login(
                 },
                 auth_url,
                 "callback_url",
-                None,
                 PendingScriptableLogin::Openai {
                     account_label: String::new(),
                     verifier: String::new(),
@@ -118,7 +110,6 @@ pub(super) async fn start_scriptable_login(
                 },
                 auth_url,
                 "auth_code",
-                None,
                 PendingScriptableLogin::Gemini {
                     verifier: String::new(),
                     redirect_uri: String::new(),
@@ -139,7 +130,6 @@ pub(super) async fn start_scriptable_login(
                 },
                 auth_url,
                 "callback_url",
-                None,
                 PendingScriptableLogin::Antigravity {
                     verifier: String::new(),
                     state: String::new(),
@@ -148,25 +138,9 @@ pub(super) async fn start_scriptable_login(
                 .default_expires_at_ms(),
             )
         }
-        LoginProviderTarget::Copilot => {
-            let client = crate::provider::shared_http_client();
-            let device_resp = auth::copilot::initiate_device_flow(&client).await?;
-            (
-                PendingScriptableLogin::Copilot {
-                    device_code: device_resp.device_code.clone(),
-                    user_code: device_resp.user_code.clone(),
-                    verification_uri: device_resp.verification_uri.clone(),
-                    interval: device_resp.interval,
-                },
-                device_resp.verification_uri,
-                "complete",
-                Some(device_resp.user_code),
-                current_time_ms() + (device_resp.expires_in as i64 * 1000),
-            )
-        }
         _ => {
             anyhow::bail!(
-                "`--print-auth-url` is currently supported for: claude, openai, gemini, antigravity, copilot."
+                "`--print-auth-url` is currently supported for: claude, openai, gemini, antigravity."
             )
         }
     };
@@ -183,7 +157,6 @@ pub(super) async fn start_scriptable_login(
         &auth_url,
         input_kind,
         &pending_path,
-        user_code.as_deref(),
         expires_at_ms,
         options.json,
     )?;
@@ -223,19 +196,8 @@ pub(super) async fn complete_scriptable_login(
             )
             .await
         }
-        LoginProviderTarget::Copilot => {
-            if input.is_some() {
-                anyhow::bail!(
-                    "Copilot completion uses `--complete` and does not accept --callback-url or --auth-code."
-                )
-            }
-            if !options.complete {
-                anyhow::bail!("Copilot completion requires `--complete`.")
-            }
-            complete_scriptable_copilot_login(provider.id, options).await
-        }
         _ => anyhow::bail!(
-            "Scriptable completion is currently supported for: claude, openai, gemini, antigravity, copilot."
+            "Scriptable completion is currently supported for: claude, openai, gemini, antigravity."
         ),
     }
 }
@@ -443,44 +405,6 @@ pub(super) async fn complete_scriptable_antigravity_login(
     Ok(LoginFlowOutcome::Completed)
 }
 
-pub(super) async fn complete_scriptable_copilot_login(
-    provider_id: &str,
-    options: &LoginOptions,
-) -> Result<LoginFlowOutcome> {
-    let pending_path = pending_login_path("copilot")?;
-    let PendingScriptableLogin::Copilot {
-        device_code,
-        interval,
-        ..
-    } = load_pending_login(&pending_path, "copilot")?
-    else {
-        anyhow::bail!("Pending Copilot login state is invalid.");
-    };
-
-    let client = crate::provider::shared_http_client();
-    let token = auth::copilot::poll_for_access_token(&client, &device_code, interval).await?;
-    let username = auth::copilot::fetch_github_username(&client, &token)
-        .await
-        .unwrap_or_else(|_| "unknown".to_string());
-    auth::copilot::save_github_token(&token, &username)?;
-    clear_pending_login(&pending_path);
-    emit_scriptable_auth_success(
-        options.json,
-        ScriptableAuthSuccess {
-            status: "authenticated",
-            provider: provider_id.to_string(),
-            account_label: Some(username.clone()),
-            credentials_path: Some(auth::copilot::saved_hosts_path().display().to_string()),
-            email: None,
-        },
-    )?;
-    if !options.json {
-        eprintln!("✓ Authenticated as {} via GitHub Copilot", username);
-        eprintln!("Saved at {}", auth::copilot::saved_hosts_path().display());
-    }
-    Ok(LoginFlowOutcome::Completed)
-}
-
 pub(super) fn pending_login_path(key: &str) -> Result<PathBuf> {
     Ok(crate::storage::jcode_dir()?
         .join("pending-login")
@@ -592,7 +516,6 @@ pub(super) fn emit_scriptable_auth_prompt(
     auth_url: &str,
     input_kind: &str,
     pending_path: &Path,
-    user_code: Option<&str>,
     expires_at_ms: i64,
     json: bool,
 ) -> Result<()> {
@@ -603,7 +526,6 @@ pub(super) fn emit_scriptable_auth_prompt(
         auth_url: auth_url.to_string(),
         input_kind: input_kind.to_string(),
         pending_path: pending_path.display().to_string(),
-        user_code: user_code.map(str::to_string),
         expires_at_ms,
         resume_command: resume_command.clone(),
     };
@@ -611,9 +533,6 @@ pub(super) fn emit_scriptable_auth_prompt(
         println!("{}", serde_json::to_string(&prompt)?);
     } else {
         println!("{}", auth_url);
-        if let Some(user_code) = user_code {
-            eprintln!("User code: {}", user_code);
-        }
         eprintln!("Auth URL printed to stdout.");
         eprintln!("Complete this login later with `{}`.", resume_command);
         eprintln!(
@@ -634,7 +553,6 @@ pub(super) fn scriptable_resume_command(provider: &str, input_kind: &str) -> Str
             )
         }
         "auth_code" => format!("jcode login --provider {} --auth-code '<code>'", provider),
-        "complete" => format!("jcode login --provider {} --complete", provider),
         _ => format!(
             "jcode login --provider {} --callback-url '<url>'  # or --auth-code '<code>'",
             provider

@@ -63,10 +63,6 @@ fn matrix_login_provider_aliases_resolve_to_canonical_ids() {
         Some("openai-compatible")
     );
     assert_eq!(
-        resolve_login_provider("aoai").map(|provider| provider.id),
-        Some("azure")
-    );
-    assert_eq!(
         resolve_login_provider("cerberascode").map(|provider| provider.id),
         Some("cerebras")
     );
@@ -235,10 +231,6 @@ fn auth_issue_runtime_display_name_tracks_direct_compatible_profiles() {
         "JCODE_PROVIDER_PROFILE_ACTIVE",
     ]);
 
-    crate::env::set_var("JCODE_RUNTIME_PROVIDER", "azure-openai");
-    assert_eq!(runtime_provider_display_name("openrouter"), "Azure OpenAI");
-    crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
-
     apply_openai_compatible_profile_env(Some(DEEPSEEK_PROFILE));
     assert_eq!(runtime_provider_display_name("openrouter"), "DeepSeek");
 
@@ -262,7 +254,6 @@ fn auth_profile_env_application_flushes_stale_openrouter_catalog_state() {
         "JCODE_OPENROUTER_STATIC_MODELS",
         "JCODE_OPENROUTER_AUTH_HEADER",
         "JCODE_OPENROUTER_AUTH_HEADER_NAME",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_OPENROUTER_PROVIDER",
         "JCODE_OPENROUTER_NO_FALLBACK",
         "JCODE_NAMED_PROVIDER_PROFILE",
@@ -288,7 +279,6 @@ fn auth_profile_env_application_flushes_stale_openrouter_catalog_state() {
     );
     crate::env::set_var("JCODE_OPENROUTER_AUTH_HEADER", "Bearer stale");
     crate::env::set_var("JCODE_OPENROUTER_AUTH_HEADER_NAME", "Authorization");
-    crate::env::set_var("JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER", "openrouter");
     crate::env::set_var("JCODE_OPENROUTER_PROVIDER", "openrouter");
     crate::env::set_var("JCODE_OPENROUTER_NO_FALLBACK", "1");
     crate::env::set_var("JCODE_NAMED_PROVIDER_PROFILE", "openrouter");
@@ -326,7 +316,6 @@ fn auth_profile_env_application_flushes_stale_openrouter_catalog_state() {
     assert!(std::env::var_os("JCODE_OPENROUTER_MODEL").is_none());
     assert!(std::env::var_os("JCODE_OPENROUTER_AUTH_HEADER").is_none());
     assert!(std::env::var_os("JCODE_OPENROUTER_AUTH_HEADER_NAME").is_none());
-    assert!(std::env::var_os("JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER").is_none());
     assert!(std::env::var_os("JCODE_OPENROUTER_PROVIDER").is_none());
     assert!(std::env::var_os("JCODE_OPENROUTER_NO_FALLBACK").is_none());
     assert!(std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_none());
@@ -400,15 +389,15 @@ fn matrix_cli_login_selection_preserves_existing_order() {
     );
     assert_eq!(
         resolve_login_selection("5", &providers).map(|provider| provider.id),
-        Some("copilot")
-    );
-    assert_eq!(
-        resolve_login_selection("6", &providers).map(|provider| provider.id),
         Some("openrouter")
     );
     assert_eq!(
+        resolve_login_selection("6", &providers).map(|provider| provider.id),
+        Some("opencode")
+    );
+    assert_eq!(
         resolve_login_selection("7", &providers).map(|provider| provider.id),
-        Some("azure")
+        Some("opencode-go")
     );
 }
 

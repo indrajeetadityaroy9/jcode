@@ -12,16 +12,6 @@ pub(super) fn render_usage_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
     }
 
     match info.provider {
-        UsageProvider::Copilot => {
-            vec![Line::from(vec![Span::styled(
-                format!(
-                    "{} in + {} out",
-                    format_tokens(info.input_tokens),
-                    format_tokens(info.output_tokens)
-                ),
-                Style::default().fg(rgb(140, 140, 150)),
-            )])]
-        }
         UsageProvider::CostBased => {
             vec![
                 Line::from(vec![

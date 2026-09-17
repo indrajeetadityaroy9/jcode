@@ -544,7 +544,7 @@ pub async fn run_provider_e2e(
 /// whose live path is not OpenAI-compatible and so cannot be exercised by
 /// [`run_provider_e2e`]). Today this is the Claude OAuth/subscription provider,
 /// the Antigravity (Google OAuth Cloud Code) provider, and the generic
-/// native-runtime providers (OpenAI, Gemini, Cursor, Copilot).
+/// native-runtime providers (OpenAI, Gemini).
 ///
 /// The predicate itself lives in `jcode_base::auth::doctor` so base-internal
 /// code (`live_tests` roster annotation) can call it without depending on this
@@ -1283,7 +1283,7 @@ async fn run_native_antigravity_api_checks(
 // because their credential/catalog stories are unusual (OAuth-vs-API-key mode
 // pinning for Claude; Google project resolution + thought-signature replay for
 // Antigravity). The remaining native-runtime providers (OpenAI OAuth, Gemini
-// Code Assist, Cursor, GitHub Copilot) share the same shape:
+// Code Assist) share the same shape:
 // resolve a credential, fetch the live catalog through the production runtime,
 // then run the shared wiring + API probes. `run_generic_native_e2e` drives all
 // of them from a single [`NativeProviderSpec`] so adding a provider is a small,
@@ -1295,9 +1295,6 @@ async fn run_native_antigravity_api_checks(
 pub enum NativeProviderKind {
     OpenAi,
     Gemini,
-    Cursor,
-    Copilot,
-    Azure,
 }
 
 impl NativeProviderKind {
@@ -1306,9 +1303,6 @@ impl NativeProviderKind {
         match provider_id {
             "openai" => Some(Self::OpenAi),
             "gemini" => Some(Self::Gemini),
-            "cursor" => Some(Self::Cursor),
-            "copilot" => Some(Self::Copilot),
-            "azure-openai" => Some(Self::Azure),
             _ => None,
         }
     }
@@ -1343,60 +1337,13 @@ impl NativeProviderKind {
                 auth_env_key: None,
                 login_hint: "jcode login --provider gemini",
             },
-            Self::Cursor => NativeProviderSpec {
-                provider_id: "cursor",
-                label: "Cursor",
-                contract: WiringContract {
-                    api_method: "cursor".to_string(),
-                    route_provider: "Cursor".to_string(),
-                    expected_runtime: "cursor",
-                    expected_namespace: None,
-                    switch_prefix: "cursor:".to_string(),
-                },
-                auth_source: "Cursor API key / CLI session via auth.json",
-                auth_env_key: Some("CURSOR_API_KEY"),
-                login_hint: "jcode login --provider cursor",
-            },
-            Self::Copilot => NativeProviderSpec {
-                provider_id: "copilot",
-                label: "GitHub Copilot",
-                contract: WiringContract {
-                    api_method: "copilot".to_string(),
-                    route_provider: "Copilot".to_string(),
-                    expected_runtime: "copilot",
-                    expected_namespace: None,
-                    switch_prefix: "copilot:".to_string(),
-                },
-                auth_source: "GitHub Copilot device-flow token via hosts.json",
-                auth_env_key: None,
-                login_hint: "jcode login --provider copilot",
-            },
-            Self::Azure => NativeProviderSpec {
-                provider_id: "azure-openai",
-                label: "Azure OpenAI",
-                // Azure OpenAI reuses the OpenRouter transport (configured via
-                // Azure env), so its routes carry the generic `openrouter`
-                // api_method/label and switch with the `openrouter:` prefix while
-                // keeping the `azure-openai` runtime identity.
-                contract: WiringContract {
-                    api_method: "openrouter".to_string(),
-                    route_provider: "auto".to_string(),
-                    expected_runtime: "azure-openai",
-                    expected_namespace: None,
-                    switch_prefix: "openrouter:".to_string(),
-                },
-                auth_source: "Azure OpenAI API key / Entra ID (AZURE_OPENAI_*)",
-                auth_env_key: Some("AZURE_OPENAI_API_KEY"),
-                login_hint: "jcode login --provider azure",
-            },
         }
     }
 
     /// Build the production runtime for this provider, pinned to no model yet.
     /// Returns an error only when the runtime cannot be constructed at all (e.g.
-    /// Copilot with no credential file); model selection happens later.
+    /// no credential file); model selection happens later.
     fn build_runtime(self) -> anyhow::Result<std::sync::Arc<dyn jcode_base::provider::Provider>> {
-        use anyhow::Context as _;
         use jcode_base::provider::Provider;
         let runtime: std::sync::Arc<dyn Provider> = match self {
             Self::OpenAi => {
@@ -1416,45 +1363,6 @@ impl NativeProviderKind {
             }
             Self::Gemini => {
                 std::sync::Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new())
-            }
-            Self::Cursor => {
-                std::sync::Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
-            }
-            Self::Copilot => {
-                // `new()` requires a loadable GitHub token; fall back to an empty
-                // token so the offline tier can still construct the runtime for
-                // its static catalog. Live tiers resolve the real credential
-                // separately and fail with a clear message if it is missing.
-                //
-                // Disable the startup prefetch grace window: the runtime's
-                // `complete` blocks on `wait_for_init`, which is only released by
-                // `detect_tier_and_set_default` (run from `prefetch_models`). With
-                // the default grace window the doctor's immediate prefetch returns
-                // early without marking init done, so the live probes would hang.
-                jcode_base::env::set_var("JCODE_COPILOT_PREFETCH_STARTUP_GRACE_MS", "0");
-                let runtime = match jcode_provider_copilot_runtime::CopilotApiProvider::new() {
-                    Ok(runtime) => runtime,
-                    Err(_) => jcode_provider_copilot_runtime::CopilotApiProvider::new_with_token(
-                        String::new(),
-                    ),
-                };
-                std::sync::Arc::new(runtime)
-            }
-            Self::Azure => {
-                // Azure OpenAI is the OpenRouter transport configured via Azure
-                // env; apply that env (endpoint/key/header wiring) before building
-                // so the runtime points at the user's Azure deployment.
-                jcode_base::auth::azure::apply_runtime_env()
-                    .context("apply Azure OpenAI runtime env")?;
-                let runtime = jcode_provider_openrouter_runtime::OpenRouterProvider::new()
-                    .context("construct Azure OpenAI (OpenRouter transport) runtime")?;
-                // Azure exposes a single user-configured deployment rather than a
-                // live catalog; pin the runtime to it so the catalog/picker
-                // checks have a model to assert.
-                if let Some(model) = jcode_base::auth::azure::load_model() {
-                    let _ = runtime.set_model(&model);
-                }
-                std::sync::Arc::new(runtime)
             }
         };
         Ok(runtime)
@@ -1483,34 +1391,6 @@ impl NativeProviderKind {
                 }
                 Ok("Gemini Code Assist OAuth credential resolved".to_string())
             }
-            Self::Cursor => {
-                let key = jcode_base::auth::cursor::load_api_key()
-                    .context("load Cursor credential (run `jcode login --provider cursor`)")?;
-                if key.trim().is_empty() {
-                    anyhow::bail!("resolved an empty Cursor credential");
-                }
-                Ok("Cursor credential resolved".to_string())
-            }
-            Self::Copilot => {
-                let token = jcode_base::auth::copilot::load_github_token()
-                    .context("load GitHub Copilot token (run `jcode login --provider copilot`)")?;
-                if token.trim().is_empty() {
-                    anyhow::bail!("resolved an empty GitHub Copilot token");
-                }
-                Ok("GitHub Copilot token resolved".to_string())
-            }
-            Self::Azure => {
-                if !jcode_base::auth::azure::has_configuration() {
-                    anyhow::bail!(
-                        "Azure OpenAI is not fully configured (need AZURE_OPENAI_ENDPOINT plus an \
-                         API key or Entra ID); run `jcode login --provider azure`"
-                    );
-                }
-                Ok(format!(
-                    "Azure OpenAI configured ({})",
-                    jcode_base::auth::azure::method_detail()
-                ))
-            }
         }
     }
 
@@ -1526,9 +1406,6 @@ impl NativeProviderKind {
         let cheap_markers: &[&str] = match self {
             Self::OpenAi => &["mini", "nano"],
             Self::Gemini => &["flash"],
-            Self::Cursor => &["composer", "fast", "mini"],
-            Self::Copilot => &["mini", "haiku", "flash", "fast"],
-            Self::Azure => &["mini", "nano", "flash", "haiku"],
         };
         for marker in cheap_markers {
             if let Some(model) = catalog
@@ -1560,7 +1437,7 @@ struct NativeProviderSpec {
 }
 
 /// Run the strict provider/model diagnostic for a generic native-runtime
-/// provider (OpenAI, Gemini, Cursor, Copilot).
+/// provider (OpenAI, Gemini).
 ///
 /// Drives the production runtime end to end: credential resolution, the live
 /// model catalog (via the runtime's own `prefetch_models`), the shared
@@ -2366,9 +2243,6 @@ mod tests {
         for (id, expected) in [
             ("openai", NativeProviderKind::OpenAi),
             ("gemini", NativeProviderKind::Gemini),
-            ("cursor", NativeProviderKind::Cursor),
-            ("copilot", NativeProviderKind::Copilot),
-            ("azure-openai", NativeProviderKind::Azure),
         ] {
             assert_eq!(NativeProviderKind::from_normalized(id), Some(expected));
         }
@@ -2385,9 +2259,6 @@ mod tests {
         for kind in [
             NativeProviderKind::OpenAi,
             NativeProviderKind::Gemini,
-            NativeProviderKind::Cursor,
-            NativeProviderKind::Copilot,
-            NativeProviderKind::Azure,
         ] {
             let spec = kind.spec();
             assert!(!spec.provider_id.is_empty(), "{kind:?} has empty id");
@@ -2481,9 +2352,6 @@ mod tests {
         for kind in [
             NativeProviderKind::OpenAi,
             NativeProviderKind::Gemini,
-            NativeProviderKind::Cursor,
-            NativeProviderKind::Copilot,
-            NativeProviderKind::Azure,
         ] {
             let id = kind.spec().provider_id;
             assert!(

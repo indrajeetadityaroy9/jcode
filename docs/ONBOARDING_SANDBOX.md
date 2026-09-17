@@ -25,7 +25,7 @@ off" steps against your actual accounts, seed copies of your real credential and
 transcript files into the sandbox:
 
 ```bash
-# Copy real external logins (Codex/Claude/Gemini/Copilot/Cursor/OpenCode/pi)
+# Copy real external logins (Codex/Claude/Gemini/OpenCode/pi)
 scripts/onboarding_sandbox.sh seed-real-logins
 
 # Also copy your real Codex/Claude transcripts so the "continue a session"

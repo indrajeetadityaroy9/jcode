@@ -200,42 +200,6 @@ pub fn openai_oauth_pricing(model: &str) -> RouteCheapnessEstimate {
     )
 }
 
-pub fn copilot_pricing(model: &str, zero_premium_mode: bool) -> RouteCheapnessEstimate {
-    let likely_premium_model =
-        model.contains("opus") || model.contains("gpt-5.5") || model.contains("gpt-5.4");
-    let monthly_price = if likely_premium_model {
-        usd_to_micros(39.0)
-    } else {
-        usd_to_micros(10.0)
-    };
-    let included_requests = if likely_premium_model { 1_500 } else { 300 };
-    let estimated_reference = if zero_premium_mode {
-        Some(0)
-    } else {
-        Some(monthly_price / included_requests)
-    };
-
-    RouteCheapnessEstimate::included_quota(
-        RouteCostSource::RuntimePlan,
-        if zero_premium_mode {
-            RouteCostConfidence::High
-        } else {
-            RouteCostConfidence::Medium
-        },
-        monthly_price,
-        Some(included_requests),
-        estimated_reference,
-        Some(if zero_premium_mode {
-            "Copilot zero-premium mode: jcode will send requests as agent/non-premium when possible"
-                .to_string()
-        } else if likely_premium_model {
-            "Copilot premium-request estimate using Pro+/premium pricing".to_string()
-        } else {
-            "Copilot estimate using Pro included premium requests".to_string()
-        }),
-    )
-}
-
 pub fn openrouter_pricing_from_token_prices(
     prompt: Option<&str>,
     completion: Option<&str>,
@@ -337,11 +301,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn copilot_zero_mode_marks_estimate_high_confidence_and_zero_reference_cost() {
-        let estimate = copilot_pricing("claude-opus-4-6", true);
-        assert_eq!(estimate.billing_kind, RouteBillingKind::IncludedQuota);
-        assert_eq!(estimate.confidence, RouteCostConfidence::High);
-        assert_eq!(estimate.estimated_reference_cost_micros, Some(0));
-    }
 }

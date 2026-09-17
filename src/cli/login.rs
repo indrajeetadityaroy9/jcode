@@ -23,7 +23,6 @@ pub struct LoginOptions {
     pub callback_url: Option<String>,
     pub auth_code: Option<String>,
     pub json: bool,
-    pub complete: bool,
     pub no_validate: bool,
     pub openai_compatible_api_base: Option<String>,
     pub openai_compatible_api_key: Option<String>,
@@ -52,7 +51,7 @@ impl LoginOptions {
     }
 
     fn uses_scriptable_flow(&self) -> Result<bool> {
-        Ok(self.print_auth_url || self.complete || self.has_provided_input())
+        Ok(self.print_auth_url || self.has_provided_input())
     }
 }
 
@@ -91,12 +90,6 @@ enum PendingScriptableLogin {
         state: String,
         redirect_uri: String,
     },
-    Copilot {
-        device_code: String,
-        user_code: String,
-        verification_uri: String,
-        interval: u64,
-    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,7 +105,6 @@ impl PendingScriptableLogin {
             Self::Openai { .. } => "openai",
             Self::Gemini { .. } => "gemini",
             Self::Antigravity { .. } => "antigravity",
-            Self::Copilot { .. } => "copilot",
         }
     }
 
@@ -132,7 +124,6 @@ struct ScriptableAuthPrompt {
     auth_url: String,
     input_kind: String,
     pending_path: String,
-    user_code: Option<String>,
     expires_at_ms: i64,
     resume_command: String,
 }
@@ -272,14 +263,9 @@ pub async fn run_login_provider(
             LoginProviderTarget::OpenRouter => {
                 login_openrouter_flow().map(|_| LoginFlowOutcome::Completed)
             }
-            LoginProviderTarget::Azure => login_azure_flow().map(|_| LoginFlowOutcome::Completed),
             LoginProviderTarget::OpenAiCompatible(profile) => {
                 login_openai_compatible_flow(&profile, &options)
                     .map(|_| LoginFlowOutcome::Completed)
-            }
-            LoginProviderTarget::Cursor => login_cursor_flow().map(|_| LoginFlowOutcome::Completed),
-            LoginProviderTarget::Copilot => {
-                login_copilot_flow(options.no_browser).map(|_| LoginFlowOutcome::Completed)
             }
             LoginProviderTarget::Gemini => login_gemini_flow(options.no_browser)
                 .await
@@ -547,90 +533,6 @@ fn login_openrouter_flow() -> Result<()> {
     Ok(())
 }
 
-fn login_azure_flow() -> Result<()> {
-    use crate::auth::azure;
-
-    eprintln!("Setting up Azure OpenAI...");
-    eprintln!(
-        "Reference: OpenCode supports Azure OpenAI with Entra credentials. jcode uses Azure OpenAI's newer `/openai/v1` API with either Microsoft Entra ID or an API key.\n"
-    );
-
-    let endpoint_raw = read_line_trimmed(
-        "Azure OpenAI endpoint (for example `https://your-resource.openai.azure.com`): ",
-    )?;
-    let endpoint = azure::normalize_endpoint(&endpoint_raw).ok_or_else(|| {
-        anyhow::anyhow!(
-            "Invalid Azure OpenAI endpoint. Use https://<resource>.openai.azure.com (or the full /openai/v1 URL)."
-        )
-    })?;
-
-    let model =
-        read_line_trimmed("Azure deployment/model name (required, for example `gpt-4.1-nano`): ")?;
-    if model.is_empty() {
-        anyhow::bail!("No deployment/model name provided.");
-    }
-
-    eprintln!("\nAuthentication method:");
-    eprintln!("  1. Microsoft Entra ID (recommended)");
-    eprintln!("  2. API key");
-    let auth_choice = read_line_trimmed("Enter 1-2 [1]: ")?;
-    let use_entra = match auth_choice.trim() {
-        "" | "1" => true,
-        "2" => false,
-        other if other.eq_ignore_ascii_case("entra") || other.eq_ignore_ascii_case("oauth") => true,
-        other if other.eq_ignore_ascii_case("key") || other.eq_ignore_ascii_case("api-key") => {
-            false
-        }
-        other => anyhow::bail!("Invalid auth choice '{}'. Use 1 or 2.", other),
-    };
-
-    let mut assignments = vec![
-        (azure::ENDPOINT_ENV, endpoint),
-        (azure::MODEL_ENV, model),
-        (
-            azure::USE_ENTRA_ENV,
-            if use_entra { "1" } else { "0" }.to_string(),
-        ),
-    ];
-
-    if use_entra {
-        eprintln!();
-        eprintln!("Using Microsoft Entra ID via Azure's DefaultAzureCredential chain.");
-        eprintln!(
-            "That means jcode can authenticate via `az login`, managed identity, or Azure environment credentials."
-        );
-    } else {
-        eprint!("Paste your Azure OpenAI API key: ");
-        io::stdout().flush()?;
-        let key = read_secret_line()?;
-        if key.is_empty() {
-            anyhow::bail!("No API key provided.");
-        }
-        assignments.push((azure::API_KEY_ENV, key));
-    }
-
-    save_named_env_vars(azure::ENV_FILE, &assignments)?;
-    azure::apply_runtime_env()?;
-
-    eprintln!("\nSuccessfully saved Azure OpenAI configuration!");
-    eprintln!(
-        "Stored at {}",
-        crate::storage::app_config_dir()?
-            .join(azure::ENV_FILE)
-            .display()
-    );
-    eprintln!("Base URL: {}", azure::load_endpoint().unwrap_or_default());
-    if let Some(model) = azure::load_model() {
-        eprintln!("Default deployment/model: {}", model);
-    }
-    if use_entra {
-        eprintln!(
-            "Next step: if you're using Azure CLI auth, run `az login` (and ensure your identity has the Cognitive Services OpenAI User role)."
-        );
-    }
-    Ok(())
-}
-
 fn login_openai_compatible_flow(
     profile: &OpenAiCompatibleProfile,
     options: &LoginOptions,
@@ -820,110 +722,6 @@ fn read_line_trimmed(prompt: &str) -> Result<String> {
     Ok(input.trim().to_string())
 }
 
-fn save_named_env_vars(env_file: &str, vars: &[(&str, String)]) -> Result<()> {
-    if !crate::provider_catalog::is_safe_env_file_name(env_file) {
-        anyhow::bail!("Invalid env file name: {}", env_file);
-    }
-
-    for (key, _) in vars {
-        if !crate::provider_catalog::is_safe_env_key_name(key) {
-            anyhow::bail!("Invalid API key variable name: {}", key);
-        }
-    }
-
-    let config_dir = crate::storage::app_config_dir()?;
-    std::fs::create_dir_all(&config_dir)?;
-    crate::platform::set_directory_permissions_owner_only(&config_dir)?;
-
-    let file_path = config_dir.join(env_file);
-    let mut content = String::new();
-    for (key, value) in vars {
-        content.push_str(&format!("{}={}\n", key, value));
-    }
-    std::fs::write(&file_path, &content)?;
-    crate::platform::set_permissions_owner_only(&file_path)?;
-
-    for (key, value) in vars {
-        crate::env::set_var(key, value);
-    }
-
-    Ok(())
-}
-
-fn login_cursor_flow() -> Result<()> {
-    eprintln!("Starting Cursor API key setup...");
-
-    eprintln!("Get your API key from: https://cursor.com/settings");
-    eprintln!("(Dashboard > Integrations > User API Keys)\n");
-    eprint!("Paste your Cursor API key: ");
-    io::stdout().flush()?;
-
-    let key = read_secret_line()?;
-    if key.is_empty() {
-        anyhow::bail!("No API key provided.");
-    }
-
-    save_named_api_key("cursor.env", "CURSOR_API_KEY", &key)?;
-    crate::auth::AuthStatus::invalidate_cache();
-    eprintln!("\nSuccessfully saved Cursor API key!");
-    eprintln!(
-        "Stored at {}",
-        crate::storage::app_config_dir()?
-            .join("cursor.env")
-            .display()
-    );
-    eprintln!("jcode will use the native Cursor HTTPS transport.");
-    Ok(())
-}
-
-fn login_copilot_flow(no_browser: bool) -> Result<()> {
-    eprintln!("Starting GitHub Copilot login...");
-
-    tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(login_copilot_device_flow(no_browser))
-    })
-}
-
-async fn login_copilot_device_flow(no_browser: bool) -> Result<()> {
-    let client = crate::provider::shared_http_client();
-
-    let device_resp = crate::auth::copilot::initiate_device_flow(&client).await?;
-
-    eprintln!();
-    eprintln!("  Open this URL in your browser:");
-    eprintln!("    {}", device_resp.verification_uri);
-    eprintln!();
-    if let Some(qr) = crate::login_qr::indented_section(
-        &device_resp.verification_uri,
-        "  Or scan this QR on another device to open the verification page:",
-        "    ",
-    ) {
-        eprintln!("{qr}");
-        eprintln!();
-    }
-    eprintln!("  Enter code: {}", device_resp.user_code);
-    eprintln!();
-    eprintln!("  Waiting for authorization...");
-
-    maybe_open_browser(&device_resp.verification_uri, no_browser);
-
-    let token = crate::auth::copilot::poll_for_access_token(
-        &client,
-        &device_resp.device_code,
-        device_resp.interval,
-    )
-    .await?;
-
-    let username = crate::auth::copilot::fetch_github_username(&client, &token)
-        .await
-        .unwrap_or_else(|_| "unknown".to_string());
-
-    crate::auth::copilot::save_github_token(&token, &username)?;
-
-    eprintln!("  ✓ Authenticated as {} via GitHub Copilot", username);
-    Ok(())
-}
-
 async fn login_antigravity_flow(no_browser: bool) -> Result<()> {
     eprintln!("Starting native Antigravity login...");
     eprintln!(
@@ -1017,14 +815,6 @@ fn login_gemini_api_key_flow() -> Result<()> {
         "Provider: gemini (official Gemini Developer API, generativelanguage.googleapis.com)"
     );
     Ok(())
-}
-
-fn maybe_open_browser(target: &str, no_browser: bool) -> bool {
-    if crate::auth::browser_suppressed(no_browser) {
-        false
-    } else {
-        open::that(target).is_ok()
-    }
 }
 
 #[cfg(test)]

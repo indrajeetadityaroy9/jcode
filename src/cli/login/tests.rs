@@ -18,10 +18,6 @@ fn scriptable_resume_command_matches_input_kind() {
         scriptable_resume_command("gemini", "auth_code"),
         "jcode login --provider gemini --auth-code '<code>'"
     );
-    assert_eq!(
-        scriptable_resume_command("copilot", "complete"),
-        "jcode login --provider copilot --complete"
-    );
 }
 
 #[test]

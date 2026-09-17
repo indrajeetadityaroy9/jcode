@@ -107,14 +107,6 @@ pub(crate) fn openai_oauth_pricing(model: &str) -> RouteCheapnessEstimate {
     core_pricing::openai_oauth_pricing(model)
 }
 
-pub(crate) fn copilot_pricing(model: &str) -> RouteCheapnessEstimate {
-    let zero_premium_mode = matches!(
-        std::env::var("JCODE_COPILOT_PREMIUM").ok().as_deref(),
-        Some("0")
-    );
-    core_pricing::copilot_pricing(model, zero_premium_mode)
-}
-
 pub(crate) fn openrouter_pricing_from_model_pricing(
     pricing: &openrouter::ModelPricing,
     source: RouteCostSource,
@@ -277,7 +269,6 @@ pub(crate) fn cheapness_for_route(
     }
 
     match api_method {
-        "copilot" => Some(copilot_pricing(model)),
         "openrouter" => {
             let model_id = if model.contains('/') {
                 model.to_string()
@@ -306,12 +297,10 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let prev_home = std::env::var_os("JCODE_HOME");
         let prev_openai_api_key = std::env::var_os("OPENAI_API_KEY");
-        let prev_copilot_premium = std::env::var_os("JCODE_COPILOT_PREMIUM");
         crate::auth::claude::set_active_account_override(None);
         crate::auth::codex::set_active_account_override(None);
         env::set_var("JCODE_HOME", temp.path());
         env::remove_var("OPENAI_API_KEY");
-        env::remove_var("JCODE_COPILOT_PREMIUM");
 
         let result = f();
 
@@ -326,11 +315,6 @@ mod tests {
             env::set_var("OPENAI_API_KEY", prev_openai_api_key);
         } else {
             env::remove_var("OPENAI_API_KEY");
-        }
-        if let Some(prev_copilot_premium) = prev_copilot_premium {
-            env::set_var("JCODE_COPILOT_PREMIUM", prev_copilot_premium);
-        } else {
-            env::remove_var("JCODE_COPILOT_PREMIUM");
         }
         result
     }
@@ -387,17 +371,6 @@ mod tests {
                 .expect("cheapness estimate");
             assert_eq!(estimate.billing_kind, RouteBillingKind::Metered);
             assert_eq!(estimate.source, RouteCostSource::PublicApiPricing);
-        });
-    }
-
-    #[test]
-    fn copilot_zero_mode_marks_estimate_high_confidence_and_zero_reference_cost() {
-        with_clean_provider_test_env(|| {
-            env::set_var("JCODE_COPILOT_PREMIUM", "0");
-            let estimate = copilot_pricing("claude-opus-4-6");
-            assert_eq!(estimate.billing_kind, RouteBillingKind::IncludedQuota);
-            assert_eq!(estimate.confidence, RouteCostConfidence::High);
-            assert_eq!(estimate.estimated_reference_cost_micros, Some(0));
         });
     }
 

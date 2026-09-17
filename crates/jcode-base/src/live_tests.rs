@@ -288,13 +288,6 @@ const ISSUE_DRIVEN_LIVE_PROVIDER_TARGETS: &[IssueDrivenLiveProviderTarget] = &[
         issue_refs: &["#156", "#161", "#177"],
     },
     IssueDrivenLiveProviderTarget {
-        provider_id: "copilot",
-        provider_label: "GitHub Copilot",
-        model: Some("gpt-5.4"),
-        reason: "Copilot GPT 5.4 model support and parameter compatibility",
-        issue_refs: &["#190"],
-    },
-    IssueDrivenLiveProviderTarget {
         provider_id: "gemini",
         provider_label: "Google Gemini",
         model: Some("gemini-2.5-pro"),

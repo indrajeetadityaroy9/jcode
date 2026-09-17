@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 pub fn is_listable_model_name(model: &str) -> bool {
     let trimmed = model.trim();
     !trimmed.is_empty()
-        && !matches!(trimmed, "copilot models" | "openrouter models")
+        && trimmed != "openrouter models"
         && !model_name_is_likely_non_chat(trimmed)
 }
 
@@ -175,17 +175,6 @@ fn build_openai_route(
     }
 }
 
-pub fn build_copilot_route(model: &str, available: bool, detail: impl Into<String>) -> ModelRoute {
-    ModelRoute {
-        model: model.to_string(),
-        provider: "Copilot".to_string(),
-        api_method: "copilot".to_string(),
-        available,
-        detail: detail.into(),
-        cheapness: cheapness_for_route(model, "Copilot", "copilot"),
-    }
-}
-
 pub fn build_openrouter_auto_route(
     model: &str,
     available: bool,
@@ -348,7 +337,6 @@ mod listable_tests {
     fn empty_and_sentinels_filtered() {
         assert!(!is_listable_model_name(""));
         assert!(!is_listable_model_name("   "));
-        assert!(!is_listable_model_name("copilot models"));
         assert!(!is_listable_model_name("openrouter models"));
     }
 }

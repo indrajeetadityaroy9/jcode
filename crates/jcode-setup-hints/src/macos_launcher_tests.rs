@@ -14,12 +14,6 @@ fn macos_launcher_script_shows_alerts_and_uses_terminal_launcher() {
 }
 
 #[test]
-fn macos_launcher_icon_asset_is_valid_icns_container() {
-    assert!(MACOS_APP_ICON_BYTES.starts_with(b"icns"));
-    assert!(MACOS_APP_ICON_BYTES.len() > 1024);
-}
-
-#[test]
 fn macos_launcher_refreshes_when_new_bundle_missing() {
     let temp = tempfile::tempdir().expect("tempdir");
     let app_dir = temp.path().join("Jcode.app");
@@ -104,8 +98,6 @@ fn macos_launcher_does_not_refresh_when_new_bundle_exists() {
     std::fs::write(macos_app_launcher_info_plist_path(&app_dir), "plist").expect("write plist");
     std::fs::write(macos_app_launcher_executable_path(&app_dir), "#!/bin/sh\n")
         .expect("write launcher executable");
-    std::fs::write(macos_app_launcher_icon_path(&app_dir), MACOS_APP_ICON_BYTES)
-        .expect("write launcher icon");
     let state = SetupHintsState {
         desktop_shortcut_created: true,
         ..SetupHintsState::default()
@@ -113,28 +105,6 @@ fn macos_launcher_does_not_refresh_when_new_bundle_exists() {
 
     assert!(macos_app_launcher_is_valid(&app_dir));
     assert!(!should_refresh_macos_app_launcher_paths(
-        &state,
-        &app_dir,
-        &legacy_app_dir,
-    ));
-}
-
-#[test]
-fn macos_launcher_refreshes_when_icon_missing() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let app_dir = temp.path().join("Jcode.app");
-    let legacy_app_dir = temp.path().join("jcode.app");
-    std::fs::create_dir_all(app_dir.join("Contents").join("MacOS")).expect("create new app dir");
-    std::fs::write(macos_app_launcher_info_plist_path(&app_dir), "plist").expect("write plist");
-    std::fs::write(macos_app_launcher_executable_path(&app_dir), "#!/bin/sh\n")
-        .expect("write launcher executable");
-    let state = SetupHintsState {
-        desktop_shortcut_created: true,
-        ..SetupHintsState::default()
-    };
-
-    assert!(!macos_app_launcher_is_valid(&app_dir));
-    assert!(should_refresh_macos_app_launcher_paths(
         &state,
         &app_dir,
         &legacy_app_dir,
@@ -164,11 +134,6 @@ fn macos_notification_bundle_validity_is_version_gated() {
     std::fs::write(macos_notification_broker_executable_path(&app), "binary")
         .expect("write executable");
     std::fs::write(
-        macos_notification_broker_icon_path(&app),
-        MACOS_APP_ICON_BYTES,
-    )
-    .expect("write icon");
-    std::fs::write(
         macos_notification_broker_marker_path(&app),
         jcode_build_meta::version(),
     )
@@ -179,3 +144,4 @@ fn macos_notification_bundle_validity_is_version_gated() {
         .expect("write stale marker");
     assert!(!macos_notification_broker_is_valid(&app));
 }
+

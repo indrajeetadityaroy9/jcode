@@ -1560,7 +1560,7 @@ pub(super) fn is_retryable_error(error_str: &str) -> bool {
         || error_str.contains("504 gateway timeout")
         || error_str.contains("overloaded")
         // Rate limiting (429): transient, recovers on retry. Unified with the
-        // other providers (Anthropic/Copilot) which already retry these.
+        // other providers (Anthropic) which already retry these.
         || error_str.contains("429 too many requests")
         || error_str.contains("rate limit")
         || error_str.contains("rate_limit")
@@ -1640,7 +1640,7 @@ mod stream_runtime_tests {
     #[test]
     fn rate_limit_is_retryable() {
         // Regression for issue #338 (gap #2): 429s should be retried, unifying
-        // behavior with Anthropic/Copilot.
+        // behavior with Anthropic.
         assert!(is_retryable_error("429 too many requests"));
         assert!(is_retryable_error("rate limit exceeded"));
         assert!(is_retryable_error("rate_limit_exceeded"));

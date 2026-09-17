@@ -190,7 +190,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             callback_url,
             auth_code,
             json,
-            complete,
             no_validate,
             api_base,
             api_key,
@@ -205,7 +204,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                     callback_url,
                     auth_code,
                     json,
-                    complete,
                     no_validate,
                     openai_compatible_api_base: api_base,
                     openai_compatible_api_key: api_key,
@@ -943,11 +941,10 @@ async fn detect_bootstrap_credentials() -> BootstrapCredentialState {
     let has_claude = has_claude.unwrap_or(false);
     let has_openai = has_openai.unwrap_or(false);
     let has_openrouter = provider::openrouter::has_credentials();
-    let has_copilot = auth::copilot::has_copilot_credentials();
     let has_api_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
 
     BootstrapCredentialState {
-        has_any: has_claude || has_openai || has_openrouter || has_copilot || has_api_key,
+        has_any: has_claude || has_openai || has_openrouter || has_api_key,
     }
 }
 

@@ -413,7 +413,7 @@ mod tests {
         for key in [
             "ANTHROPIC_API_KEY",
             "openai_api_key",
-            "CURSOR_ACCESS_TOKEN",
+            "SOME_VENDOR_ACCESS_TOKEN",
             "AWS_SECRET_ACCESS_KEY",
             "AWS_SESSION_TOKEN",
             "GOOGLE_APPLICATION_CREDENTIALS",

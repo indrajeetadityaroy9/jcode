@@ -9,20 +9,6 @@ fn restore_env_var(key: &str, previous: Option<OsString>) {
     }
 }
 
-#[cfg(unix)]
-fn write_mock_cursor_agent(dir: &std::path::Path, script_body: &str) -> std::path::PathBuf {
-    use std::os::unix::fs::PermissionsExt;
-
-    let path = dir.join("cursor-agent-mock");
-    std::fs::write(&path, script_body).expect("write mock cursor agent");
-    let mut permissions = std::fs::metadata(&path)
-        .expect("stat mock cursor agent")
-        .permissions();
-    permissions.set_mode(0o700);
-    std::fs::set_permissions(&path, permissions).expect("chmod mock cursor agent");
-    path
-}
-
 #[test]
 fn auth_state_default_is_not_configured() {
     let state = AuthState::default();
@@ -35,12 +21,9 @@ fn auth_status_default_all_not_configured() {
     assert_eq!(status.anthropic.state, AuthState::NotConfigured);
     assert_eq!(status.openrouter, AuthState::NotConfigured);
     assert_eq!(status.openai, AuthState::NotConfigured);
-    assert_eq!(status.copilot, AuthState::NotConfigured);
-    assert_eq!(status.cursor, AuthState::NotConfigured);
     assert_eq!(status.antigravity, AuthState::NotConfigured);
     assert!(!status.openai_has_oauth);
     assert!(!status.openai_has_api_key);
-    assert!(!status.copilot_has_api_token);
     assert!(!status.anthropic.has_oauth);
     assert!(!status.anthropic.has_api_key);
 }
@@ -70,18 +53,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
         "JCODE_OPENROUTER_MODEL_CATALOG",
         "JCODE_OPENROUTER_STATIC_MODELS",
         "JCODE_OPENROUTER_MODEL",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
-        crate::auth::azure::ENDPOINT_ENV,
-        crate::auth::azure::API_KEY_ENV,
-        crate::auth::azure::MODEL_ENV,
-        crate::auth::azure::USE_ENTRA_ENV,
-        "COPILOT_GITHUB_TOKEN",
-        "GH_TOKEN",
-        "GITHUB_TOKEN",
-        "CURSOR_API_KEY",
-        "CURSOR_ACCESS_TOKEN",
-        "CURSOR_REFRESH_TOKEN",
-        "JCODE_CURSOR_CLI_PATH",
     ]
     .into_iter()
     .map(|key| (key, std::env::var_os(key)))
@@ -104,27 +75,9 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
         "JCODE_OPENROUTER_MODEL_CATALOG",
         "JCODE_OPENROUTER_STATIC_MODELS",
         "JCODE_OPENROUTER_MODEL",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
     ] {
         crate::env::remove_var(key);
     }
-    crate::env::set_var(
-        crate::auth::azure::ENDPOINT_ENV,
-        "https://example.openai.azure.com",
-    );
-    crate::env::set_var(crate::auth::azure::API_KEY_ENV, "azure-test-key");
-    crate::env::set_var(crate::auth::azure::MODEL_ENV, "gpt-test-deployment");
-    crate::env::remove_var(crate::auth::azure::USE_ENTRA_ENV);
-    crate::env::set_var("COPILOT_GITHUB_TOKEN", "gho_test_token");
-    crate::env::remove_var("GH_TOKEN");
-    crate::env::remove_var("GITHUB_TOKEN");
-    crate::env::set_var("CURSOR_API_KEY", "cursor-test-key");
-    crate::env::remove_var("CURSOR_ACCESS_TOKEN");
-    crate::env::remove_var("CURSOR_REFRESH_TOKEN");
-    crate::env::set_var(
-        "JCODE_CURSOR_CLI_PATH",
-        temp.path().join("missing-cursor-agent"),
-    );
     AuthStatus::invalidate_cache();
 
     let (full, _) = build_auth_status_uncached(AuthProbeMode::Full);
@@ -134,61 +87,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
     assert_eq!(full.anthropic.state, AuthState::Available);
     assert_eq!(full.openai, AuthState::Available);
     assert_eq!(full.openrouter, AuthState::Available);
-    assert_eq!(full.azure, AuthState::Available);
-    assert_eq!(full.copilot, AuthState::Available);
-    assert_eq!(full.cursor, AuthState::Available);
-
-    for (key, value) in saved {
-        restore_env_var(key, value);
-    }
-    AuthStatus::invalidate_cache();
-}
-
-#[cfg(unix)]
-#[test]
-fn full_and_fast_auth_status_document_cursor_cli_exception() {
-    let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().expect("create temp dir");
-    let home = temp.path().join("home");
-    let xdg = temp.path().join("xdg");
-    std::fs::create_dir_all(&home).expect("create temp home");
-    std::fs::create_dir_all(&xdg).expect("create temp xdg config");
-    let saved = [
-        "JCODE_HOME",
-        "XDG_CONFIG_HOME",
-        "HOME",
-        "CURSOR_API_KEY",
-        "CURSOR_ACCESS_TOKEN",
-        "CURSOR_REFRESH_TOKEN",
-        "JCODE_CURSOR_CLI_PATH",
-    ]
-    .into_iter()
-    .map(|key| (key, std::env::var_os(key)))
-    .collect::<Vec<_>>();
-    let mock_cli = write_mock_cursor_agent(
-        temp.path(),
-        "#!/bin/sh\nif [ \"$1\" = \"status\" ]; then\n  echo \"Authenticated\\nAccount: test@example.com\"\n  exit 0\nfi\nexit 1\n",
-    );
-
-    crate::env::set_var("JCODE_HOME", temp.path().join("jcode-home"));
-    crate::env::set_var("XDG_CONFIG_HOME", &xdg);
-    crate::env::set_var("HOME", &home);
-    crate::env::remove_var("CURSOR_API_KEY");
-    crate::env::remove_var("CURSOR_ACCESS_TOKEN");
-    crate::env::remove_var("CURSOR_REFRESH_TOKEN");
-    crate::env::set_var("JCODE_CURSOR_CLI_PATH", &mock_cli);
-    AuthStatus::invalidate_cache();
-
-    let (full, _) = build_auth_status_uncached(AuthProbeMode::Full);
-    let (fast, _) = build_auth_status_uncached(AuthProbeMode::Fast);
-
-    assert_eq!(full.cursor, AuthState::Available);
-    assert_eq!(fast.cursor, AuthState::NotConfigured);
-    assert_eq!(
-        full.cursor,
-        AuthState::Available,
-        "Full auth probes cursor-agent status; fast auth intentionally skips CLI/vscdb probes"
-    );
 
     for (key, value) in saved {
         restore_env_var(key, value);
@@ -210,26 +108,14 @@ fn assert_auth_status_shared_fields_match(full: &AuthStatus, fast: &AuthStatus) 
         "anthropic.has_api_key"
     );
     assert_eq!(full.openrouter, fast.openrouter, "openrouter");
-    assert_eq!(full.azure, fast.azure, "azure");
-    assert_eq!(
-        full.azure_has_api_key, fast.azure_has_api_key,
-        "azure api key"
-    );
-    assert_eq!(full.azure_uses_entra, fast.azure_uses_entra, "azure entra");
     assert_eq!(full.openai, fast.openai, "openai");
     assert_eq!(full.openai_has_oauth, fast.openai_has_oauth, "openai oauth");
     assert_eq!(
         full.openai_has_api_key, fast.openai_has_api_key,
         "openai api key"
     );
-    assert_eq!(full.copilot, fast.copilot, "copilot");
-    assert_eq!(
-        full.copilot_has_api_token, fast.copilot_has_api_token,
-        "copilot api token"
-    );
     assert_eq!(full.antigravity, fast.antigravity, "antigravity");
     assert_eq!(full.gemini, fast.gemini, "gemini");
-    assert_eq!(full.cursor, fast.cursor, "cursor");
 }
 
 #[test]
@@ -358,10 +244,6 @@ fn auth_status_check_returns_valid_struct() {
     match status.openai {
         AuthState::Available | AuthState::Expired | AuthState::NotConfigured => {}
     }
-    // If copilot has api token, state should be Available
-    if status.copilot_has_api_token {
-        assert_eq!(status.copilot, AuthState::Available);
-    }
 }
 
 #[test]
@@ -393,63 +275,6 @@ fn auth_status_check_fast_ignores_expired_full_cache() {
     );
 
     AuthStatus::invalidate_cache();
-}
-
-#[test]
-fn copilot_recent_token_exchange_failure_is_not_auto_usable() {
-    let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().expect("create temp dir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let prev_copilot_token = std::env::var_os("COPILOT_GITHUB_TOKEN");
-    let prev_gh_token = std::env::var_os("GH_TOKEN");
-    let prev_github_token = std::env::var_os("GITHUB_TOKEN");
-
-    crate::env::set_var("JCODE_HOME", temp.path());
-    crate::env::remove_var("COPILOT_GITHUB_TOKEN");
-    crate::env::remove_var("GH_TOKEN");
-    crate::env::remove_var("GITHUB_TOKEN");
-    AuthStatus::invalidate_cache();
-    crate::auth::copilot::invalidate_github_token_cache();
-
-    crate::auth::copilot::save_github_token("gho_saved_token", "tester")
-        .expect("save copilot token");
-    crate::auth::validation::save(
-        "copilot",
-        crate::auth::validation::ProviderValidationRecord {
-            checked_at_ms: chrono::Utc::now().timestamp_millis(),
-            success: false,
-            provider_smoke_ok: None,
-            tool_smoke_ok: None,
-            summary:
-                "refresh_probe: Copilot token exchange failed (HTTP 403 Forbidden): feature_flag_blocked"
-                    .to_string(),
-        },
-    )
-    .expect("save validation failure");
-
-    AuthStatus::invalidate_cache();
-    crate::auth::copilot::invalidate_github_token_cache();
-    let status = AuthStatus::check_fast();
-    assert_eq!(status.copilot, AuthState::Expired);
-    assert!(!status.copilot_has_api_token);
-    assert_eq!(
-        copilot_auth_state_from_credentials(),
-        (AuthState::Expired, false)
-    );
-
-    crate::env::set_var("GH_TOKEN", "gho_env_override");
-    AuthStatus::invalidate_cache();
-    crate::auth::copilot::invalidate_github_token_cache();
-    let status = AuthStatus::check_fast();
-    assert_eq!(status.copilot, AuthState::Available);
-    assert!(status.copilot_has_api_token);
-
-    restore_env_var("JCODE_HOME", prev_home);
-    restore_env_var("COPILOT_GITHUB_TOKEN", prev_copilot_token);
-    restore_env_var("GH_TOKEN", prev_gh_token);
-    restore_env_var("GITHUB_TOKEN", prev_github_token);
-    AuthStatus::invalidate_cache();
-    crate::auth::copilot::invalidate_github_token_cache();
 }
 
 #[test]
@@ -495,7 +320,6 @@ fn openrouter_status_excludes_shared_compatible_transport() {
         "JCODE_OPENROUTER_API_KEY_NAME",
         "JCODE_OPENROUTER_ENV_FILE",
         "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_OPENROUTER_ALLOW_NO_AUTH",
         "JCODE_NAMED_PROVIDER_PROFILE",
         "JCODE_OPENROUTER_TRANSPORT_STATE",
@@ -534,165 +358,6 @@ fn openrouter_status_excludes_shared_compatible_transport() {
     for (key, value) in saved {
         restore_env_var(key, value);
     }
-    AuthStatus::invalidate_cache();
-}
-
-#[test]
-fn azure_readiness_distinguishes_credentials_from_deployment_validation() {
-    let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().expect("create temp dir");
-    let saved = [
-        "JCODE_HOME",
-        crate::auth::azure::ENDPOINT_ENV,
-        crate::auth::azure::API_KEY_ENV,
-        crate::auth::azure::MODEL_ENV,
-        crate::auth::azure::USE_ENTRA_ENV,
-    ]
-    .into_iter()
-    .map(|key| (key, std::env::var_os(key)))
-    .collect::<Vec<_>>();
-
-    crate::env::set_var("JCODE_HOME", temp.path());
-    crate::env::set_var(
-        crate::auth::azure::ENDPOINT_ENV,
-        "https://example.openai.azure.com",
-    );
-    crate::env::set_var(crate::auth::azure::API_KEY_ENV, "azure-test-key");
-    crate::env::set_var(crate::auth::azure::MODEL_ENV, "gpt-test-deployment");
-    crate::env::remove_var(crate::auth::azure::USE_ENTRA_ENV);
-    AuthStatus::invalidate_cache();
-
-    let status = AuthStatus::check_fast();
-    let assessment = status.assessment_for_provider(crate::provider_catalog::AZURE_LOGIN_PROVIDER);
-    assert_eq!(assessment.state, AuthState::Available);
-    assert_eq!(assessment.readiness, AuthReadinessLevel::CredentialPresent);
-    assert!(
-        assessment
-            .health_summary()
-            .contains("readiness: credential present")
-    );
-
-    crate::auth::validation::save(
-        "azure",
-        crate::auth::validation::ProviderValidationRecord {
-            checked_at_ms: chrono::Utc::now().timestamp_millis(),
-            success: false,
-            provider_smoke_ok: Some(false),
-            tool_smoke_ok: None,
-            summary: "provider_smoke: deployment not found".to_string(),
-        },
-    )
-    .expect("save failed validation");
-    let assessment = status.assessment_for_provider(crate::provider_catalog::AZURE_LOGIN_PROVIDER);
-    assert_eq!(assessment.readiness, AuthReadinessLevel::CredentialPresent);
-
-    crate::auth::validation::save(
-        "azure",
-        crate::auth::validation::ProviderValidationRecord {
-            checked_at_ms: chrono::Utc::now().timestamp_millis(),
-            success: true,
-            provider_smoke_ok: Some(true),
-            tool_smoke_ok: None,
-            summary: "provider_smoke: ok".to_string(),
-        },
-    )
-    .expect("save successful validation");
-    let assessment = status.assessment_for_provider(crate::provider_catalog::AZURE_LOGIN_PROVIDER);
-    assert_eq!(assessment.readiness, AuthReadinessLevel::DeploymentValid);
-    assert!(
-        assessment
-            .health_summary()
-            .contains("readiness: deployment valid")
-    );
-
-    for (key, value) in saved {
-        restore_env_var(key, value);
-    }
-    AuthStatus::invalidate_cache();
-}
-
-#[cfg(unix)]
-#[test]
-fn cursor_status_is_available_when_api_key_exists_without_cli() {
-    let _lock = crate::storage::lock_test_env();
-    let prev_access_token = std::env::var_os("CURSOR_ACCESS_TOKEN");
-    let prev_refresh_token = std::env::var_os("CURSOR_REFRESH_TOKEN");
-    let prev_api_key = std::env::var_os("CURSOR_API_KEY");
-    let prev_cli_path = std::env::var_os("JCODE_CURSOR_CLI_PATH");
-    let temp = tempfile::TempDir::new().expect("create temp dir");
-
-    crate::env::remove_var("CURSOR_ACCESS_TOKEN");
-    crate::env::remove_var("CURSOR_REFRESH_TOKEN");
-    crate::env::set_var("CURSOR_API_KEY", "cursor-test-key");
-    crate::env::set_var(
-        "JCODE_CURSOR_CLI_PATH",
-        temp.path().join("missing-cursor-agent"),
-    );
-    AuthStatus::invalidate_cache();
-
-    let status = AuthStatus::check();
-    assert_eq!(status.cursor, AuthState::Available);
-
-    restore_env_var("CURSOR_ACCESS_TOKEN", prev_access_token);
-    restore_env_var("CURSOR_REFRESH_TOKEN", prev_refresh_token);
-    restore_env_var("CURSOR_API_KEY", prev_api_key);
-    restore_env_var("JCODE_CURSOR_CLI_PATH", prev_cli_path);
-    AuthStatus::invalidate_cache();
-}
-
-#[cfg(unix)]
-#[test]
-fn cursor_status_is_available_for_native_auth_without_cli() {
-    let _lock = crate::storage::lock_test_env();
-    let prev_access_token = std::env::var_os("CURSOR_ACCESS_TOKEN");
-    let prev_refresh_token = std::env::var_os("CURSOR_REFRESH_TOKEN");
-    let prev_api_key = std::env::var_os("CURSOR_API_KEY");
-    let prev_cli_path = std::env::var_os("JCODE_CURSOR_CLI_PATH");
-    let temp = tempfile::TempDir::new().expect("create temp dir");
-
-    crate::env::set_var(
-        "CURSOR_ACCESS_TOKEN",
-        "eyJhbGciOiJub25lIn0.eyJleHAiIjo0MTAyNDQ0ODAwfQ.",
-    );
-    crate::env::remove_var("CURSOR_REFRESH_TOKEN");
-    crate::env::remove_var("CURSOR_API_KEY");
-    crate::env::set_var(
-        "JCODE_CURSOR_CLI_PATH",
-        temp.path().join("missing-cursor-agent"),
-    );
-    AuthStatus::invalidate_cache();
-
-    let status = AuthStatus::check();
-    assert_eq!(status.cursor, AuthState::Available);
-
-    restore_env_var("CURSOR_ACCESS_TOKEN", prev_access_token);
-    restore_env_var("CURSOR_REFRESH_TOKEN", prev_refresh_token);
-    restore_env_var("CURSOR_API_KEY", prev_api_key);
-    restore_env_var("JCODE_CURSOR_CLI_PATH", prev_cli_path);
-    AuthStatus::invalidate_cache();
-}
-
-#[cfg(unix)]
-#[test]
-fn cursor_status_is_available_for_authenticated_cli_session() {
-    let _lock = crate::storage::lock_test_env();
-    let prev_api_key = std::env::var_os("CURSOR_API_KEY");
-    let prev_cli_path = std::env::var_os("JCODE_CURSOR_CLI_PATH");
-    let temp = tempfile::TempDir::new().expect("create temp dir");
-    let mock_cli = write_mock_cursor_agent(
-        temp.path(),
-        "#!/bin/sh\nif [ \"$1\" = \"status\" ]; then\n  echo \"Authenticated\\nAccount: test@example.com\"\n  exit 0\nfi\nexit 1\n",
-    );
-
-    crate::env::remove_var("CURSOR_API_KEY");
-    crate::env::set_var("JCODE_CURSOR_CLI_PATH", &mock_cli);
-    AuthStatus::invalidate_cache();
-
-    let status = AuthStatus::check();
-    assert_eq!(status.cursor, AuthState::Available);
-
-    restore_env_var("CURSOR_API_KEY", prev_api_key);
-    restore_env_var("JCODE_CURSOR_CLI_PATH", prev_cli_path);
     AuthStatus::invalidate_cache();
 }
 

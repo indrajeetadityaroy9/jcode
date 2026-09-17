@@ -32,7 +32,6 @@ fn test_provider_choice_arg_values() {
     assert_eq!(ProviderChoice::Openai.as_arg_value(), "openai");
     assert_eq!(ProviderChoice::OpenaiApi.as_arg_value(), "openai-api");
     assert_eq!(ProviderChoice::Openrouter.as_arg_value(), "openrouter");
-    assert_eq!(ProviderChoice::Azure.as_arg_value(), "azure");
     assert_eq!(ProviderChoice::Opencode.as_arg_value(), "opencode");
     assert_eq!(ProviderChoice::OpencodeGo.as_arg_value(), "opencode-go");
     assert_eq!(ProviderChoice::Zai.as_arg_value(), "zai");
@@ -58,8 +57,6 @@ fn test_provider_choice_arg_values() {
         ProviderChoice::OpenaiCompatible.as_arg_value(),
         "openai-compatible"
     );
-    assert_eq!(ProviderChoice::Cursor.as_arg_value(), "cursor");
-    assert_eq!(ProviderChoice::Copilot.as_arg_value(), "copilot");
     assert_eq!(ProviderChoice::Gemini.as_arg_value(), "gemini");
     assert_eq!(ProviderChoice::Antigravity.as_arg_value(), "antigravity");
     assert_eq!(ProviderChoice::Auto.as_arg_value(), "auto");
@@ -149,11 +146,11 @@ fn test_server_bootstrap_login_selection_preserves_order() {
     );
     assert_eq!(
         resolve_login_selection("4", &providers).map(|provider| provider.id),
-        Some("copilot")
+        Some("openrouter")
     );
     assert_eq!(
         resolve_login_selection("5", &providers).map(|provider| provider.id),
-        Some("openrouter")
+        Some("gemini")
     );
 }
 
@@ -174,18 +171,10 @@ fn test_auto_init_login_selection_preserves_order() {
     );
     assert_eq!(
         resolve_login_selection("11", &providers).map(|provider| provider.id),
-        Some("cursor")
-    );
-    assert_eq!(
-        resolve_login_selection("12", &providers).map(|provider| provider.id),
-        Some("copilot")
-    );
-    assert_eq!(
-        resolve_login_selection("13", &providers).map(|provider| provider.id),
         Some("gemini")
     );
     assert_eq!(
-        resolve_login_selection("14", &providers).map(|provider| provider.id),
+        resolve_login_selection("12", &providers).map(|provider| provider.id),
         Some("antigravity")
     );
 }
@@ -351,14 +340,6 @@ fn choice_for_login_provider_round_trips_core_targets() {
     assert_eq!(
         choice_for_login_provider(provider_catalog::ANTHROPIC_API_LOGIN_PROVIDER),
         Some(ProviderChoice::AnthropicApi)
-    );
-    assert_eq!(
-        choice_for_login_provider(provider_catalog::AZURE_LOGIN_PROVIDER),
-        Some(ProviderChoice::Azure)
-    );
-    assert_eq!(
-        choice_for_login_provider(provider_catalog::CURSOR_LOGIN_PROVIDER),
-        Some(ProviderChoice::Cursor)
     );
     assert_eq!(
         choice_for_login_provider(provider_catalog::AUTO_IMPORT_LOGIN_PROVIDER),
@@ -721,9 +702,7 @@ async fn auto_provider_uses_config_default_named_no_auth_provider() {
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
-        "GITHUB_TOKEN",
         "GEMINI_API_KEY",
-        "CURSOR_API_KEY",
         "JCODE_OPENROUTER_API_BASE",
         "JCODE_OPENROUTER_API_KEY_NAME",
         "JCODE_OPENROUTER_ALLOW_NO_AUTH",
@@ -746,9 +725,7 @@ async fn auto_provider_uses_config_default_named_no_auth_provider() {
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
-        "GITHUB_TOKEN",
         "GEMINI_API_KEY",
-        "CURSOR_API_KEY",
         "JCODE_OPENROUTER_API_BASE",
         "JCODE_OPENROUTER_API_KEY_NAME",
         "JCODE_OPENROUTER_ALLOW_NO_AUTH",
@@ -819,9 +796,7 @@ async fn auto_provider_noninteractive_skips_untrusted_external_auth_instead_of_b
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
-        "GITHUB_TOKEN",
         "GEMINI_API_KEY",
-        "CURSOR_API_KEY",
         "JCODE_RUNTIME_PROVIDER",
         "JCODE_ACTIVE_PROVIDER",
         "JCODE_INITIAL_PROVIDER_EXPLICIT",
@@ -837,9 +812,7 @@ async fn auto_provider_noninteractive_skips_untrusted_external_auth_instead_of_b
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "OPENROUTER_API_KEY",
-        "GITHUB_TOKEN",
         "GEMINI_API_KEY",
-        "CURSOR_API_KEY",
         "JCODE_ACTIVE_PROVIDER",
         "JCODE_INITIAL_PROVIDER_EXPLICIT",
     ] {

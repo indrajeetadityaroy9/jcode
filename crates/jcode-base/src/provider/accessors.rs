@@ -36,20 +36,6 @@ impl MultiProvider {
             .clone()
     }
 
-    pub(super) fn copilot_provider(&self) -> Option<Arc<dyn Provider>> {
-        self.copilot_api
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
-    }
-
-    pub(super) fn cursor_provider(&self) -> Option<Arc<dyn Provider>> {
-        self.cursor
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
-    }
-
     pub(super) fn openrouter_provider(&self) -> Option<Arc<dyn Provider>> {
         ProviderRegistry::new(self).real_openrouter()
     }
@@ -70,10 +56,8 @@ impl MultiProvider {
         match provider {
             ActiveProvider::Claude => self.has_claude_runtime(),
             ActiveProvider::OpenAI => self.openai_provider().is_some(),
-            ActiveProvider::Copilot => self.copilot_provider().is_some(),
             ActiveProvider::Antigravity => self.antigravity_provider().is_some(),
             ActiveProvider::Gemini => self.gemini_provider().is_some(),
-            ActiveProvider::Cursor => self.cursor_provider().is_some(),
             // The OpenRouter slot executes through the *active* runtime: a
             // direct OpenAI-compatible profile when one is active, else real
             // OpenRouter. Checking only the real slot here made dispatch treat

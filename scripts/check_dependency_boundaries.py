@@ -28,7 +28,6 @@ ALLOWED_INTERNAL_TYPE_DEPS = {
 FORBIDDEN_INTERNAL_DEPS = {
     "jcode",
     "jcode-agent-runtime",
-    "jcode-azure-auth",
     "jcode-core",
     "jcode-embedding",
     "jcode-pdf",

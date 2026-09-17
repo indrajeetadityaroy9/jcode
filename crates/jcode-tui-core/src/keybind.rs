@@ -1039,7 +1039,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_function_keybinding_for_copilot_style_keys() {
+    fn test_parse_high_function_keybinding() {
         let binding = parse_keybinding("ctrl+shift+f23").expect("f23 binding should parse");
         assert_eq!(binding.code, KeyCode::F(23));
         assert!(binding.modifiers.contains(KeyModifiers::CONTROL));

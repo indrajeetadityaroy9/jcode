@@ -661,7 +661,7 @@ fn test_subagent_command_suggestions_include_manual_launch_and_model_policy() {
     assert!(autojudge.iter().any(|(cmd, _)| cmd == "/autojudge status"));
 }
 
-fn configure_test_remote_models_with_copilot(app: &mut App) {
+fn configure_test_remote_models_with_mixed_catalog(app: &mut App) {
     app.is_remote = true;
     app.remote_provider_model = Some("claude-sonnet-4".to_string());
     app.remote_available_entries = vec![
@@ -673,38 +673,14 @@ fn configure_test_remote_models_with_copilot(app: &mut App) {
     ];
 }
 
-fn configure_test_remote_models_with_cursor(app: &mut App) {
-    app.is_remote = true;
-    app.remote_provider_name = Some("cursor".to_string());
-    app.remote_provider_model = Some("composer-1.5".to_string());
-    app.remote_available_entries = vec![
-        "composer-2-fast".to_string(),
-        "composer-2".to_string(),
-        "composer-1.5".to_string(),
-    ];
-    app.remote_model_options = app
-        .remote_available_entries
-        .iter()
-        .cloned()
-        .map(|model| crate::provider::ModelRoute {
-            model,
-            provider: "Cursor".to_string(),
-            api_method: "cursor".to_string(),
-            available: true,
-            detail: String::new(),
-            cheapness: None,
-        })
-        .collect();
-}
-
 #[test]
-fn test_model_picker_includes_copilot_models_in_remote_mode() {
+fn test_model_picker_includes_remote_catalog_models_in_remote_mode() {
     // Temp home: opening the picker with empty remote_model_options hydrates
     // the persisted remote catalog cache, so a shared test home lets routes
     // written by other tests leak into this picker.
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
-        configure_test_remote_models_with_copilot(&mut app);
+        configure_test_remote_models_with_mixed_catalog(&mut app);
 
         app.open_model_picker();
 
@@ -724,17 +700,17 @@ fn test_model_picker_includes_copilot_models_in_remote_mode() {
         };
         assert!(
             has_model("claude-opus-4.6"),
-            "picker should contain copilot model claude-opus-4.6, got: {:?}",
+            "picker should contain remote model claude-opus-4.6, got: {:?}",
             model_names
         );
         assert!(
             has_model("gemini-3-pro-preview"),
-            "picker should contain copilot model gemini-3-pro-preview, got: {:?}",
+            "picker should contain remote model gemini-3-pro-preview, got: {:?}",
             model_names
         );
         assert!(
             has_model("deepseek-v4-flash"),
-            "picker should contain copilot model deepseek-v4-flash, got: {:?}",
+            "picker should contain remote model deepseek-v4-flash, got: {:?}",
             model_names
         );
     });
@@ -750,7 +726,7 @@ fn test_available_models_updated_event_surfaces_authed_provider_in_remote_model_
     app.is_remote = true;
     app.handle_server_event(
         crate::protocol::ServerEvent::AvailableModelsUpdated {
-            provider_name: Some("Copilot".to_string()),
+            provider_name: Some("Gemini".to_string()),
             provider_model: Some("claude-opus-4.6".to_string()),
             available_models: vec![
                 "claude-opus-4.6".to_string(),
@@ -759,16 +735,16 @@ fn test_available_models_updated_event_surfaces_authed_provider_in_remote_model_
             available_model_routes: vec![
                 crate::provider::ModelRoute {
                     model: "claude-opus-4.6".to_string(),
-                    provider: "Copilot".to_string(),
-                    api_method: "copilot".to_string(),
+                    provider: "Gemini".to_string(),
+                    api_method: "gemini".to_string(),
                     available: true,
                     detail: String::new(),
                     cheapness: None,
                 },
                 crate::provider::ModelRoute {
                     model: "deepseek-v4-flash".to_string(),
-                    provider: "Copilot".to_string(),
-                    api_method: "copilot".to_string(),
+                    provider: "Gemini".to_string(),
+                    api_method: "gemini".to_string(),
                     available: true,
                     detail: String::new(),
                     cheapness: None,
@@ -785,11 +761,11 @@ fn test_available_models_updated_event_surfaces_authed_provider_in_remote_model_
         .as_ref()
         .expect("model picker should be open");
 
-    let copilot_entry = picker
+    let gemini_entry = picker
         .entries
         .iter()
         .find(|entry| entry.name == "claude-opus-4.6")
-        .expect("copilot model should be shown after AvailableModelsUpdated");
+        .expect("gemini model should be shown after AvailableModelsUpdated");
 
     assert!(
         picker
@@ -798,8 +774,8 @@ fn test_available_models_updated_event_surfaces_authed_provider_in_remote_model_
             .any(|entry| entry.name == "deepseek-v4-flash"),
         "all auth-updated remote models should appear in /model"
     );
-    assert!(copilot_entry.options.iter().any(|route| {
-        route.provider == "Copilot" && route.api_method == "copilot" && route.available
+    assert!(gemini_entry.options.iter().any(|route| {
+        route.provider == "Gemini" && route.api_method == "gemini" && route.available
     }));
 }
 
@@ -815,13 +791,13 @@ fn test_duplicate_available_models_updated_event_is_a_no_op() {
 
         app.is_remote = true;
         let event = || crate::protocol::ServerEvent::AvailableModelsUpdated {
-            provider_name: Some("Copilot".to_string()),
+            provider_name: Some("Gemini".to_string()),
             provider_model: Some("claude-opus-4.6".to_string()),
             available_models: vec!["claude-opus-4.6".to_string()],
             available_model_routes: vec![crate::provider::ModelRoute {
                 model: "claude-opus-4.6".to_string(),
-                provider: "Copilot".to_string(),
-                api_method: "copilot".to_string(),
+                provider: "Gemini".to_string(),
+                api_method: "gemini".to_string(),
                 available: true,
                 detail: String::new(),
                 cheapness: None,
@@ -949,7 +925,7 @@ fn test_remote_model_switch_failure_shows_actionable_guidance() {
         crate::protocol::ServerEvent::ModelChanged {
             id: 7,
             model: "claude-opus-4.6".to_string(),
-            provider_name: Some("Copilot".to_string()),
+            provider_name: Some("Gemini".to_string()),
             error: Some("credentials expired".to_string()),
         },
         &mut remote,
@@ -1116,12 +1092,12 @@ fn test_detailed_catalog_replaces_placeholder_routes_after_names_only_update() {
         let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
         app.is_remote = true;
-        app.remote_provider_name = Some("Copilot".to_string());
+        app.remote_provider_name = Some("Gemini".to_string());
 
         // Names-only frame: same model list, no route expansion.
         app.handle_server_event(
             crate::protocol::ServerEvent::AvailableModelsUpdated {
-                provider_name: Some("Copilot".to_string()),
+                provider_name: Some("Gemini".to_string()),
                 provider_model: Some("claude-opus-4.6".to_string()),
                 available_models: vec!["claude-opus-4.6".to_string()],
                 available_model_routes: Vec::new(),
@@ -1132,13 +1108,13 @@ fn test_detailed_catalog_replaces_placeholder_routes_after_names_only_update() {
         // Detailed frame with identical model names but real routes.
         let detailed_redraw = app.handle_server_event(
             crate::protocol::ServerEvent::AvailableModelsUpdated {
-                provider_name: Some("Copilot".to_string()),
+                provider_name: Some("Gemini".to_string()),
                 provider_model: Some("claude-opus-4.6".to_string()),
                 available_models: vec!["claude-opus-4.6".to_string()],
                 available_model_routes: vec![crate::provider::ModelRoute {
                     model: "claude-opus-4.6".to_string(),
-                    provider: "Copilot".to_string(),
-                    api_method: "copilot".to_string(),
+                    provider: "Gemini".to_string(),
+                    api_method: "gemini".to_string(),
                     available: true,
                     detail: String::new(),
                     cheapness: None,
@@ -1154,7 +1130,7 @@ fn test_detailed_catalog_replaces_placeholder_routes_after_names_only_update() {
         assert!(
             app.remote_model_options
                 .iter()
-                .any(|route| route.api_method == "copilot"),
+                .any(|route| route.api_method == "gemini"),
             "detailed routes must replace the names-only placeholder state"
         );
     });

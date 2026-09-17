@@ -41,7 +41,7 @@ pub use models::{
     ALL_CLAUDE_MODELS, ALL_OPENAI_MODELS, DEFAULT_CLAUDE_MODEL, DEFAULT_CONTEXT_LIMIT,
     DEFAULT_OPENAI_MODEL, ModelCapabilities, OPENAI_API_ONLY_PRO_MODELS, context_limit_for_model,
     context_limit_for_model_with_provider, context_limit_for_model_with_provider_and_cache,
-    is_listable_model_name, is_openai_api_only_pro_model, normalize_copilot_model_name,
+    is_listable_model_name, is_openai_api_only_pro_model, normalize_dotted_model_version,
     provider_for_model as core_provider_for_model,
     provider_for_model_with_hint as core_provider_for_model_with_hint, provider_key_from_hint,
 };
@@ -319,14 +319,6 @@ pub trait Provider: Send + Sync {
     /// Invalidate any cached credentials.
     async fn invalidate_credentials(&self) {}
 
-    /// Set Copilot premium request conservation mode.
-    fn set_premium_mode(&self, _mode: PremiumMode) {}
-
-    /// Get the current Copilot premium mode.
-    fn premium_mode(&self) -> PremiumMode {
-        PremiumMode::Normal
-    }
-
     /// Current OAuth-vs-API-key credential pin for dual-auth providers.
     /// Non-dual-auth providers report `Auto`.
     fn credential_mode(&self) -> CredentialMode {
@@ -474,18 +466,6 @@ pub trait Provider: Send + Sync {
 
         Ok(result)
     }
-}
-
-/// Premium request conservation mode for Copilot-compatible providers.
-/// 0 = normal (every user message is premium)
-/// 1 = one premium per session (first user message only, rest are agent)
-/// 2 = zero premium (all requests sent as agent)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
-pub enum PremiumMode {
-    Normal = 0,
-    OnePerSession = 1,
-    Zero = 2,
 }
 
 /// Explicit OAuth-vs-API-key credential pin for dual-auth providers
@@ -692,9 +672,7 @@ pub enum RuntimeKey {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         profile_id: Option<String>,
     },
-    Copilot,
     Gemini,
-    Cursor,
     Antigravity,
     CodeAssistOAuth,
     RemoteCatalog,
@@ -713,8 +691,6 @@ impl RuntimeKey {
             ModelRouteApiMethod::OpenAiCompatible { profile_id } => Self::OpenAiCompatible {
                 profile_id: profile_id.clone(),
             },
-            ModelRouteApiMethod::Copilot => Self::Copilot,
-            ModelRouteApiMethod::Cursor => Self::Cursor,
             ModelRouteApiMethod::CodeAssistOAuth => Self::CodeAssistOAuth,
             ModelRouteApiMethod::AntigravityHttps => Self::Antigravity,
             ModelRouteApiMethod::RemoteCatalog => Self::RemoteCatalog,
@@ -734,9 +710,7 @@ impl RuntimeKey {
                 .as_deref()
                 .map(|profile_id| format!("openai-compatible:{profile_id}"))
                 .unwrap_or_else(|| "openai-compatible".to_string()),
-            Self::Copilot => "copilot".to_string(),
             Self::Gemini => "gemini".to_string(),
-            Self::Cursor => "cursor".to_string(),
             Self::Antigravity => "antigravity".to_string(),
             Self::CodeAssistOAuth => "code-assist-oauth".to_string(),
             Self::RemoteCatalog => "remote-catalog".to_string(),
@@ -775,7 +749,7 @@ impl RouteSelection {
 
     /// The string model spec that applies this route selection, including any
     /// provider routing prefix/suffix (`openai-oauth:`, `claude-api:`,
-    /// `openai/gpt-5@OpenAI`, `copilot:`, ...).
+    /// `openai/gpt-5@OpenAI`, `antigravity:`, ...).
     ///
     /// This is the single source of truth for translating a structured
     /// [`RouteSelection`] back into the `set_model` spec string. Both the
@@ -805,8 +779,6 @@ impl RouteSelection {
                     format!("{catalog_id}@{provider}")
                 }
             }
-            RuntimeKey::Copilot => format!("copilot:{model}"),
-            RuntimeKey::Cursor => format!("cursor:{model}"),
             RuntimeKey::Antigravity => format!("antigravity:{model}"),
             RuntimeKey::Gemini
             | RuntimeKey::CodeAssistOAuth
@@ -843,8 +815,6 @@ pub enum ModelRouteApiMethod {
     OpenAIApiKey,
     OpenRouter,
     OpenAiCompatible { profile_id: Option<String> },
-    Copilot,
-    Cursor,
     CodeAssistOAuth,
     AntigravityHttps,
     RemoteCatalog,
@@ -876,8 +846,6 @@ impl ModelRouteApiMethod {
         match lower.as_str() {
             "openrouter" => Self::OpenRouter,
             "openai-compatible" => Self::OpenAiCompatible { profile_id: None },
-            "copilot" => Self::Copilot,
-            "cursor" => Self::Cursor,
             "code-assist-oauth" => Self::CodeAssistOAuth,
             "https" => Self::AntigravityHttps,
             "remote-catalog" => Self::RemoteCatalog,
@@ -912,14 +880,6 @@ impl ModelRouteApiMethod {
         matches!(self, Self::OpenRouter)
     }
 
-    pub fn is_copilot(&self) -> bool {
-        matches!(self, Self::Copilot)
-    }
-
-    pub fn is_cursor(&self) -> bool {
-        matches!(self, Self::Cursor)
-    }
-
     pub fn matches_openai_compatible_profile(&self, provider_id: &str) -> bool {
         self.profile_id()
             .is_some_and(|profile_id| profile_id.eq_ignore_ascii_case(provider_id))
@@ -940,8 +900,6 @@ impl ModelRouteApiMethod {
                 "api key".to_string()
             }
             Self::OpenRouter => "openrouter".to_string(),
-            Self::Copilot => "copilot".to_string(),
-            Self::Cursor => "cursor".to_string(),
             Self::AntigravityHttps => "https".to_string(),
             Self::RemoteCatalog => "remote-catalog".to_string(),
             Self::Current => "current".to_string(),
@@ -977,11 +935,6 @@ pub fn model_route_provider_labels_match(route_provider: &str, current_provider:
             | ("openai", "openai")
             | ("gemini" | "google", "gemini" | "google")
             | ("antigravity", "antigravity")
-            | (
-                "copilot" | "copilotcode" | "githubcopilot",
-                "copilot" | "githubcopilot"
-            )
-            | ("cursor", "cursor")
             | ("openrouter", "openrouter" | "auto")
     )
 }
@@ -1367,10 +1320,6 @@ mod tests {
     fn model_route_provider_label_matching_uses_aliases_without_substring_false_positives() {
         assert!(model_route_provider_labels_match("Anthropic", "Claude"));
         assert!(model_route_provider_labels_match("auto", "OpenRouter"));
-        assert!(model_route_provider_labels_match(
-            "GitHub Copilot",
-            "Copilot"
-        ));
         assert!(!model_route_provider_labels_match(
             "OpenRouter/OpenAI",
             "OpenAI"
@@ -1463,7 +1412,7 @@ mod tests {
             true
         ));
         assert!(!model_route_metadata_is_recommended(
-            "gpt-5.5", "Copilot", "copilot", true
+            "gpt-5.5", "Gemini", "gemini", true
         ));
         assert!(!model_route_metadata_is_recommended(
             "gpt-5.5",

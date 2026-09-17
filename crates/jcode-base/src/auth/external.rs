@@ -156,9 +156,6 @@ pub fn source_provider_labels(source: ExternalAuthSource) -> Vec<&'static str> {
     {
         labels.push("Antigravity");
     }
-    if source_contains_oauth_provider(source, &["github-copilot", "copilot"]).unwrap_or(false) {
-        labels.push("GitHub Copilot");
-    }
     if source_contains_supported_api_key(source).unwrap_or(false) {
         labels.push("OpenRouter/API-key providers");
     }
@@ -211,15 +208,6 @@ pub fn load_api_key_for_env(env_key: &str) -> Option<String> {
 
 pub fn load_openai_oauth_tokens() -> Option<ExternalOAuthTokens> {
     load_oauth_tokens_for_candidates(&["openai-codex", "openai_codex", "openai"])
-}
-
-pub fn load_copilot_oauth_token() -> Option<String> {
-    load_oauth_tokens_for_candidates(&["github-copilot", "copilot"])
-        .map(|tokens| tokens.access_token)
-}
-
-pub fn source_has_copilot_oauth(source: ExternalAuthSource) -> bool {
-    source_contains_oauth_provider(source, &["github-copilot", "copilot"]).unwrap_or(false)
 }
 
 pub fn load_gemini_oauth_tokens() -> Option<ExternalOAuthTokens> {
@@ -310,8 +298,6 @@ fn source_has_supported_auth(source: ExternalAuthSource) -> bool {
                 "gemini",
                 "google-antigravity",
                 "antigravity",
-                "github-copilot",
-                "copilot",
             ],
         )
         .unwrap_or(false)
@@ -589,7 +575,6 @@ fn hermes_expires_at_ms(object: &serde_json::Map<String, Value>) -> Option<i64> 
 fn provider_keys_for_env(env_key: &str) -> &'static [&'static str] {
     match env_key {
         "ANTHROPIC_API_KEY" => &["anthropic", "claude"],
-        "AZURE_OPENAI_API_KEY" => &["azure-openai-responses", "azure", "azure-openai"],
         "OPENAI_API_KEY" => &["openai", "openai-api"],
         "GEMINI_API_KEY" => &["google", "gemini"],
         "MISTRAL_API_KEY" => &["mistral"],

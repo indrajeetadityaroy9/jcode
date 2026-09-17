@@ -98,36 +98,6 @@ fn pi_shell_command_api_keys_are_not_executed() {
 }
 
 #[test]
-fn load_copilot_oauth_token_from_pi_auth() {
-    let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
-    let prev = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", dir.path());
-
-    let path = ExternalAuthSource::Pi.path().unwrap();
-    write_auth_file(
-        &path,
-        serde_json::json!({
-            "github-copilot": {
-                "type": "oauth",
-                "access": "ghu_pi_token",
-                "refresh": "refresh",
-                "expires": chrono::Utc::now().timestamp_millis() + 60_000
-            }
-        }),
-    );
-
-    trust_external_auth_source(ExternalAuthSource::Pi).unwrap();
-    assert_eq!(load_copilot_oauth_token().as_deref(), Some("ghu_pi_token"));
-
-    if let Some(prev) = prev {
-        crate::env::set_var("JCODE_HOME", prev);
-    } else {
-        crate::env::remove_var("JCODE_HOME");
-    }
-}
-
-#[test]
 fn unconsented_source_detects_supported_api_key_files() {
     let _guard = crate::storage::lock_test_env();
     let dir = TempDir::new().unwrap();

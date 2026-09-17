@@ -15,8 +15,7 @@
 //!   - `claude:oauth:<label>` / `claude:api-key`
 //!   - `openai:oauth:<label>` / `openai:api-key`
 //!   - `openai-compatible:<profile-id>` (DeepSeek, Moonshot, NVIDIA NIM, ...)
-//!   - `openrouter`, `jcode`, `copilot`, `gemini`, `cursor`,
-//!     `antigravity`, `azure-openai`
+//!   - `openrouter`, `jcode`, `gemini`, `antigravity`
 
 use chrono::{Datelike, Utc};
 use serde::{Deserialize, Serialize};
@@ -196,7 +195,7 @@ pub fn spend_snapshot(source_key: &str) -> Option<ProviderSpend> {
 
 /// All ledger entries (source key -> activity), with spend buckets rolled.
 /// Used by `/usage` to surface logins that have been used but have no
-/// dedicated usage fetcher (Cursor, Azure, ...).
+/// dedicated usage fetcher.
 pub fn all_entries() -> Vec<(String, ProviderActivityEntry)> {
     let mut guard = match LEDGER.lock() {
         Ok(guard) => guard,
@@ -251,11 +250,8 @@ pub fn display_name_for_source_key(source_key: &str) -> String {
         "claude:api-key" => "Anthropic API key".to_string(),
         "openai:api-key" => "OpenAI API key".to_string(),
         "openrouter" => "OpenRouter".to_string(),
-        "copilot" => "GitHub Copilot".to_string(),
         "gemini" => "Google Gemini".to_string(),
-        "cursor" => "Cursor".to_string(),
         "antigravity" => "Antigravity".to_string(),
-        "azure-openai" => "Azure OpenAI".to_string(),
         other => {
             // Slug -> Title Case fallback.
             other
@@ -324,23 +320,14 @@ pub fn source_key_for_provider_label(label: &str, runtime_provider: Option<&str>
         }
     }
 
-    if normalized.contains("azure") {
-        return "azure-openai".to_string();
-    }
     if normalized.contains("anthropic") || normalized.contains("claude") {
         return "claude:api-key".to_string();
     }
     if normalized.contains("openai") {
         return "openai:api-key".to_string();
     }
-    if normalized.contains("copilot") {
-        return "copilot".to_string();
-    }
     if normalized.contains("gemini") {
         return "gemini".to_string();
-    }
-    if normalized.contains("cursor") {
-        return "cursor".to_string();
     }
 
     // Fallback: slug of the display name so unknown providers still bucket

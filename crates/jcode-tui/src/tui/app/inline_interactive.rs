@@ -410,7 +410,7 @@ fn model_picker_route_is_current(
     // Remote sessions whose catalog arrives as names-only do not carry a
     // provider name, so `current_provider` is the generic "remote"
     // placeholder. The model name was synthesized into a real provider route
-    // (Copilot/OpenAI/...), so a provider-label comparison would never match
+    // (OpenAI/Gemini/...), so a provider-label comparison would never match
     // and the current model would not preselect. Fall back to name-only
     // matching in that case.
     if current_provider.trim().eq_ignore_ascii_case("remote") {
@@ -452,8 +452,6 @@ fn model_picker_provider_hint_from_model_spec(model_spec: &str) -> Option<(&str,
         "claude"
             | "anthropic"
             | "openai"
-            | "copilot"
-            | "cursor"
             | "antigravity"
             | "openrouter"
             | "gemini"
@@ -1073,7 +1071,7 @@ impl App {
                 return;
             }
             // Names-only remote catalog: synthesize properly classified
-            // provider routes (Comtegra/Copilot/Gemini/OpenRouter/…)
+            // provider routes (Comtegra/Gemini/OpenRouter/…)
             // rather than a generic "remote-catalog" placeholder. The full
             // fallback reads per-model disk caches and auth state, which can
             // take seconds on a large catalog, so for big catalogs open
@@ -1414,8 +1412,6 @@ impl App {
                 | crate::provider::ModelRouteApiMethod::OpenAIApiKey => 0,
                 crate::provider::ModelRouteApiMethod::AnthropicApiKey
                 | crate::provider::ModelRouteApiMethod::OpenAiCompatible { .. } => 1,
-                crate::provider::ModelRouteApiMethod::Cursor => 2,
-                crate::provider::ModelRouteApiMethod::Copilot => 3,
                 crate::provider::ModelRouteApiMethod::OpenRouter => 4,
                 _ => 5,
             };
@@ -3684,7 +3680,7 @@ mod tests {
             kind: PickerKind::Model,
             filtered: vec![0, 1],
             entries: vec![
-                picker_entry("claude-opus-4.6", "Cursor", 0),
+                picker_entry("claude-opus-4.6", "Gemini", 0),
                 picker_entry("claude-opus-4.5", "Anthropic", 150),
             ],
             selected: 0,
@@ -3741,7 +3737,7 @@ mod tests {
     #[test]
     fn model_picker_current_route_requires_matching_provider() {
         let openai_route = picker_option("OpenAI");
-        let copilot_route = picker_option("Copilot");
+        let gemini_route = picker_option("Gemini");
 
         assert!(model_picker_route_is_current(
             "gpt-5.5",
@@ -3751,7 +3747,7 @@ mod tests {
         ));
         assert!(!model_picker_route_is_current(
             "gpt-5.5",
-            &copilot_route,
+            &gemini_route,
             "gpt-5.5",
             "OpenAI",
         ));
@@ -3766,10 +3762,6 @@ mod tests {
         assert!(jcode_provider_core::model_route_provider_labels_match(
             "auto",
             "OpenRouter"
-        ));
-        assert!(jcode_provider_core::model_route_provider_labels_match(
-            "GitHub Copilot",
-            "Copilot"
         ));
     }
 
@@ -3788,7 +3780,7 @@ mod tests {
     #[test]
     fn model_picker_default_route_requires_matching_provider_when_config_has_provider() {
         let openai_route = picker_option_with_method("OpenAI", "openai-oauth");
-        let copilot_route = picker_option_with_method("Copilot", "copilot");
+        let gemini_route = picker_option_with_method("Gemini", "gemini");
 
         assert!(model_picker_route_is_default(
             "gpt-5.5",
@@ -3798,7 +3790,7 @@ mod tests {
         ));
         assert!(!model_picker_route_is_default(
             "gpt-5.5",
-            &copilot_route,
+            &gemini_route,
             Some("gpt-5.5"),
             Some("openai"),
         ));
@@ -3890,18 +3882,18 @@ mod tests {
     #[test]
     fn model_picker_default_route_honors_provider_prefixed_model_specs() {
         let openai_route = picker_option_with_method("OpenAI", "openai-oauth");
-        let copilot_route = picker_option_with_method("Copilot", "copilot");
+        let gemini_route = picker_option_with_method("Gemini", "gemini");
 
         assert!(model_picker_route_is_default(
             "gpt-5.5",
-            &copilot_route,
-            Some("copilot:gpt-5.5"),
+            &gemini_route,
+            Some("gemini:gpt-5.5"),
             None,
         ));
         assert!(!model_picker_route_is_default(
             "gpt-5.5",
             &openai_route,
-            Some("copilot:gpt-5.5"),
+            Some("gemini:gpt-5.5"),
             None,
         ));
     }
@@ -3928,7 +3920,6 @@ mod tests {
     fn model_picker_recommended_route_is_provider_aware() {
         let openai_oauth_route = picker_option_with_method("OpenAI", "openai-oauth");
         let openai_api_key_route = picker_option_with_method("OpenAI", "openai-api-key");
-        let copilot_route = picker_option_with_method("Copilot", "copilot");
         let claude_oauth_route = picker_option_with_method("Anthropic", "claude-oauth");
         let claude_openrouter_route = picker_option_with_method("Anthropic", "openrouter");
         let openrouter_auto_route = picker_option_with_method("auto", "openrouter");
@@ -3950,15 +3941,11 @@ mod tests {
         ));
         assert!(!model_picker_route_is_recommended(
             "gpt-5.5",
-            &copilot_route
-        ));
-        assert!(!model_picker_route_is_recommended(
-            "gpt-5.5",
             &unavailable_openai_oauth_route,
         ));
 
         // Current policy (see jcode-provider-core): claude-opus-4-8 is the
-        // recommended Anthropic flagship; older Opus and OpenRouter/Copilot
+        // recommended Anthropic flagship; older Opus and OpenRouter
         // routes are not recommended.
         assert!(model_picker_route_is_recommended(
             "claude-opus-4-8",
@@ -3971,10 +3958,6 @@ mod tests {
         assert!(!model_picker_route_is_recommended(
             "claude-opus-4-8",
             &claude_openrouter_route,
-        ));
-        assert!(!model_picker_route_is_recommended(
-            "claude-opus-4-8",
-            &copilot_route,
         ));
 
         // DeepSeek routes are no longer in the recommended set at all.
@@ -4093,7 +4076,6 @@ mod tests {
             "openai-compatible:llamacpp"
         ));
         assert!(!route_supports_reasoning_effort("openai-compatible:zai"));
-        assert!(!route_supports_reasoning_effort("copilot"));
         assert!(!route_supports_reasoning_effort("https"));
         assert!(!route_supports_reasoning_effort("openai-compatible"));
         assert!(!route_supports_reasoning_effort("remote-catalog"));
@@ -4202,7 +4184,7 @@ mod tests {
                 "my-provider",
                 "openai-compatible:my-provider",
             ),
-            model_route("moonshotai/Kimi-K3", "Copilot", "copilot"),
+            model_route("moonshotai/Kimi-K3", "Gemini", "gemini"),
         ];
 
         let filtered = filter_routes_by_provider_allowlist(
@@ -4222,7 +4204,7 @@ mod tests {
         let routes = vec![
             model_route("gpt-5.5", "OpenAI", "openai-oauth"),
             model_route("gpt-5.5", "OpenAI", "openai-api-key"),
-            model_route("gpt-5.5", "Copilot", "copilot"),
+            model_route("gpt-5.5", "Gemini", "gemini"),
             model_route("qwen3-coder", "llama.cpp", "openai-compatible:llamacpp"),
         ];
 

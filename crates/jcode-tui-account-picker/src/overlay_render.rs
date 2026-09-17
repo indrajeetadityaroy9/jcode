@@ -238,7 +238,6 @@ pub(super) fn provider_style(provider_id: &str) -> Style {
         "claude" => Color::Rgb(229, 187, 111),
         "openai" => Color::Rgb(111, 214, 181),
         "gemini" | "google" => Color::Rgb(129, 184, 255),
-        "copilot" => Color::Rgb(182, 154, 255),
         "cursor" => Color::Rgb(131, 215, 255),
         "account-flow" => Color::Rgb(196, 170, 255),
         "openrouter"

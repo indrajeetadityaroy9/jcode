@@ -1055,9 +1055,9 @@ impl Default for WebSearchConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ProviderConfig {
-    /// Default model to use (e.g. "claude-opus-4-8", "copilot:claude-opus-4.6")
+    /// Default model to use (e.g. "claude-opus-4-8", "openai-api:gpt-5.5")
     pub default_model: Option<String>,
-    /// Default provider to use (claude|openai|copilot|openrouter)
+    /// Default provider to use (claude|openai|gemini|openrouter)
     pub default_provider: Option<String>,
     /// Reasoning effort for OpenAI Responses API (none|minimal|low|medium|high|xhigh|max)
     pub openai_reasoning_effort: Option<String>,
@@ -1078,11 +1078,8 @@ pub struct ProviderConfig {
     /// Whether jcode should automatically try another account on the same provider
     /// before falling back to a different provider.
     pub same_provider_account_failover: bool,
-    /// Copilot premium request mode: "normal", "one", or "zero"
-    /// "zero" means all requests are free (no premium requests consumed)
-    pub copilot_premium: Option<String>,
     /// When set (non-empty), /model only lists routes from these providers.
-    /// Entries match provider labels ("openai", "anthropic", "copilot",
+    /// Entries match provider labels ("openai", "anthropic",
     /// "openrouter", ...), api methods ("claude-oauth",
     /// "openai-compatible:myprofile", ...), or openai-compatible profile ids
     /// ("myprofile"). The active model's routes always stay visible.
@@ -1114,7 +1111,6 @@ impl Default for ProviderConfig {
             preserve_reasoning_context: true,
             cross_provider_failover: CrossProviderFailoverMode::Countdown,
             same_provider_account_failover: true,
-            copilot_premium: None,
             model_picker_providers: None,
             stream_idle_timeout_secs: 180,
             max_retries: 8,

@@ -29,10 +29,7 @@ pub enum LoginProviderTarget {
     OpenAi,
     OpenAiApiKey,
     OpenRouter,
-    Azure,
     OpenAiCompatible(OpenAiCompatibleProfile),
-    Cursor,
-    Copilot,
     Gemini,
     Antigravity,
 }
@@ -42,12 +39,9 @@ pub enum LoginProviderAuthStateKey {
     ExternalImport,
     Anthropic,
     OpenAi,
-    Azure,
     OpenRouterLike,
-    Copilot,
     Gemini,
     Antigravity,
-    Cursor,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -533,10 +527,6 @@ mod tests {
             Some("openai-compatible")
         );
         assert_eq!(
-            resolve_login_provider("aoai").map(|provider| provider.id),
-            Some("azure")
-        );
-        assert_eq!(
             resolve_login_provider("cerberascode").map(|provider| provider.id),
             Some("cerebras")
         );
@@ -642,15 +632,7 @@ mod tests {
         );
         assert_eq!(
             resolve_login_selection("5", &providers).map(|provider| provider.id),
-            Some("copilot")
-        );
-        assert_eq!(
-            resolve_login_selection("6", &providers).map(|provider| provider.id),
             Some("openrouter")
-        );
-        assert_eq!(
-            resolve_login_selection("7", &providers).map(|provider| provider.id),
-            Some("azure")
         );
     }
 }

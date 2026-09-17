@@ -122,8 +122,6 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
         },
         openai: AuthState::NotConfigured,
         gemini: AuthState::Available,
-        copilot: AuthState::Available,
-        cursor: AuthState::NotConfigured,
         openrouter: AuthState::Available,
         ..AuthStatus::default()
     };
@@ -136,7 +134,6 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
     }
 
     assert!(targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Claude)));
-    assert!(targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Copilot)));
     assert!(targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Gemini)));
     assert!(targets.contains(&ResolvedAuthTestTarget::Generic {
         provider: crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER,
@@ -144,7 +141,6 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
     }));
 
     assert!(!targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Openai)));
-    assert!(!targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Cursor)));
 }
 
 #[test]
@@ -622,7 +618,6 @@ fn cli_provider_choice_filter_uses_typed_api_methods() {
         test_route("gpt-5.5", "OpenAI", "openai-oauth"),
         test_route("gpt-5.5", "OpenAI", "openai-api-key"),
         test_route("deepseek/deepseek-v4-pro", "auto", "openrouter"),
-        test_route("gpt-5.5-codex", "Copilot", "copilot"),
     ];
 
     let openai = filter_cli_model_routes_for_choice(
@@ -841,7 +836,6 @@ fn list_cli_providers_includes_auto_and_openai() {
             && provider.auth_kind.as_deref() == Some("OAuth")
     }));
     assert!(providers.iter().any(|provider| provider.id == "groq"));
-    assert!(providers.iter().any(|provider| provider.id == "cursor"));
 }
 
 #[test]

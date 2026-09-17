@@ -248,8 +248,6 @@ if [[ "$SYNC_SOURCE" -eq 1 ]]; then
         --exclude '.wrangler/' \
         --exclude 'tmp/' \
         --exclude 'node_modules/' \
-        --exclude 'assets/demos/' \
-        --exclude 'assets/readme/' \
         "$LOCAL_DIR/" "$REMOTE:$REMOTE_DIR/"
 
     metadata_file="$(mktemp)"

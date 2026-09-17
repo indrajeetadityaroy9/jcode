@@ -291,8 +291,6 @@ fn ensure_profile_name_not_reserved(name: &str) -> Result<()> {
         "claude-subprocess",
         "compat",
         "custom",
-        "azure-openai",
-        "aoai",
     ];
     if resolve_login_provider(name).is_some()
         || RESERVED_PROVIDER_NAMES

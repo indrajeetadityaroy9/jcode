@@ -7,7 +7,7 @@ cd "$repo_root"
 bin=${JCODE_AUTH_MATRIX_BIN:-}
 out_dir=${JCODE_AUTH_MATRIX_OUT:-"$repo_root/target/auth-test-reports"}
 prompt=${JCODE_AUTH_MATRIX_PROMPT:-"Reply with exactly AUTH_TEST_OK and nothing else. Do not call tools."}
-providers=${JCODE_AUTH_MATRIX_PROVIDERS:-"claude copilot openrouter deepseek zai alibaba-coding-plan openai-compatible"}
+providers=${JCODE_AUTH_MATRIX_PROVIDERS:-"claude openrouter deepseek zai alibaba-coding-plan openai-compatible"}
 mode=${JCODE_AUTH_MATRIX_MODE:-configured}
 keep_going=${JCODE_AUTH_MATRIX_KEEP_GOING:-1}
 per_command_timeout=${JCODE_AUTH_MATRIX_TIMEOUT:-90}

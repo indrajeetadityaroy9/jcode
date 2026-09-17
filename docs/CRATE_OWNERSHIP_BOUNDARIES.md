@@ -116,14 +116,13 @@ It is not optional: it runs as a gate from `scripts/check_guardrails.sh:89`, so 
 violation fails the guardrail sweep.
 
 What it actually blocks: a crate whose name matches `jcode-*-types`
-(`scripts/check_dependency_boundaries.py:61-62`) may not directly depend on any
-of the 18 crates in `FORBIDDEN_INTERNAL_DEPS` (`:28-47`):
+(`scripts/check_dependency_boundaries.py:60-61`) may not directly depend on any
+of the 17 crates in `FORBIDDEN_INTERNAL_DEPS` (`:28-46`):
 
-`jcode`, `jcode-agent-runtime`, `jcode-azure-auth`, `jcode-core`,
-`jcode-embedding`, `jcode-pdf`, `jcode-plan`, `jcode-protocol`,
-`jcode-provider-core`, `jcode-provider-gemini`, `jcode-provider-metadata`,
-`jcode-provider-openrouter`, `jcode-terminal-launch`, `jcode-tui-core`,
-`jcode-tui-markdown`, `jcode-tui-mermaid`, `jcode-tui-render`,
+`jcode`, `jcode-agent-runtime`, `jcode-core`, `jcode-embedding`, `jcode-pdf`,
+`jcode-plan`, `jcode-protocol`, `jcode-provider-core`, `jcode-provider-gemini`,
+`jcode-provider-metadata`, `jcode-provider-openrouter`, `jcode-terminal-launch`,
+`jcode-tui-core`, `jcode-tui-markdown`, `jcode-tui-mermaid`, `jcode-tui-render`,
 `jcode-tui-workspace`.
 
 `jcode-message-types` is the only allowed internal dependency
@@ -168,7 +167,7 @@ Focused validation matrix after the current DTO splits:
 
 | Area | Fast compile check | Focused tests used during split | Notes |
 | --- | --- | --- | --- |
-| Usage DTOs | `cargo check --profile selfdev -p jcode-usage-types -p jcode --bin jcode` | Prefer exact tests under usage/copilot usage modules. Avoid bare `usage` as a required gate because it selects display/UI tests too. | DTO crate owns report and local counter contracts. Runtime fetch/cache/display live in `crates/jcode-base/src/usage/` and `crates/jcode-app-core/src/usage_display.rs`. |
+| Usage DTOs | `cargo check --profile selfdev -p jcode-usage-types -p jcode --bin jcode` | Prefer exact tests under usage modules. Avoid bare `usage` as a required gate because it selects display/UI tests too. | DTO crate owns provider usage report contracts. Runtime fetch/cache/display live in `crates/jcode-base/src/usage/` and `crates/jcode-app-core/src/usage_display.rs`. |
 | Ambient DTOs | `cargo check --profile selfdev -p jcode-ambient-types -p jcode --bin jcode` | Scheduler/type consumers only. | Ambient DTO crate owns usage records only. Queue/runtime/prompt behavior lives in `crates/jcode-app-core/src/ambient/`. |
 | Ambient behavior modules | `cargo check --profile selfdev -p jcode-app-core` | `cargo test --profile selfdev -p jcode-app-core ambient::ambient_tests --lib`; `cargo test --profile selfdev -p jcode-app-core ambient::scheduler::tests --lib`; `cargo test --profile selfdev -p jcode-app-core ambient::runner::runner_tests --lib` | Those three test modules are at `crates/jcode-app-core/src/ambient.rs:196-197`, `ambient/scheduler.rs:284`, and `ambient/runner.rs:1041`. Avoid bare `ambient` as a required gate for module-only refactors because it selects cross-module TUI/config state tests. |
 | Memory activity DTOs | `cargo check --profile selfdev -p jcode-memory-types -p jcode --bin jcode` | `cargo test --profile selfdev -p jcode-base runtime_memory_log --lib`; `cargo test --profile selfdev -p jcode-tui tui::info_widget::tests --lib` | `memory::activity` matches no tests, so use consumer tests. The log tests are at `crates/jcode-base/src/runtime_memory_log.rs:823`; the widget tests at `crates/jcode-tui/src/tui/info_widget.rs:2110-2112`. |
@@ -198,7 +197,7 @@ Implication: the compile-speed target is not simply "move things out of the spin
 crate.
 
 It is also on the boundary guard's forbidden list for type crates
-(`scripts/check_dependency_boundaries.py:32`), specifically so it cannot become
+(`scripts/check_dependency_boundaries.py:31`), specifically so it cannot become
 the DTO backdoor.
 
 The DTO-staging modules this audit was written about are gone: `jcode-core` now
@@ -216,8 +215,8 @@ contains only general utilities.
 | `util` | Misc utilities | audit later; should not become a catch-all |
 
 Domain DTOs that used to be staged here have all left: `ambient_usage_types` ->
-`jcode-ambient-types`; `copilot_usage_types` and `usage_types` ->
-`jcode-usage-types`; `memory_types` -> `jcode-memory-types` (re-exported at
+`jcode-ambient-types`; `usage_types` -> `jcode-usage-types`; `memory_types` ->
+`jcode-memory-types` (re-exported at
 `crates/jcode-base/src/memory_types.rs`). `catchup_types`, `goal_types`, and
 `todo_types` were never split into crates — their DTOs are inline in
 `crates/jcode-app-core/src/catchup.rs`, `crates/jcode-base/src/goal.rs`, and
@@ -234,7 +233,7 @@ Compile-speed priority from this audit:
 
 Landed domain type splits:
 
-1. `jcode-usage-types` — provider usage report DTOs and local Copilot counters
+1. `jcode-usage-types` — provider usage report DTOs
 2. `jcode-ambient-types` — ambient scheduler usage records and rate-limit DTOs
 3. `jcode-memory-types` — memory activity DTOs plus the memory graph
 

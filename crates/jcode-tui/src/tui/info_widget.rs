@@ -293,8 +293,6 @@ pub enum UsageProvider {
     OpenAI,
     /// OpenRouter/API-key providers (shows token costs)
     CostBased,
-    /// GitHub Copilot (shows session token counts, no cost)
-    Copilot,
 }
 
 impl UsageProvider {
@@ -304,7 +302,6 @@ impl UsageProvider {
             UsageProvider::Anthropic => "Anthropic",
             UsageProvider::OpenAI => "OpenAI",
             UsageProvider::CostBased => "",
-            UsageProvider::Copilot => "Copilot",
         }
     }
 }
@@ -328,8 +325,6 @@ pub enum AuthMethod {
     OpenRouterApiKey,
     /// OpenCode API key
     OpenCodeApiKey,
-    /// GitHub Copilot OAuth
-    CopilotOAuth,
     /// Google Gemini OAuth
     GeminiOAuth,
 }
@@ -1103,7 +1098,7 @@ pub(crate) fn calculate_widget_height(
                 && info.available
             {
                 match info.provider {
-                    UsageProvider::CostBased | UsageProvider::Copilot => {
+                    UsageProvider::CostBased => {
                         h += 1; // Cost/tokens line
                         if info.cache_read_tokens.is_some() || info.cache_write_tokens.is_some() {
                             h += 1; // Cache line

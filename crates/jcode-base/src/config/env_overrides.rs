@@ -563,21 +563,6 @@ impl Config {
         {
             self.provider.retry_backoff_cap_secs = parsed;
         }
-
-        // Copilot premium mode: env var overrides config
-        // If set in config but not in env, propagate config -> env
-        if let Ok(v) = std::env::var("JCODE_COPILOT_PREMIUM") {
-            self.provider.copilot_premium = Some(v);
-        } else if let Some(ref mode) = self.provider.copilot_premium {
-            let env_val = match mode.as_str() {
-                "zero" | "0" => "0",
-                "one" | "1" => "1",
-                _ => "",
-            };
-            if !env_val.is_empty() {
-                crate::env::set_var("JCODE_COPILOT_PREMIUM", env_val);
-            }
-        }
     }
 }
 

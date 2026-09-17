@@ -538,106 +538,6 @@ async fn notify_auth_changed_defers_busy_session_refresh_until_idle() {
     panic!("busy session provider was not refreshed after it became idle");
 }
 
-#[tokio::test]
-async fn notify_auth_changed_with_azure_hint_applies_runtime_model_without_completion() {
-    let _guard = EnvGuard::save(&[
-        "AZURE_OPENAI_ENDPOINT",
-        "AZURE_OPENAI_MODEL",
-        "AZURE_OPENAI_API_KEY",
-        "AZURE_OPENAI_USE_ENTRA",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_MODEL_CATALOG",
-        "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
-        "JCODE_OPENROUTER_MODEL",
-        "JCODE_RUNTIME_PROVIDER",
-        "JCODE_ACTIVE_PROVIDER",
-        "JCODE_INITIAL_PROVIDER_EXPLICIT",
-    ]);
-    crate::env::set_var("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com");
-    crate::env::set_var("AZURE_OPENAI_MODEL", "azure-deployment");
-    crate::env::set_var("AZURE_OPENAI_API_KEY", "test-key");
-    crate::env::set_var("AZURE_OPENAI_USE_ENTRA", "0");
-
-    crate::bus::reset_models_updated_publish_state_for_tests();
-    let provider = Arc::new(AuthChangeMockProvider::new());
-    let state = Arc::clone(&provider.state);
-    let provider: Arc<dyn Provider> = provider;
-    let registry = Registry::empty();
-    let agent = Arc::new(Mutex::new(Agent::new(provider.clone(), registry)));
-    let session_id = { agent.lock().await.session_id().to_string() };
-    let sessions: SessionAgents = Arc::new(RwLock::new(HashMap::from([(
-        "test-session".to_string(),
-        Arc::clone(&agent),
-    )])));
-    let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
-
-    handle_notify_auth_changed(
-        44,
-        Some("Azure OpenAI".to_string()),
-        None,
-        &provider,
-        &provider,
-        &sessions,
-        session_id.as_str(),
-        &agent,
-        &client_event_tx,
-    )
-    .await;
-
-    let mut saw_done = false;
-    let mut saw_models = None;
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
-    while tokio::time::Instant::now() < deadline {
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        let event = tokio::time::timeout(remaining, client_event_rx.recv())
-            .await
-            .expect("receive server event before timeout");
-        match event.expect("channel open") {
-            ServerEvent::Done { id } => {
-                assert_eq!(id, 44);
-                saw_done = true;
-            }
-            ServerEvent::AvailableModelsUpdated {
-                provider_model,
-                available_models,
-                ..
-            } => {
-                saw_models = Some((provider_model, available_models));
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    assert!(saw_done, "expected immediate Done ack");
-    let (provider_model, available_models) = saw_models.expect("expected model refresh event");
-    assert_eq!(provider_model.as_deref(), Some("azure-deployment"));
-    assert!(
-        available_models
-            .iter()
-            .any(|model| model == "azure-deployment")
-    );
-    assert_eq!(
-        std::env::var("JCODE_RUNTIME_PROVIDER").as_deref(),
-        Ok("azure-openai")
-    );
-    assert_eq!(
-        std::env::var("JCODE_ACTIVE_PROVIDER").as_deref(),
-        Ok("openrouter")
-    );
-    assert_eq!(
-        state.complete_calls.load(Ordering::SeqCst),
-        0,
-        "auth refresh must not issue a completion with the old prompt/model"
-    );
-}
-
 #[test]
 fn cerebras_auth_hint_applies_openai_compatible_runtime_profile() {
     let _guard = EnvGuard::save(&[
@@ -649,7 +549,6 @@ fn cerebras_auth_hint_applies_openai_compatible_runtime_profile() {
         "JCODE_OPENROUTER_TRANSPORT_STATE",
         "JCODE_OPENROUTER_MODEL_CATALOG",
         "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_OPENROUTER_MODEL",
         "JCODE_RUNTIME_PROVIDER",
         "JCODE_ACTIVE_PROVIDER",
@@ -704,7 +603,6 @@ async fn notify_auth_changed_typed_cerebras_event_controls_user_visible_catalog_
         "JCODE_OPENROUTER_TRANSPORT_STATE",
         "JCODE_OPENROUTER_MODEL_CATALOG",
         "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_OPENROUTER_MODEL",
         "JCODE_RUNTIME_PROVIDER",
         "JCODE_ACTIVE_PROVIDER",
@@ -784,7 +682,6 @@ async fn notify_auth_changed_switches_from_stale_model_to_matching_provider_rout
         "JCODE_OPENROUTER_TRANSPORT_STATE",
         "JCODE_OPENROUTER_MODEL_CATALOG",
         "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_OPENROUTER_MODEL",
         "JCODE_RUNTIME_PROVIDER",
         "JCODE_ACTIVE_PROVIDER",
@@ -862,7 +759,6 @@ async fn notify_auth_changed_does_not_override_manual_model_selected_during_refr
         "JCODE_OPENROUTER_TRANSPORT_STATE",
         "JCODE_OPENROUTER_MODEL_CATALOG",
         "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_OPENROUTER_MODEL",
         "JCODE_RUNTIME_PROVIDER",
         "JCODE_ACTIVE_PROVIDER",
@@ -988,7 +884,6 @@ async fn auth_model_first_prompt_e2e_state_space_is_bounded_by_selection_source(
             "JCODE_OPENROUTER_TRANSPORT_STATE",
             "JCODE_OPENROUTER_MODEL_CATALOG",
             "JCODE_OPENROUTER_AUTH_HEADER",
-            "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
             "JCODE_OPENROUTER_MODEL",
             "JCODE_RUNTIME_PROVIDER",
             "JCODE_ACTIVE_PROVIDER",
@@ -1159,7 +1054,6 @@ async fn notify_auth_changed_switches_only_current_session_model() {
         "JCODE_OPENROUTER_TRANSPORT_STATE",
         "JCODE_OPENROUTER_MODEL_CATALOG",
         "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
         "JCODE_OPENROUTER_MODEL",
         "JCODE_RUNTIME_PROVIDER",
         "JCODE_ACTIVE_PROVIDER",

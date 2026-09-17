@@ -307,9 +307,7 @@ pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
     let fallback = match normalized_name.as_str() {
         "anthropic" | "claude" | "claude cli" => "claude",
         "openai" => "openai",
-        "github copilot" | "copilot" => "copilot",
         "openrouter" => "openrouter",
-        "cursor" => "cursor",
         "gemini" => "gemini",
         "antigravity" => "antigravity",
         "" => return None,

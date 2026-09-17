@@ -129,16 +129,16 @@ impl Provider for AuthRefreshingMockProvider {
             vec![
                 crate::provider::ModelRoute {
                     model: "claude-opus-4.6".to_string(),
-                    provider: "Copilot".to_string(),
-                    api_method: "copilot".to_string(),
+                    provider: "Gemini".to_string(),
+                    api_method: "gemini".to_string(),
                     available: true,
                     detail: String::new(),
                     cheapness: None,
                 },
                 crate::provider::ModelRoute {
                     model: "deepseek-v4-flash".to_string(),
-                    provider: "Copilot".to_string(),
-                    api_method: "copilot".to_string(),
+                    provider: "Gemini".to_string(),
+                    api_method: "gemini".to_string(),
                     available: true,
                     detail: String::new(),
                     cheapness: None,
@@ -357,8 +357,8 @@ impl Provider for LoginSmokeModelProvider {
             },
             crate::provider::ModelRoute {
                 model: "claude-opus-4.6".to_string(),
-                provider: "Copilot".to_string(),
-                api_method: "copilot".to_string(),
+                provider: "Gemini".to_string(),
+                api_method: "gemini".to_string(),
                 available: true,
                 detail: String::new(),
                 cheapness: None,
@@ -435,8 +435,8 @@ impl Provider for FailingModelSwitchProvider {
     fn model_routes(&self) -> Vec<crate::provider::ModelRoute> {
         vec![crate::provider::ModelRoute {
             model: "claude-opus-4.6".to_string(),
-            provider: "Copilot".to_string(),
-            api_method: "copilot".to_string(),
+            provider: "Gemini".to_string(),
+            api_method: "gemini".to_string(),
             available: true,
             detail: String::new(),
             cheapness: None,
