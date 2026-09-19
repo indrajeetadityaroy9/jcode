@@ -4,9 +4,7 @@ use std::collections::BTreeSet;
 
 pub fn is_listable_model_name(model: &str) -> bool {
     let trimmed = model.trim();
-    !trimmed.is_empty()
-        && trimmed != "openrouter models"
-        && !model_name_is_likely_non_chat(trimmed)
+    !trimmed.is_empty() && trimmed != "openrouter models" && !model_name_is_likely_non_chat(trimmed)
 }
 
 /// Heuristic to keep obviously non-chat models out of the chat model picker:

@@ -159,13 +159,7 @@ impl ExternalAuthAutoImportOutcome {
     /// by the remaining supported providers. The precise OAuth/API-key variant
     /// is resolved from `AuthStatus` by the caller when possible.
     pub fn preferred_activation_provider(&self) -> Option<&'static str> {
-        const ORDER: &[&str] = &[
-            "claude",
-            "openai",
-            "gemini",
-            "antigravity",
-            "openrouter",
-        ];
+        const ORDER: &[&str] = &["claude", "openai", "gemini", "antigravity", "openrouter"];
         ORDER.iter().copied().find(|provider| {
             self.imported_auth_labels
                 .iter()
@@ -284,7 +278,6 @@ pub fn pending_external_auth_review_candidates() -> Result<Vec<ExternalAuthRevie
             action: ExternalAuthReviewAction::GeminiCli,
         });
     }
-
 
     Ok(candidates)
 }
@@ -483,7 +476,6 @@ async fn validate_antigravity_import() -> Result<String> {
         token_freshness_note(tokens.expires_at)
     ))
 }
-
 
 fn validate_openrouter_like_import() -> Result<String> {
     for (env_key, env_file) in crate::provider_catalog::openrouter_like_api_key_sources() {

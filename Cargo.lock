@@ -2071,6 +2071,7 @@ dependencies = [
  "jcode-base",
  "jcode-build-meta",
  "jcode-build-support",
+ "jcode-chrome",
  "jcode-command-risk",
  "jcode-core",
  "jcode-dev-types",
@@ -2212,6 +2213,19 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "jcode-chrome"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "libc",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]

@@ -17,6 +17,14 @@ pub(super) struct SessionJournalMeta {
     pub(super) provider_session_id: Option<String>,
     pub(super) provider_key: Option<String>,
     pub(super) model: Option<String>,
+    /// Auth/transport route for `model` (e.g. `claude-oauth` vs `claude-api`).
+    ///
+    /// Double `Option` so "field absent" is distinguishable from "explicitly
+    /// null". Journals written before this field existed omit it entirely; those
+    /// entries must leave the snapshot's route intact rather than clearing it.
+    /// `None` = absent, don't touch; `Some(v)` = authoritative, apply `v`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) route_api_method: Option<Option<String>>,
     #[serde(default)]
     pub(super) reasoning_effort: Option<String>,
     pub(super) subagent_model: Option<String>,
@@ -68,6 +76,21 @@ pub(super) struct SessionPersistState {
     pub(super) last_meta: Option<SessionJournalMeta>,
 }
 
+/// Whether a metadata change is important enough to rewrite the whole snapshot
+/// instead of riding along on the next journal append.
+///
+/// Deliberately excludes the high-churn fields — `updated_at`,
+/// `last_active_at`, `last_pid`, `model`, `route_api_method`,
+/// `provider_session_id`, `compaction` — because rewriting a
+/// multi-hundred-KiB snapshot on every `/model` is not worth it.
+///
+/// The consequence, and the reason this needs saying: **for any field listed
+/// here as excluded, the snapshot on disk may be arbitrarily stale.** Readers
+/// must overlay the journal tail (see `journal_tail_meta`) rather than trusting
+/// `<id>.json` alone. Skipping that overlay is what made swarm workers inherit
+/// the model their coordinator had already switched away from. If you add a
+/// metadata field that any loader reads, either list it here or make sure every
+/// loader goes through the overlay.
 pub(super) fn metadata_requires_snapshot(
     prev: &SessionJournalMeta,
     current: &SessionJournalMeta,

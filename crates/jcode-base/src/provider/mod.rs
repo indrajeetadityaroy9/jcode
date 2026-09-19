@@ -52,11 +52,11 @@ pub use jcode_provider_core::{
     CHEAPNESS_REFERENCE_OUTPUT_TOKENS, CredentialMode, DEFAULT_CONTEXT_LIMIT, EventStream,
     JCODE_USER_AGENT, ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute,
     ModelRouteApiMethod, NativeCompactionResult, NativeToolResult, NativeToolResultSender,
-    Provider, RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence,
-    RouteCostSource, RouteSelection, RuntimeKey, dedupe_model_routes,
-    explicit_model_provider_prefix, fresh_transport_client, inferred_reasoning_efforts,
-    model_name_for_provider, normalize_dotted_model_version, provider_from_model_key,
-    shared_http_client, summarize_model_catalog_refresh,
+    Provider, RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource,
+    RouteSelection, RuntimeKey, dedupe_model_routes, explicit_model_provider_prefix,
+    fresh_transport_client, inferred_reasoning_efforts, model_name_for_provider,
+    normalize_dotted_model_version, provider_from_model_key, shared_http_client,
+    summarize_model_catalog_refresh,
 };
 pub use jcode_provider_core::{
     FallbackPickOptions, error_looks_like_credential_failure, model_route_provider_labels_match,
@@ -65,8 +65,8 @@ pub use jcode_provider_core::{
 };
 pub use jcode_provider_core::{ProviderFailoverPrompt, parse_failover_prompt_message};
 pub use route_builders::{
-    build_anthropic_oauth_route, build_openai_api_key_route,
-    build_openai_oauth_route, build_openrouter_auto_route, build_openrouter_endpoint_route,
+    build_anthropic_oauth_route, build_openai_api_key_route, build_openai_oauth_route,
+    build_openrouter_auto_route, build_openrouter_endpoint_route,
     build_openrouter_fallback_provider_route, is_listable_model_name,
     listable_model_names_from_routes, openrouter_catalog_model_id,
 };

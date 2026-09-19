@@ -26,6 +26,7 @@ pub(crate) mod session_search_index;
 mod side_panel;
 mod skill;
 mod todo;
+mod web;
 mod webfetch;
 mod websearch;
 mod write;

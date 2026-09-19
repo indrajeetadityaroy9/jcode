@@ -10,7 +10,6 @@
     "scripts/test_analyze_runtime_memory_log.py": "unit tests for scripts/analyze_runtime_memory_log.py; run by hand (python3 <path>)",
     "scripts/test_budget_common.py": "unit tests for scripts/budget_common.py; run by hand (python3 <path>)",
     "scripts/test_caching_detailed.py": "live prompt-cache probe; needs real provider credentials, so human-invoked only",
-    "scripts/test_ci_suites.py": "checks the CI suite split; human-invoked, and this fork has no CI to call it",
     "scripts/test_dag_live.py": "live swarm DAG exercise; spawns real sessions, so never automated",
     "scripts/test_dev_cargo_jobs.sh": "checks dev_cargo.sh job math; human-invoked when that script changes",
     "scripts/test_install_release_metadata.sh": "validates install_release.sh metadata; human-invoked before an install",

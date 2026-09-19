@@ -129,7 +129,7 @@ Deliverables:
 - `scripts/compile_time_probe.sh` (exists)
 - `scripts/compile_isolation_report.py` (exists, advisory)
 - this document
-- `scripts/check_dependency_boundaries.py`, gated at `scripts/check_guardrails.sh:89`
+- `scripts/check_dependency_boundaries.py`, gated at `scripts/check_guardrails.sh:84`
 
 Success criteria:
 
@@ -176,7 +176,7 @@ Success criteria:
 Status: **step 1 done, steps 2-3 open.** The ladder is intact
 (`crates/jcode-app-core/src/lib.rs:24`, `crates/jcode-tui/src/lib.rs:23`,
 `src/lib.rs:22`), but it is now ratcheted: `scripts/check_wildcard_reexport_budget.py`
-runs as a gate (`scripts/check_guardrails.sh:90`) against a 17-entry baseline
+runs as a gate (`scripts/check_guardrails.sh:85`) against a 17-entry baseline
 (`scripts/wildcard_reexport_budget.json`), so no new whole-crate glob can land
 without an explicit rebaseline.
 

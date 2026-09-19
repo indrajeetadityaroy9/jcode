@@ -1003,8 +1003,7 @@ fn assessment_for_key(
                 AuthValidationMethod::TimestampCheck,
             )
         }
-        LoginProviderAuthStateKey::OpenRouterLike
-        | LoginProviderAuthStateKey::ExternalImport => (
+        LoginProviderAuthStateKey::OpenRouterLike | LoginProviderAuthStateKey::ExternalImport => (
             AuthCredentialSource::None,
             "not configured".to_string(),
             AuthExpiryConfidence::Unknown,

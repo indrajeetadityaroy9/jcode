@@ -1,10 +1,12 @@
 use anyhow::{Result, bail};
 use chrono::Utc;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use super::journal::{PersistVectorMode, SessionJournalEntry, metadata_requires_snapshot};
+use super::journal::{
+    PersistVectorMode, SessionJournalEntry, SessionJournalMeta, metadata_requires_snapshot,
+};
 use super::storage_paths::{file_len_or_zero, session_journal_path_from_snapshot, session_path};
 use super::{MAX_SESSION_JOURNAL_BYTES, RemoteStartupSessionSnapshot, Session, SessionStartupStub};
 use crate::storage;
@@ -60,6 +62,98 @@ fn salvage_glued_journal_entries(line: &str, mut apply: impl FnMut(SessionJourna
         search_from = candidate_start + ENTRY_START.len();
     }
     salvaged
+}
+
+/// Read the authoritative metadata from a session journal without parsing the
+/// transcript.
+///
+/// Every journal entry carries a *complete* [`SessionJournalMeta`], so the last
+/// parseable entry is the current metadata — no replay needed. That matters
+/// because the fields spawn inheritance and the session pickers read (`model`,
+/// `route_api_method`, `last_pid`, `updated_at`) are **not** in
+/// `metadata_requires_snapshot`, so a change to any of them lands in the
+/// journal and leaves the snapshot stale until some unrelated field forces a
+/// checkpoint. Reading the snapshot alone therefore reports a stale model, and
+/// swarm workers silently inherited the model their coordinator had switched
+/// *away* from.
+///
+/// Genuinely reads only the tail: it seeks to a window at the end of the file
+/// and grows that window only if nothing in it parses. These callers are hot —
+/// the menubar helper polls ~1 Hz and crash detection stats every session in
+/// the directory — and a worker's journal routinely dwarfs its snapshot, since
+/// the creation checkpoint is tiny while the whole conversation accumulates as
+/// appends. A 2 KiB snapshot beside a 400 KiB journal is the normal shape.
+///
+/// `Ok(None)` means "no journal metadata to overlay": the journal does not
+/// exist yet (every metadata change so far is in the snapshot), it is empty, or
+/// nothing in it parses. Real I/O failures propagate so the caller decides,
+/// rather than being silently indistinguishable from an absent journal.
+fn journal_tail_meta(journal_path: &Path) -> std::io::Result<Option<SessionJournalMeta>> {
+    /// Comfortably larger than a metadata-only append, so the common case is a
+    /// single short read.
+    const INITIAL_WINDOW: u64 = 32 * 1024;
+
+    let mut file = match std::fs::File::open(journal_path) {
+        Ok(file) => file,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(err),
+    };
+    let len = file.metadata()?.len();
+    if len == 0 {
+        return Ok(None);
+    }
+
+    let mut window = INITIAL_WINDOW;
+    loop {
+        let start = len.saturating_sub(window);
+        file.seek(SeekFrom::Start(start))?;
+        let mut buf = Vec::with_capacity((len - start) as usize);
+        file.by_ref().take(len - start).read_to_end(&mut buf)?;
+        let text = String::from_utf8_lossy(&buf);
+
+        // Unless the window covers the whole file, its first line is cut
+        // mid-entry (and may hold a partial UTF-8 sequence); drop it.
+        let body = if start == 0 {
+            text.as_ref()
+        } else {
+            text.find('\n').map_or("", |nl| &text[nl + 1..])
+        };
+        if let Some(meta) = last_parseable_journal_meta(body) {
+            return Ok(Some(meta));
+        }
+        if start == 0 {
+            // Already scanned the entire journal.
+            return Ok(None);
+        }
+        // A single entry can exceed the window (a large tool result), so widen
+        // and retry. Total bytes read stays within ~1.4x the file even if this
+        // has to walk all the way back to offset 0.
+        window = window.saturating_mul(4);
+    }
+}
+
+/// Last entry in `body` whose JSON parses, scanning backwards.
+///
+/// Backwards so a torn *final* append falls back to the last intact entry
+/// rather than discarding the journal's metadata entirely.
+fn last_parseable_journal_meta(body: &str) -> Option<SessionJournalMeta> {
+    for line in body.lines().rev() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Ok(entry) = serde_json::from_str::<SessionJournalEntry>(trimmed) {
+            return Some(entry.meta);
+        }
+        // A glued line (`<torn><complete>`) still holds recoverable entries;
+        // reuse the salvage scanner and take the last one it yields.
+        let mut recovered = None;
+        salvage_glued_journal_entries(trimmed, |entry| recovered = Some(entry.meta));
+        if recovered.is_some() {
+            return recovered;
+        }
+    }
+    None
 }
 
 /// Replay every parseable entry from a session journal, tolerating corrupt
@@ -307,11 +401,32 @@ impl Session {
     /// This intentionally skips heavyweight transcript vectors so the remote
     /// client can paint quickly while the server performs the authoritative
     /// session restore + history bootstrap.
+    ///
+    /// The snapshot alone is *not* authoritative for metadata: fields outside
+    /// `metadata_requires_snapshot` (notably `model`, `route_api_method`,
+    /// `last_pid`, `updated_at`) persist as journal appends, so the tail is
+    /// overlaid on top. See [`journal_tail_meta`] for why this is a tail read
+    /// and not a replay.
     pub fn load_startup_stub(session_id: &str) -> Result<Self> {
         let path = session_path(session_id)?;
         let reader = BufReader::new(std::fs::File::open(&path)?);
         let stub: SessionStartupStub = serde_json::from_reader(reader)?;
-        Ok(Self::session_from_startup_stub(stub))
+        let mut session = Self::session_from_startup_stub(stub);
+        let journal_path = session_journal_path_from_snapshot(&path);
+        match journal_tail_meta(&journal_path) {
+            Ok(Some(meta)) => session.apply_journal_meta(meta),
+            Ok(None) => {}
+            // Degrade to the snapshot rather than failing the load: these
+            // callers (menubar poll, crash scan, spawn identity) drop the
+            // session entirely on `Err`, and slightly stale metadata beats a
+            // session that vanishes because its journal briefly failed to read.
+            Err(err) => crate::logging::warn(&format!(
+                "session {}: journal metadata unreadable ({}), using snapshot metadata which may be stale: {err}",
+                session.id,
+                journal_path.display()
+            )),
+        }
+        Ok(session)
     }
 
     pub fn load_for_remote_startup(session_id: &str) -> Result<Self> {

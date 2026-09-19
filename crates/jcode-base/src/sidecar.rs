@@ -1349,13 +1349,7 @@ mod tests {
             .build()
             .unwrap();
 
-        for provider in [
-            "claude",
-            "openai",
-            "antigravity",
-            "gemini",
-            "openrouter",
-        ] {
+        for provider in ["claude", "openai", "antigravity", "gemini", "openrouter"] {
             crate::provider::set_active_provider(std::sync::Arc::new(StubProvider {
                 name: provider,
                 reply: "[1]".to_string(),

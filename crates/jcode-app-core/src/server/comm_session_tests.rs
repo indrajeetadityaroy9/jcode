@@ -801,6 +801,58 @@ async fn coordinator_identity_falls_back_to_persisted_session_when_agent_busy() 
     crate::env::remove_var("JCODE_HOME");
 }
 
+/// The real-world failure: the coordinator switches model mid-session, then a
+/// tool call spawns a swarm worker.
+///
+/// `/model` only rewrites the snapshot when it also changes a field in
+/// `metadata_requires_snapshot`; switching between two models on the same
+/// provider persists as a journal append alone. And because the agent mutex is
+/// held for the whole turn, a tool-initiated spawn always takes the
+/// persisted-session fallback below. Together those meant workers inherited the
+/// model the coordinator had switched *away* from — indefinitely, until some
+/// unrelated change happened to force a checkpoint.
+///
+/// Note the contrast with the test above, which sets `provider_key` before its
+/// only `save()` and therefore always checkpoints: it can never observe this.
+#[tokio::test]
+async fn coordinator_identity_reflects_a_model_switch_that_did_not_checkpoint() {
+    let _guard = crate::storage::lock_test_env();
+    let temp_home = tempfile::TempDir::new().expect("temp home");
+    crate::env::set_var("JCODE_HOME", temp_home.path());
+
+    let agent = test_agent_with_working_dir("coord_switch", "/tmp/coord").await;
+
+    let mut session =
+        crate::session::Session::create_with_id("coord_switch".to_string(), None, None);
+    session.model = Some("gpt-5.5".to_string());
+    session.provider_key = Some("openai-oauth".to_string());
+    session.route_api_method = Some("openai-oauth".to_string());
+    session.save().expect("checkpoint coordinator session");
+
+    // `/model gpt-5.6-sol`: same provider, so no snapshot rewrite.
+    session.model = Some("gpt-5.6-sol".to_string());
+    session.save().expect("persist model switch");
+
+    // Coordinator mid-turn: the spawn path cannot take the agent lock.
+    let _held = agent.lock().await;
+    let sessions = Arc::new(RwLock::new(HashMap::new()));
+    sessions
+        .write()
+        .await
+        .insert("coord_switch".to_string(), Arc::clone(&agent));
+
+    let identity = resolve_coordinator_spawn_identity("coord_switch", &sessions).await;
+    assert_eq!(
+        identity.model.as_deref(),
+        Some("gpt-5.6-sol"),
+        "worker must inherit the coordinator's current model, not the model it \
+         had at the last snapshot checkpoint"
+    );
+    assert_eq!(identity.route_api_method.as_deref(), Some("openai-oauth"));
+
+    crate::env::remove_var("JCODE_HOME");
+}
+
 #[tokio::test]
 async fn spawn_bootstraps_coordinator_when_swarm_has_none() {
     let swarm_members = Arc::new(RwLock::new(HashMap::new()));

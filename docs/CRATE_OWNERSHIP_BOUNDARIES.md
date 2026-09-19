@@ -112,7 +112,7 @@ Run this guard after adding or changing any type crate dependency:
 python3 scripts/check_dependency_boundaries.py
 ```
 
-It is not optional: it runs as a gate from `scripts/check_guardrails.sh:89`, so a
+It is not optional: it runs as a gate from `scripts/check_guardrails.sh:84`, so a
 violation fails the guardrail sweep.
 
 What it actually blocks: a crate whose name matches `jcode-*-types`

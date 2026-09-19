@@ -8,7 +8,7 @@ instead is a four-crate vertical spine — `jcode` (cli + bin) -> `jcode-tui` ->
 (`Cargo.toml:9-81`). Of the ten dependency rules below, exactly one slice is
 machine-enforced: `*-types` crates may not depend on the runtime/UI crates in
 `FORBIDDEN_INTERNAL_DEPS` (`scripts/check_dependency_boundaries.py:28-46`), gated
-at `scripts/check_guardrails.sh:89`. Everything else here is advisory.
+at `scripts/check_guardrails.sh:84`. Everything else here is advisory.
 
 This RFC describes a modular target architecture for jcode. It was written while
 the product was still one monolithic root crate; the "Current Architecture"
@@ -107,7 +107,7 @@ description that this RFC opened with no longer applies:
   That ladder is why dependency direction is still invisible at import sites. It
   is tracked as debt by the wildcard re-export ratchet
   (`scripts/wildcard_reexport_budget.json`, gated at
-  `scripts/check_guardrails.sh:90`), which currently baselines 17 whole-crate
+  `scripts/check_guardrails.sh:85`), which currently baselines 17 whole-crate
   globs across 17 files.
 
 ### Workspace inventory
@@ -392,9 +392,9 @@ What is actually enforced today, versus advisory:
 
 | Claim | Status | Evidence |
 |---|---|---|
-| `*-types` crates may not depend on runtime/UI/provider/protocol crates | **enforced** | `scripts/check_dependency_boundaries.py:28-46`, gated at `scripts/check_guardrails.sh:89` |
-| whole-crate `pub use ...::*` re-exports may not grow past baseline | **enforced** | `scripts/check_wildcard_reexport_budget.py`, gated at `scripts/check_guardrails.sh:90` |
-| module declarations must resolve to files | **enforced** | `scripts/check_module_files.py`, gated at `scripts/check_guardrails.sh:64` |
+| `*-types` crates may not depend on runtime/UI/provider/protocol crates | **enforced** | `scripts/check_dependency_boundaries.py:28-46`, gated at `scripts/check_guardrails.sh:84` |
+| whole-crate `pub use ...::*` re-exports may not grow past baseline | **enforced** | `scripts/check_wildcard_reexport_budget.py`, gated at `scripts/check_guardrails.sh:85` |
+| module declarations must resolve to files | **enforced** | `scripts/check_module_files.py`, gated at `scripts/check_guardrails.sh:59` |
 | target-state crate/LOC/`async_trait` advisories | advisory | `scripts/compile_isolation_report.py:4-5` (non-zero exit only with `--strict-target-state`, `:174-178`, `:244-246`) |
 | every other rule in [Dependency Rules](#dependency-rules) | advisory | no script checks them |
 
@@ -875,7 +875,7 @@ entries and blocks direct dependencies from any `jcode-*-types` crate onto
 `jcode-tui-markdown`, `jcode-tui-mermaid`, `jcode-tui-render`,
 `jcode-tui-workspace`). Only `jcode-message-types` is allowed
 (`ALLOWED_INTERNAL_TYPE_DEPS`, `:21-23`). The gate runs from
-`scripts/check_guardrails.sh:89`.
+`scripts/check_guardrails.sh:84`.
 
 Two gaps worth knowing: the list does **not** contain `jcode-base`,
 `jcode-app-core`, or `jcode-tui`, so a type crate depending on a spine crate
@@ -979,8 +979,8 @@ Deliverables:
 
 Landed since: the `*-types` slice of Rule 1 became a real gate
 (`scripts/check_dependency_boundaries.py`, wired at
-`scripts/check_guardrails.sh:89`) and the glob ladder became a ratcheted budget
-(`scripts/check_wildcard_reexport_budget.py`, `scripts/check_guardrails.sh:90`).
+`scripts/check_guardrails.sh:84`) and the glob ladder became a ratcheted budget
+(`scripts/check_wildcard_reexport_budget.py`, `scripts/check_guardrails.sh:85`).
 
 ### Phase 1: Finish internal module decomposition — partly done
 

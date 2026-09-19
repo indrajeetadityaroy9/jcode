@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
-# Run every gate in CI's "Quality Guardrails" + "Format" jobs, locally.
+# Run every quality gate in one pass.
 #
-# Why this exists: the guardrail steps live only in .github/workflows/ci.yml, so
-# the usual way to discover one is to push and watch master go red. That is slow
-# and, with several agents pushing in parallel, it means whoever pushes next
-# inherits someone else's red build. Run this before pushing instead.
+# Why this exists: the gates live in a dozen separate scripts with different
+# invocations and flags, so the usual way to discover a failing one is to trip
+# over it mid-change. Run this before committing instead.
 #
 # Usage:
 #   scripts/check_guardrails.sh              # check only, non-zero on failure
 #   scripts/check_guardrails.sh --fix        # rustfmt + rebaseline ratchets
 #   scripts/check_guardrails.sh --skip-slow  # skip cargo check/clippy/machete
-#
-# Note: CI tracks the `stable` toolchain. If your local stable is behind, clippy
-# can pass here and fail in CI on a newly added lint, so this warns when the two
-# are likely to disagree. Run `rustup update stable` to align them.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -24,7 +19,7 @@ for arg in "$@"; do
     case "$arg" in
         --fix) FIX=true ;;
         --skip-slow) SKIP_SLOW=true ;;
-        -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown flag: $arg (try --help)" >&2; exit 2 ;;
     esac
 done
@@ -78,8 +73,8 @@ else
         cargo clippy --all-targets --all-features -j "$JOBS" -- -D warnings
 fi
 
-# Only the Windows CI jobs pass --locked, so a stale lockfile otherwise passes
-# 8 of 9 jobs and fails Windows at "Build release binary".
+# A stale lockfile is otherwise invisible: every other gate resolves it happily
+# and only a `--locked` build refuses.
 run_gate "Cargo.lock is up to date" cargo metadata --locked --format-version 1
 run_gate "warning budget" bash scripts/check_warning_budget.sh
 run_ratchet "oversized-file ratchet" check_code_size_budget.py
@@ -97,15 +92,6 @@ elif command -v cargo-machete >/dev/null 2>&1; then
     run_gate "unused dependencies (cargo machete)" cargo machete
 else
     echo "⏭  cargo machete (not installed: cargo install cargo-machete --locked)"
-fi
-
-echo ""
-# CI installs the current `stable`; a stale local toolchain hides new lints.
-if command -v rustup >/dev/null 2>&1; then
-    installed="$(rustup run stable rustc --version 2>/dev/null | awk '{print $2}')"
-    if [[ -n "$installed" ]]; then
-        echo "toolchain: stable = $installed (CI uses whatever \`stable\` is today)"
-    fi
 fi
 
 if (( ${#FAILED[@]} )); then

@@ -1401,5 +1401,4 @@ mod tests {
             }) if model == "test-model-b" && provider_name == "test-effort"
         ));
     }
-
 }

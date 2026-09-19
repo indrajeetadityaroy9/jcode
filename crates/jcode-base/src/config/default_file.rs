@@ -261,12 +261,21 @@ persist_memory_injections = false
 kv_cache_miss_notices = true
 
 [websearch]
-# Base URL of the SearXNG instance the websearch tool queries. SearXNG is a
-# metasearch front end: it queries the upstream engines itself and returns
-# their aggregated results as JSON, so it needs no API keys and is not subject
-# to the TLS-fingerprinting / IP-reputation blocks that break direct scraping.
-# The instance must have the JSON format enabled (`formats: [html, json]`).
-# Override with the SEARXNG_URL environment variable.
+# Search backend. "chrome" (default) drives a headless Google Chrome over the
+# DevTools Protocol; it needs no API key and no quota. "searxng" uses a
+# self-hosted SearXNG JSON API instead, and is never used as an automatic
+# fallback - only when selected here.
+backend = "chrome"
+# Engines the chrome backend tries in order; the first that returns results
+# wins. Providers rate-limit independently and at different times, so the
+# chain is what keeps search available when one of them suspends this network.
+# Valid ids: startpage, duckduckgo.
+engines = ["startpage", "duckduckgo"]
+# Explicit Chrome binary path. Empty auto-detects Google Chrome, then Chromium,
+# then Chrome Canary under /Applications. Override with JCODE_CHROME_BINARY.
+chrome_binary = ""
+# SearXNG base URL, used only when backend = "searxng". The instance must have
+# the JSON format enabled (`formats: [html, json]`). Override with SEARXNG_URL.
 url = "http://127.0.0.1:8080"
 
 [tools]

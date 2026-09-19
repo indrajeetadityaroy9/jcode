@@ -26,11 +26,10 @@ if [[ ! -f "$baseline_file" ]]; then
   exit 1
 fi
 
-# Use grep, not rg: ripgrep is not installed on the CI runner, and the
-# `|| printf 0` fallback turned "rg: command not found" into "zero warnings",
-# so this gate passed vacuously in CI for as long as it has existed. grep is
-# guaranteed present, and `grep -c` exits 1 on no matches, which the fallback
-# still handles correctly.
+# Use grep, not rg: grep is guaranteed present, and the `|| printf 0` fallback
+# below turns any "command not found" into "zero warnings", so depending on an
+# optional binary here makes the gate pass vacuously instead of failing loudly.
+# `grep -c` exits 1 on no matches, which the fallback still handles correctly.
 if ! command -v cargo > /dev/null 2>&1; then
   echo "error: cargo not found" >&2
   exit 1

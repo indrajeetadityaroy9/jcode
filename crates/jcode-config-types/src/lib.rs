@@ -1035,19 +1035,44 @@ impl Default for FeatureConfig {
     }
 }
 
+/// Which backend the websearch tool uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum WebSearchBackend {
+    /// An engine chain driven through a headless Chrome over the DevTools
+    /// Protocol. Needs no API key and no quota.
+    #[default]
+    Chrome,
+    /// A self-hosted SearXNG instance's JSON API. Opt-in only; never used as an
+    /// automatic fallback.
+    Searxng,
+}
+
 /// Configuration for the websearch tool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct WebSearchConfig {
-    /// Base URL of the SearXNG instance the tool queries, without a trailing
-    /// `/search`. Overridden by the `SEARXNG_URL` environment variable.
+    /// Search backend. Defaults to `chrome`.
+    pub backend: WebSearchBackend,
+    /// Base URL of the SearXNG instance, without a trailing `/search`. Used
+    /// only when `backend = "searxng"`. Overridden by `SEARXNG_URL`.
     pub url: String,
+    /// Engine ids the `chrome` backend tries in order; the first that returns
+    /// results wins. Search providers rate-limit independently and at
+    /// different times, so the chain is what keeps search available when one
+    /// of them suspends this network.
+    pub engines: Vec<String>,
+    /// Explicit Chrome binary. Empty auto-detects.
+    pub chrome_binary: String,
 }
 
 impl Default for WebSearchConfig {
     fn default() -> Self {
         Self {
+            backend: WebSearchBackend::Chrome,
             url: "http://127.0.0.1:8080".to_string(),
+            engines: vec!["startpage".to_string(), "duckduckgo".to_string()],
+            chrome_binary: String::new(),
         }
     }
 }

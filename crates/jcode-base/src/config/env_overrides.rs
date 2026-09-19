@@ -367,6 +367,20 @@ impl Config {
             self.websearch.url = v.trim().to_string();
         }
 
+        if let Ok(v) = std::env::var("JCODE_WEBSEARCH_BACKEND") {
+            match v.trim().to_ascii_lowercase().as_str() {
+                "chrome" => self.websearch.backend = crate::config::WebSearchBackend::Chrome,
+                "searxng" => self.websearch.backend = crate::config::WebSearchBackend::Searxng,
+                _ => {}
+            }
+        }
+
+        if let Ok(v) = std::env::var("JCODE_CHROME_BINARY")
+            && !v.trim().is_empty()
+        {
+            self.websearch.chrome_binary = v.trim().to_string();
+        }
+
         if let Ok(v) = std::env::var("JCODE_TRUSTED_EXTERNAL_AUTH_SOURCES") {
             let mut source_ids = Vec::new();
             let mut source_paths = Vec::new();

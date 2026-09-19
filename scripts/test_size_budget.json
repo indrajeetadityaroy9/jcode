@@ -10,7 +10,7 @@
     "crates/jcode-base/src/config_tests.rs": 1335,
     "crates/jcode-base/src/live_tests.rs": 3087,
     "crates/jcode-base/src/provider/tests/model_resolution.rs": 2435,
-    "crates/jcode-base/src/session_tests/cases.rs": 2465,
+    "crates/jcode-base/src/session_tests/cases.rs": 2728,
     "crates/jcode-harness-api-server/src/translate_tests.rs": 1390,
     "crates/jcode-plan/src/dag/tests.rs": 1392,
     "crates/jcode-provider-anthropic-runtime/src/anthropic_tests.rs": 1738,
@@ -28,7 +28,8 @@
     "crates/jcode-tui/src/tui/info_widget_tests.rs": 1815,
     "crates/jcode-tui/src/tui/session_picker/loading_tests.rs": 1401,
     "crates/jcode-tui/src/tui/session_picker_tests.rs": 2453,
-    "crates/jcode-tui/src/tui/ui_messages/tests.rs": 3151
+    "crates/jcode-tui/src/tui/ui_messages/tests.rs": 3151,
+    "crates/jcode-app-core/src/server/comm_session_tests.rs": 1232
   },
   "version": 1
 }

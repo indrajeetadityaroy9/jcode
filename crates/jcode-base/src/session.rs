@@ -496,6 +496,7 @@ impl Session {
             provider_session_id: self.provider_session_id.clone(),
             provider_key: self.provider_key.clone(),
             model: self.model.clone(),
+            route_api_method: Some(self.route_api_method.clone()),
             reasoning_effort: self.reasoning_effort.clone(),
             subagent_model: self.subagent_model.clone(),
             improve_mode: self.improve_mode,
@@ -695,6 +696,11 @@ impl Session {
         self.provider_session_id = meta.provider_session_id;
         self.provider_key = meta.provider_key;
         self.model = meta.model;
+        // Absent in journals written before the field existed: keep whatever the
+        // snapshot already had instead of clearing the route.
+        if let Some(route_api_method) = meta.route_api_method {
+            self.route_api_method = route_api_method;
+        }
         self.reasoning_effort = meta.reasoning_effort;
         self.subagent_model = meta.subagent_model;
         self.improve_mode = meta.improve_mode;

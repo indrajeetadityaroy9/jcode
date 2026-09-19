@@ -112,7 +112,9 @@ pub fn build_responses_input_with_logger(
         if let Role::User = msg.role {
             for block in &msg.content {
                 if let ContentBlock::ToolResult { tool_use_id, .. } = block {
-                    tool_result_last_pos.insert(tool_use_id.clone(), idx);
+                    // Keyed by the *sanitized* id: that is what goes on the wire
+                    // as `call_id`, and `sanitize_tool_id` is not injective.
+                    tool_result_last_pos.insert(sanitize_tool_id(tool_use_id), idx);
                 }
             }
         }
@@ -188,7 +190,8 @@ pub fn build_responses_input_with_logger(
                                     "content": std::mem::take(&mut content_parts)
                                 }));
                             }
-                            if used_outputs.contains(tool_use_id.as_str()) {
+                            let call_id = sanitize_tool_id(tool_use_id);
+                            if used_outputs.contains(&call_id) {
                                 skipped_results += 1;
                                 continue;
                             }
@@ -197,18 +200,18 @@ pub fn build_responses_input_with_logger(
                             } else {
                                 content.clone()
                             };
-                            if open_calls.contains(tool_use_id.as_str()) {
+                            if open_calls.contains(&call_id) {
                                 items.push(serde_json::json!({
                                     "type": "function_call_output",
-                                    "call_id": sanitize_tool_id(tool_use_id),
+                                    "call_id": &call_id,
                                     "output": output
                                 }));
-                                open_calls.remove(tool_use_id.as_str());
-                                used_outputs.insert(tool_use_id.clone());
-                            } else if pending_outputs.contains_key(tool_use_id.as_str()) {
+                                open_calls.remove(&call_id);
+                                used_outputs.insert(call_id);
+                            } else if pending_outputs.contains_key(&call_id) {
                                 skipped_results += 1;
                             } else {
-                                pending_outputs.insert(tool_use_id.clone(), output);
+                                pending_outputs.insert(call_id, output);
                                 delayed_results += 1;
                             }
                         }
@@ -261,6 +264,7 @@ pub fn build_responses_input_with_logger(
                         ContentBlock::ToolUse {
                             id, name, input, ..
                         } => {
+                            let call_id = sanitize_tool_id(id);
                             let arguments = if input.is_object() {
                                 serde_json::to_string(&input).unwrap_or_default()
                             } else {
@@ -270,31 +274,31 @@ pub fn build_responses_input_with_logger(
                                 "type": "function_call",
                                 "name": name,
                                 "arguments": arguments,
-                                "call_id": sanitize_tool_id(id)
+                                "call_id": &call_id
                             }));
 
-                            if let Some(output) = pending_outputs.remove(id.as_str()) {
+                            if let Some(output) = pending_outputs.remove(&call_id) {
                                 items.push(serde_json::json!({
                                     "type": "function_call_output",
-                                    "call_id": sanitize_tool_id(id),
+                                    "call_id": &call_id,
                                     "output": output
                                 }));
-                                used_outputs.insert(id.clone());
+                                used_outputs.insert(call_id);
                             } else {
                                 let has_future_output = tool_result_last_pos
-                                    .get(id)
+                                    .get(&call_id)
                                     .map(|pos| *pos > idx)
                                     .unwrap_or(false);
                                 if has_future_output {
-                                    open_calls.insert(id.clone());
+                                    open_calls.insert(call_id);
                                 } else {
                                     injected_missing += 1;
                                     items.push(serde_json::json!({
                                         "type": "function_call_output",
-                                        "call_id": sanitize_tool_id(id),
+                                        "call_id": &call_id,
                                         "output": missing_output.clone()
                                     }));
-                                    used_outputs.insert(id.clone());
+                                    used_outputs.insert(call_id);
                                 }
                             }
                         }
@@ -312,14 +316,14 @@ pub fn build_responses_input_with_logger(
         if let Some(output) = pending_outputs.remove(&call_id) {
             items.push(serde_json::json!({
                 "type": "function_call_output",
-                "call_id": sanitize_tool_id(&call_id),
+                "call_id": &call_id,
                 "output": output
             }));
         } else {
             injected_missing += 1;
             items.push(serde_json::json!({
                 "type": "function_call_output",
-                "call_id": sanitize_tool_id(&call_id),
+                "call_id": &call_id,
                 "output": missing_output.clone()
             }));
         }
@@ -343,7 +347,7 @@ pub fn build_responses_input_with_logger(
         for (call_id, output) in pending_entries {
             let orphan_item = serde_json::json!({
                 "type": "function_call_output",
-                "call_id": sanitize_tool_id(&call_id),
+                "call_id": &call_id,
                 "output": output,
             });
             if let Some(message_item) =
@@ -435,6 +439,16 @@ pub fn build_responses_input_with_logger(
         );
     }
 
+    // Only one output can be paired with a given `call_id`, so a second one is
+    // a tool result that will not reach the model.
+    //
+    // The de-duplication above keys on the sanitized id, which is what goes on
+    // the wire, so this should never fire; it is a guard on an invariant upheld
+    // by code far from here, not an expected path. Counted where the duplicate
+    // is actually observed — the re-ordering pass cannot tell a relocated
+    // output from a real duplicate, and reporting from there is what buried a
+    // genuine collision under one phantom "duplicate" per tool call.
+    let mut duplicate_input_outputs = 0usize;
     let mut output_map: HashMap<String, Value> = HashMap::new();
     for item in &normalized {
         if item.get("type").and_then(|v| v.as_str()) == Some("function_call_output")
@@ -447,6 +461,7 @@ pub fn build_responses_input_with_logger(
                 .unwrap_or(false);
             match output_map.get(call_id) {
                 Some(existing) => {
+                    duplicate_input_outputs += 1;
                     let existing_missing = existing
                         .get("output")
                         .and_then(|v| v.as_str())
@@ -466,7 +481,6 @@ pub fn build_responses_input_with_logger(
     let mut ordered: Vec<Value> = Vec::with_capacity(normalized.len());
     let mut used_outputs: HashSet<String> = HashSet::new();
     let mut injected_ordered = 0usize;
-    let mut dropped_duplicate_outputs = 0usize;
     let mut rewritten_orphans = 0usize;
     let mut skipped_empty_orphans = 0usize;
 
@@ -480,18 +494,24 @@ pub fn build_responses_input_with_logger(
                 .map(|v| v.to_string());
             ordered.push(item);
             if let Some(call_id) = call_id {
-                if let Some(output_item) = output_map.get(&call_id) {
-                    ordered.push(output_item.clone());
-                    used_outputs.insert(call_id);
-                } else {
-                    injected_ordered += 1;
-                    ordered.push(serde_json::json!({
-                        "type": "function_call_output",
-                        "call_id": call_id,
-                        "output": missing_output.clone()
-                    }));
-                    used_outputs.insert(call_id);
+                // `output_map` holds one output per `call_id`. If an earlier
+                // call already consumed it, this call has no output of its own:
+                // emit the explicit placeholder instead of silently handing the
+                // model another call's result.
+                match output_map.get(&call_id) {
+                    Some(output_item) if !used_outputs.contains(&call_id) => {
+                        ordered.push(output_item.clone());
+                    }
+                    _ => {
+                        injected_ordered += 1;
+                        ordered.push(serde_json::json!({
+                            "type": "function_call_output",
+                            "call_id": &call_id,
+                            "output": missing_output.clone()
+                        }));
+                    }
                 }
+                used_outputs.insert(call_id);
             }
             continue;
         }
@@ -500,7 +520,10 @@ pub fn build_responses_input_with_logger(
             if let Some(call_id) = item.get("call_id").and_then(|v| v.as_str())
                 && used_outputs.contains(call_id)
             {
-                dropped_duplicate_outputs += 1;
+                // This is the very output that its `function_call` pulled
+                // forward, now reached in its original position. Ordinary
+                // operation — skip it silently, or every well-formed tool call
+                // would be reported as a problem.
                 continue;
             }
             if let Some(message_item) = orphan_tool_output_to_user_message(&item, &missing_output) {
@@ -524,12 +547,13 @@ pub fn build_responses_input_with_logger(
             ),
         );
     }
-    if dropped_duplicate_outputs > 0 {
+    if duplicate_input_outputs > 0 {
         logger(
-            OpenAiRequestLogLevel::Info,
+            OpenAiRequestLogLevel::Warn,
             &format!(
-                "[openai] Dropped {} duplicate tool output(s) during re-ordering",
-                dropped_duplicate_outputs
+                "[openai] {} tool output(s) shared a call_id with an earlier output and were \
+                 dropped; a tool result never reached the model (likely colliding tool ids)",
+                duplicate_input_outputs
             ),
         );
     }
@@ -628,6 +652,101 @@ mod tests {
             *level == OpenAiRequestLogLevel::Warn
                 && message.contains("Dropping oversized native compaction payload")
         }));
+    }
+
+    /// Build a conversation of `ids.len()` well-formed tool call/result pairs.
+    fn tool_pairs(ids: &[&str]) -> Vec<ChatMessage> {
+        let mut messages = Vec::new();
+        for (i, id) in ids.iter().enumerate() {
+            messages.push(ChatMessage {
+                role: Role::Assistant,
+                content: vec![ContentBlock::ToolUse {
+                    id: (*id).to_string(),
+                    name: "bash".to_string(),
+                    input: json!({ "n": i }),
+                    thought_signature: None,
+                }],
+                timestamp: None,
+                tool_duration_ms: None,
+            });
+            messages.push(ChatMessage {
+                role: Role::User,
+                content: vec![ContentBlock::ToolResult {
+                    tool_use_id: (*id).to_string(),
+                    content: format!("RESULT_{i}"),
+                    is_error: None,
+                }],
+                timestamp: None,
+                tool_duration_ms: None,
+            });
+        }
+        messages
+    }
+
+    fn tool_outputs(items: &[Value]) -> Vec<&str> {
+        items
+            .iter()
+            .filter(|item| {
+                item.get("type").and_then(|v| v.as_str()) == Some("function_call_output")
+            })
+            .filter_map(|item| item.get("output").and_then(|v| v.as_str()))
+            .collect()
+    }
+
+    /// The re-ordering pass moves each tool output up next to its call, then
+    /// meets that same output again in its original position. That is ordinary
+    /// operation, not a fault: it must not be reported.
+    ///
+    /// It used to be, once per tool call per request — which grew to 143 phantom
+    /// "duplicates" in a single request and made a genuine collision (below)
+    /// indistinguishable from healthy traffic.
+    #[test]
+    fn build_responses_input_is_silent_for_well_formed_tool_pairs() {
+        let messages = tool_pairs(&["call_a", "call_b", "call_c"]);
+        let mut logs = Vec::new();
+
+        let items = build_responses_input_with_logger(&messages, |level, message| {
+            logs.push((level, message.to_string()));
+        });
+
+        assert_eq!(tool_outputs(&items), ["RESULT_0", "RESULT_1", "RESULT_2"]);
+        assert!(
+            logs.is_empty(),
+            "a healthy conversation must produce no diagnostics; got {logs:?}"
+        );
+    }
+
+    /// `sanitize_tool_id` is not injective, so two distinct raw tool ids can
+    /// land on one wire `call_id`. Only one output can be paired with that id;
+    /// the other call must get the explicit "missing output" placeholder.
+    ///
+    /// Handing it the *first* call's result instead — which is what happened
+    /// before — tells the model a tool returned something it never returned.
+    #[test]
+    fn build_responses_input_never_reuses_another_calls_output_on_id_collision() {
+        assert_eq!(sanitize_tool_id("call.1"), sanitize_tool_id("call:1"));
+        let messages = tool_pairs(&["call.1", "call:1"]);
+        let mut logs = Vec::new();
+
+        let items = build_responses_input_with_logger(&messages, |level, message| {
+            logs.push((level, message.to_string()));
+        });
+
+        let outputs = tool_outputs(&items);
+        assert_eq!(
+            outputs.iter().filter(|o| **o == "RESULT_0").count(),
+            1,
+            "the first call's result must not be replayed for the second call: {outputs:?}"
+        );
+        assert!(
+            outputs.iter().any(|o| o.contains(TOOL_OUTPUT_MISSING_TEXT)),
+            "the call that lost the collision must get the missing-output placeholder: {outputs:?}"
+        );
+        assert!(
+            logs.iter()
+                .any(|(_, message)| message.contains("enforce call ordering")),
+            "dropping a tool result must be reported; got {logs:?}"
+        );
     }
 
     #[test]

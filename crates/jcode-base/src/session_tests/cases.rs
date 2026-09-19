@@ -527,6 +527,260 @@ fn load_startup_stub_preserves_metadata_but_skips_heavy_vectors() -> Result<()> 
     Ok(())
 }
 
+/// A model change that does not also change a snapshot-forcing field persists
+/// only as a journal append, leaving the snapshot stale. `load_startup_stub`
+/// must still report the current model, because swarm spawn inheritance reads
+/// it: the coordinator's agent mutex is held by the very turn that calls
+/// `swarm spawn`, so `resolve_coordinator_spawn_identity` falls back to this
+/// loader for ~every tool-initiated spawn. Before the journal-tail overlay,
+/// workers silently inherited the model the coordinator had switched away from.
+#[test]
+fn load_startup_stub_reports_model_changed_after_the_last_checkpoint() -> Result<()> {
+    let _env_lock = lock_env();
+    let temp_home = tempfile::Builder::new()
+        .prefix("jcode-stub-stale-model-test-")
+        .tempdir()
+        .map_err(|e| anyhow!(e))?;
+    let _home = EnvVarGuard::set("JCODE_HOME", temp_home.path().as_os_str());
+
+    let session_id = "session_stub_stale_model";
+    let mut session = Session::create_with_id(session_id.to_string(), None, None);
+    session.model = Some("gpt-5.5".to_string());
+    session.provider_key = Some("openai-oauth".to_string());
+    session.route_api_method = Some("openai-oauth".to_string());
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "first turn".to_string(),
+            cache_control: None,
+        }],
+    );
+    // Checkpoint: the snapshot now records gpt-5.5.
+    session.save()?;
+
+    // Switch model only. `provider_key` is unchanged, so this is NOT a
+    // snapshot-forcing metadata change and lands in the journal alone.
+    session.model = Some("gpt-5.6-sol".to_string());
+    session.route_api_method = Some("openai-oauth".to_string());
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "second turn".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    // Guard the premise: if this ever checkpoints, the test stops proving
+    // anything and must be rewritten rather than silently passing.
+    let snapshot_model = serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(
+        session_path(session_id)?,
+    )?)?
+    .get("model")
+    .and_then(|m| m.as_str())
+    .map(str::to_string);
+    assert_eq!(
+        snapshot_model.as_deref(),
+        Some("gpt-5.5"),
+        "premise broken: the model-only change checkpointed, so the snapshot is \
+         no longer stale and this test cannot detect the regression"
+    );
+
+    let stub = Session::load_startup_stub(session_id)?;
+    assert_eq!(
+        stub.model.as_deref(),
+        Some("gpt-5.6-sol"),
+        "stub must report the journal's current model, not the stale snapshot"
+    );
+    assert_eq!(stub.route_api_method.as_deref(), Some("openai-oauth"));
+    assert_eq!(stub.provider_key.as_deref(), Some("openai-oauth"));
+    Ok(())
+}
+
+/// A writer killed mid-append leaves a torn final line. The metadata overlay
+/// scans backwards, so it must fall back to the last *intact* entry instead of
+/// discarding the journal's metadata and silently serving the stale snapshot.
+#[test]
+fn load_startup_stub_survives_a_torn_final_journal_line() -> Result<()> {
+    let _env_lock = lock_env();
+    let temp_home = tempfile::Builder::new()
+        .prefix("jcode-stub-torn-journal-test-")
+        .tempdir()
+        .map_err(|e| anyhow!(e))?;
+    let _home = EnvVarGuard::set("JCODE_HOME", temp_home.path().as_os_str());
+
+    let session_id = "session_stub_torn_journal";
+    let mut session = Session::create_with_id(session_id.to_string(), None, None);
+    session.model = Some("gpt-5.5".to_string());
+    session.provider_key = Some("openai-oauth".to_string());
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "first".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    session.model = Some("gpt-5.6-sol".to_string());
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "second".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    // Simulate a crash partway through the next append.
+    let journal_path = session_journal_path(session_id)?;
+    let mut raw = std::fs::read_to_string(&journal_path)?;
+    raw.push_str("{\"meta\":{\"parent_id\":null,\"model\":\"gpt-tor");
+    std::fs::write(&journal_path, raw)?;
+
+    let stub = Session::load_startup_stub(session_id)?;
+    assert_eq!(
+        stub.model.as_deref(),
+        Some("gpt-5.6-sol"),
+        "a torn tail must not fall all the way back to the stale snapshot"
+    );
+    Ok(())
+}
+
+/// Journals written before `route_api_method` joined `SessionJournalMeta` omit
+/// the field. Overlaying such an entry must leave the snapshot's route intact —
+/// treating "absent" as "null" would clear a live auth route and reroute the
+/// session, which is the failure this whole overlay exists to prevent.
+#[test]
+fn load_startup_stub_keeps_snapshot_route_when_journal_predates_the_field() -> Result<()> {
+    let _env_lock = lock_env();
+    let temp_home = tempfile::Builder::new()
+        .prefix("jcode-stub-legacy-journal-test-")
+        .tempdir()
+        .map_err(|e| anyhow!(e))?;
+    let _home = EnvVarGuard::set("JCODE_HOME", temp_home.path().as_os_str());
+
+    let session_id = "session_stub_legacy_journal";
+    let mut session = Session::create_with_id(session_id.to_string(), None, None);
+    session.model = Some("claude-opus-4-6".to_string());
+    session.provider_key = Some("claude-oauth".to_string());
+    session.route_api_method = Some("claude-oauth".to_string());
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "first".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    session.model = Some("claude-fable-5".to_string());
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "second".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    // Rewrite the journal as an older writer would have: same entries, no
+    // `route_api_method` key anywhere.
+    let journal_path = session_journal_path(session_id)?;
+    let current = std::fs::read_to_string(&journal_path)?;
+    // Guards the producer: `journal_meta()` must actually emit the route, or the
+    // overlay would apply the journal's model and provider_key on top of the
+    // snapshot's route and hand out a mismatched identity triple.
+    assert!(
+        current.contains("route_api_method"),
+        "journal entries must carry route_api_method; got:\n{current}"
+    );
+    let legacy: String = current
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let mut entry: serde_json::Value = serde_json::from_str(line).expect("journal entry");
+            entry
+                .get_mut("meta")
+                .and_then(|meta| meta.as_object_mut())
+                .expect("meta object")
+                .remove("route_api_method");
+            format!("{entry}\n")
+        })
+        .collect();
+    assert!(!legacy.contains("route_api_method"));
+    std::fs::write(&journal_path, legacy)?;
+
+    let stub = Session::load_startup_stub(session_id)?;
+    assert_eq!(
+        stub.model.as_deref(),
+        Some("claude-fable-5"),
+        "model still comes from the journal"
+    );
+    assert_eq!(
+        stub.route_api_method.as_deref(),
+        Some("claude-oauth"),
+        "a legacy journal entry must not clear the snapshot's auth route"
+    );
+    Ok(())
+}
+
+/// The metadata overlay reads a bounded window at the end of the journal rather
+/// than the whole file, because hot callers (menubar poll, crash scan) would
+/// otherwise slurp hundreds of KiB per call. A single entry can still exceed
+/// that window — one large tool result does it — so the window has to grow
+/// until an entry parses instead of giving up and serving the stale snapshot.
+#[test]
+fn load_startup_stub_reads_metadata_from_an_entry_larger_than_the_tail_window() -> Result<()> {
+    let _env_lock = lock_env();
+    let temp_home = tempfile::Builder::new()
+        .prefix("jcode-stub-big-entry-test-")
+        .tempdir()
+        .map_err(|e| anyhow!(e))?;
+    let _home = EnvVarGuard::set("JCODE_HOME", temp_home.path().as_os_str());
+
+    let session_id = "session_stub_big_entry";
+    let mut session = Session::create_with_id(session_id.to_string(), None, None);
+    session.model = Some("gpt-5.5".to_string());
+    session.provider_key = Some("openai-oauth".to_string());
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "small".to_string(),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    // Model-only change (no checkpoint) carried by an entry several times the
+    // 32 KiB initial window.
+    session.model = Some("gpt-5.6-sol".to_string());
+    session.add_message(
+        Role::User,
+        vec![ContentBlock::Text {
+            text: "x".repeat(150 * 1024),
+            cache_control: None,
+        }],
+    );
+    session.save()?;
+
+    let journal_len = std::fs::metadata(session_journal_path(session_id)?)?.len();
+    assert!(
+        journal_len > 64 * 1024,
+        "premise broken: journal is only {journal_len} bytes, so the tail window \
+         already covers it and expansion is never exercised"
+    );
+
+    let stub = Session::load_startup_stub(session_id)?;
+    assert_eq!(
+        stub.model.as_deref(),
+        Some("gpt-5.6-sol"),
+        "tail window must widen past an oversized entry instead of falling back \
+         to the stale snapshot"
+    );
+    Ok(())
+}
+
 #[test]
 fn load_for_remote_startup_preserves_messages_and_replay_but_skips_heavy_vectors() -> Result<()> {
     let _env_lock = lock_env();
@@ -2253,9 +2507,28 @@ fn fork_notice_is_model_visible_but_hidden_from_transcript() {
     );
 }
 
+/// `PowerAssertion` creates the assertion in-process via
+/// `IOPMAssertionCreateWithName`, so `pmset` attributes it to this test
+/// binary's pid. Scope every check to that pid: the reason string is shared by
+/// every jcode build on the machine, and matching it globally made this test
+/// fail whenever a real session happened to be streaming.
 #[cfg(target_os = "macos")]
 #[test]
 fn streaming_guard_creates_visible_macos_sleep_assertion() {
+    fn own_assertions() -> String {
+        let output = std::process::Command::new("pmset")
+            .args(["-g", "assertions"])
+            .output()
+            .expect("pmset -g assertions should run on macOS");
+        assert!(output.status.success(), "pmset should succeed");
+        let own = format!("pid {}(", std::process::id());
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter(|line| line.contains(&own))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     let _lock = lock_env();
     let temp = tempfile::tempdir().expect("tempdir");
     let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
@@ -2263,27 +2536,17 @@ fn streaming_guard_creates_visible_macos_sleep_assertion() {
     let reason = "Jcode streaming model response";
     {
         let _streaming = StreamingGuard::new("session_power");
-
-        let output = std::process::Command::new("pmset")
-            .args(["-g", "assertions"])
-            .output()
-            .expect("pmset -g assertions should run on macOS");
-        assert!(output.status.success(), "pmset should succeed");
-        let stdout = String::from_utf8_lossy(&output.stdout);
+        let held = own_assertions();
         assert!(
-            stdout.contains(reason),
-            "pmset output should show the streaming assertion; output was:\n{stdout}"
+            held.contains(reason),
+            "pmset should show this process holding the streaming assertion; own assertions were:\n{held}"
         );
     }
 
-    let output = std::process::Command::new("pmset")
-        .args(["-g", "assertions"])
-        .output()
-        .expect("pmset -g assertions should run on macOS");
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let released = own_assertions();
     assert!(
-        !stdout.contains(reason),
-        "streaming assertion should be released after guard drop; output was:\n{stdout}"
+        !released.contains(reason),
+        "streaming assertion should be released after guard drop; own assertions were:\n{released}"
     );
 }
 

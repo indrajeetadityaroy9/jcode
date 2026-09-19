@@ -1,7 +1,7 @@
+use super::web::{DEFAULT_TIMEOUT, MAX_TIMEOUT};
 use super::{Tool, ToolContext, ToolOutput};
 use anyhow::Result;
 use async_trait::async_trait;
-use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -14,18 +14,34 @@ const MAX_OUTPUT_CHARS: usize = 40_000;
 /// only. Long URLs are typically encoded payloads (pre-filled editors, tracking
 /// parameters, data URIs) whose cost far exceeds their navigational value.
 const MAX_URL_CHARS: usize = 300;
-const DEFAULT_TIMEOUT: u64 = 30;
-const MAX_TIMEOUT: u64 = 120;
 
-pub struct WebFetchTool {
-    client: reqwest::Client,
-}
+/// Capture the loaded document.
+///
+/// `eval_on_page` has already waited for the load event, so `readyState` is
+/// normally `"complete"` here; resolving on that is what stops the promise
+/// waiting forever on a `load` listener that will never fire again.
+const PAGE_SCRIPT: &str = r#"(() => new Promise((resolve) => {
+  const done = () => {
+    const nav = performance.getEntriesByType("navigation")[0];
+    resolve({
+      status: (nav && nav.responseStatus) || 0,
+      contentType: document.contentType || "",
+      finalUrl: location.href,
+      html: document.documentElement ? document.documentElement.outerHTML : "",
+      text: document.body ? document.body.innerText : "",
+    });
+  };
+  if (document.readyState === "complete") return done();
+  window.addEventListener("load", done, { once: true });
+}))()"#;
+
+/// Fetches through the shared headless Chrome, so pages that build their
+/// content with JavaScript arrive rendered rather than empty.
+pub struct WebFetchTool;
 
 impl WebFetchTool {
     pub fn new() -> Self {
-        Self {
-            client: crate::provider::shared_http_client(),
-        }
+        Self
     }
 }
 
@@ -82,56 +98,64 @@ impl Tool for WebFetchTool {
         let timeout = params.timeout.unwrap_or(DEFAULT_TIMEOUT).min(MAX_TIMEOUT);
         let format = params.format.as_deref().unwrap_or("markdown");
 
-        let response = self
-            .client
-            .get(&params.url)
-            .header(
-                reqwest::header::USER_AGENT,
-                "Mozilla/5.0 (compatible; JCode/1.0)",
+        let chrome = super::web::chrome_engine().await?;
+        let page = chrome
+            .eval_on_page(
+                &params.url,
+                PAGE_SCRIPT,
+                Duration::from_secs(timeout),
+                // An empty body on the first document usually means a redirect
+                // stub; let the real page land before reporting nothing.
+                &|value: &Value| {
+                    let empty = |key: &str| {
+                        value
+                            .get(key)
+                            .and_then(Value::as_str)
+                            .is_none_or(str::is_empty)
+                    };
+                    empty("text") && empty("html")
+                },
             )
-            .timeout(Duration::from_secs(timeout))
-            .send()
             .await?;
 
-        let status = response.status();
-        if !status.is_success() {
+        let status = page.http_status;
+        if status >= 400 {
             return Err(anyhow::anyhow!("HTTP error: {}", status));
         }
 
-        // Check content length
-        if let Some(len) = response.content_length()
-            && len as usize > MAX_SIZE
-        {
+        let content_type = page
+            .value
+            .get("contentType")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let is_html = content_type.contains("text/html");
+        let field = if is_html { "html" } else { "text" };
+        let raw = page.value.get(field).and_then(Value::as_str).unwrap_or("");
+
+        if raw.is_empty() && !is_html {
+            // Chrome renders text payloads into the body, so an empty body for
+            // a non-HTML type means the content is binary (PDF, images). The
+            // previous implementation returned a lossy decode of those bytes,
+            // which was never usable.
             return Err(anyhow::anyhow!(
-                "Response too large: {} bytes (max {} bytes)",
-                len,
-                MAX_SIZE
+                "webfetch: {} is not renderable as text (final URL {}); \
+                 fetch it with bash curl instead",
+                if content_type.is_empty() {
+                    "this content type"
+                } else {
+                    content_type
+                },
+                page.final_url,
             ));
         }
 
-        let content_type = response
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_string();
-
-        let mut body_bytes = Vec::new();
-        let mut truncated = false;
-        let mut stream = response.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            let remaining = MAX_SIZE.saturating_sub(body_bytes.len());
-            if chunk.len() > remaining {
-                body_bytes.extend_from_slice(&chunk[..remaining]);
-                truncated = true;
-                break;
+        let mut body = raw.to_string();
+        if body.len() > MAX_SIZE {
+            let mut cut = MAX_SIZE;
+            while cut > 0 && !body.is_char_boundary(cut) {
+                cut -= 1;
             }
-            body_bytes.extend_from_slice(&chunk);
-        }
-
-        let mut body = String::from_utf8_lossy(&body_bytes).into_owned();
-        if truncated {
+            body.truncate(cut);
             body.push_str(&format!(
                 "...\n\n(truncated, showing first {} bytes)",
                 MAX_SIZE
@@ -142,20 +166,8 @@ impl Tool for WebFetchTool {
         let output = match format {
             "html" => body,
             "text" => html_to_text(&body),
-            "markdown" => {
-                if content_type.contains("text/html") {
-                    html_to_markdown(&body)
-                } else {
-                    body
-                }
-            }
-            _ => {
-                if content_type.contains("text/html") {
-                    html_to_markdown(&body)
-                } else {
-                    body
-                }
-            }
+            _ if is_html => html_to_markdown(&body),
+            _ => body,
         };
 
         let full_len = output.len();

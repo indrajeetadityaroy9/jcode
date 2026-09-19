@@ -1,0 +1,18 @@
+[package]
+name = "jcode-chrome"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "jcode_chrome"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["connect", "rustls-tls-native-roots"] }
+futures = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-native-roots"] }
+serde_json = "1"
+anyhow = "1"
+libc = "0.2"

@@ -66,7 +66,7 @@ These files are doing too much at once and create review, testing, and onboardin
 
 Largely addressed. The warning baseline is **8**
 (`scripts/warning_budget.txt`), enforced by `scripts/check_warning_budget.sh`
-(gate at `scripts/check_guardrails.sh:84`), which counts `^warning:` lines from
+(gate at `scripts/check_guardrails.sh:79`), which counts `^warning:` lines from
 `cargo check -q` and fails when the count exceeds the baseline. Broad
 `allow(dead_code)` suppressions are the remaining half of this item; nothing
 counts them yet.
@@ -92,7 +92,7 @@ into one sweep, `scripts/check_guardrails.sh`:
 
 | Gate | Script | Baseline | Wired at |
 |---|---|---|---|
-| module declarations resolve | `scripts/check_module_files.py` | — | `check_guardrails.sh:64` |
+| module declarations resolve | `scripts/check_module_files.py` | — | `check_guardrails.sh:59` |
 | warning budget | `scripts/check_warning_budget.sh` | `scripts/warning_budget.txt` (8) | `:84` |
 | oversized-file ratchet | `scripts/check_code_size_budget.py` | `scripts/code_size_budget.json` (1200 LOC, 102 files) | `:85` |
 | oversized-test ratchet | `scripts/check_test_size_budget.py` | `scripts/test_size_budget.json` (1200 LOC, 39 files) | `:86` |
@@ -104,7 +104,7 @@ into one sweep, `scripts/check_guardrails.sh`:
 The same sweep also runs `cargo fmt --all --check`, `cargo check`/`cargo clippy
 -- -D warnings` across all targets and features, `cargo metadata --locked`,
 `cargo machete`, and the onboarding state-space invariant tests
-(`check_guardrails.sh:59-107`).
+(`check_guardrails.sh:54-95`).
 
 Guards that exist but are **not** in that sweep:
 `scripts/check_startup_budget.sh` (run from `scripts/test_fast.sh:28`),
@@ -181,7 +181,7 @@ These metrics should be checked repeatedly during the program:
 
 Tasks:
 
-- ~~add stricter CI checks for clippy and all-target/all-feature builds~~ — done, but as local gates in `scripts/check_guardrails.sh:75-78`, not CI
+- ~~add stricter CI checks for clippy and all-target/all-feature builds~~ — done, but as local gates in `scripts/check_guardrails.sh:70-73`, not CI
 - ~~ratchet warning policy downward~~ — done, baseline 8
 - document code quality standards and file-size goals
 - ~~establish a tracked todo list for the quality program~~ — superseded: the JSON ratchet baselines in `scripts/` (`code_size_budget.json`, `test_size_budget.json`, `panic_budget.json`, `swallowed_error_budget.json`, `wildcard_reexport_budget.json`) are the live tracker. Each one names every offending file and count, so the debt list cannot drift from the code.
@@ -395,7 +395,7 @@ expectation is:
 - the plan is updated as milestones are completed
 - the ratchet baselines in `scripts/*_budget.json` are rebaselined only after
   intentional cleanup. `scripts/check_guardrails.sh --fix` does that for the four
-  `run_ratchet` gates (`check_guardrails.sh:50-57, 85-88`); the wildcard
+  `run_ratchet` gates (`check_guardrails.sh:45-52, 85-88`); the wildcard
   re-export budget is a plain gate (`:90`) and must be rebaselined by hand
 - progress is visible in the repo
 - each completed phase leaves behind stronger guardrails than before

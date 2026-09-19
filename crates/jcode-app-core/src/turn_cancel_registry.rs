@@ -174,10 +174,7 @@ pub fn abort_headless_turn(session_id: &str) -> bool {
         return false;
     };
     handle.abort();
-    crate::logging::info(&format!(
-        "HEADLESS_TURN_ABORTED session={}",
-        session_id
-    ));
+    crate::logging::info(&format!("HEADLESS_TURN_ABORTED session={}", session_id));
     true
 }
 
@@ -190,7 +187,9 @@ pub fn release_headless_turn_abort(session_id: &str) {
         return;
     };
     if let Ok(mut map) = HEADLESS_TURN_ABORTS.lock()
-        && map.get(session_id).is_some_and(|(owner, _)| *owner == current)
+        && map
+            .get(session_id)
+            .is_some_and(|(owner, _)| *owner == current)
     {
         map.remove(session_id);
     }
@@ -411,7 +410,9 @@ mod tests {
             std::future::pending::<()>().await;
         });
         register_headless_turn_abort(session_id, turn.abort_handle());
-        started_rx.await.expect("turn should reach its parked state");
+        started_rx
+            .await
+            .expect("turn should reach its parked state");
         assert!(
             agent_lock.try_lock().is_err(),
             "a running turn holds the agent mutex"
@@ -419,7 +420,9 @@ mod tests {
 
         assert!(abort_headless_turn(session_id));
         assert!(
-            turn.await.expect_err("aborted turn must not complete").is_cancelled(),
+            turn.await
+                .expect_err("aborted turn must not complete")
+                .is_cancelled(),
             "the parked turn must actually be cancelled"
         );
         assert!(
@@ -457,7 +460,12 @@ mod tests {
             abort_headless_turn(session_id),
             "the live turn's registration must survive its predecessor's release"
         );
-        assert!(second.await.expect_err("live turn must be cancelled").is_cancelled());
+        assert!(
+            second
+                .await
+                .expect_err("live turn must be cancelled")
+                .is_cancelled()
+        );
     }
 }
 

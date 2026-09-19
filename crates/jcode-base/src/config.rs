@@ -10,7 +10,8 @@ pub use jcode_config_types::{
     LatexRenderingMode, MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig,
     NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig, NotificationsConfig,
     OverscrollStatusMode, PowerConfig, ProviderConfig, ReasoningDisplayMode, SafetyConfig,
-    SessionPickerResumeAction, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, WebSearchConfig,
+    SessionPickerResumeAction, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, WebSearchBackend,
+    WebSearchConfig,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -44,6 +45,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_AUTOREVIEW_MODEL",
     "JCODE_AUTO_SERVER_RELOAD",
     "JCODE_CHAT_NATIVE_SCROLLBAR",
+    "JCODE_CHROME_BINARY",
     "JCODE_COMPACT_NOTIFICATIONS",
     "JCODE_COPY_BADGE_ALT_LABEL",
     "JCODE_CROSS_PROVIDER_FAILOVER",
@@ -124,6 +126,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_TOOL_PROFILE",
     "JCODE_TOOLS",
     "JCODE_TRUSTED_EXTERNAL_AUTH_SOURCES",
+    "JCODE_WEBSEARCH_BACKEND",
     "SEARXNG_URL",
     "XDG_CONFIG_HOME",
 ];

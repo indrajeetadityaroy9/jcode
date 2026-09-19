@@ -18,8 +18,8 @@ pub use model::*;
 use provider_fetch::*;
 
 use anyhow::{Context, Result};
-pub use display::{format_reset_time, format_usage_bar};
 use display::provider_usage_cache_is_fresh;
+pub use display::{format_reset_time, format_usage_bar};
 use openai_helpers::{parse_openai_usage_payload, usage_percent_to_ratio};
 use std::collections::HashMap;
 use std::sync::Arc;

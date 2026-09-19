@@ -1,8 +1,8 @@
 {
-  "total": 2328,
+  "total": 2333,
   "totals_by_pattern": {
     "dot_ok": 849,
-    "let_underscore": 873,
+    "let_underscore": 878,
     "unwrap_or_default": 606
   },
   "tracked_files": {
@@ -457,11 +457,11 @@
       "unwrap_or_default": 11
     },
     "crates/jcode-app-core/src/tool/webfetch.rs": {
-      "dot_ok": 3,
+      "dot_ok": 2,
       "let_underscore": 0,
       "unwrap_or_default": 0
     },
-    "crates/jcode-app-core/src/tool/websearch.rs": {
+    "crates/jcode-app-core/src/tool/websearch/searxng.rs": {
       "dot_ok": 0,
       "let_underscore": 0,
       "unwrap_or_default": 1
@@ -929,6 +929,21 @@
     "crates/jcode-build-support/src/storage_helpers.rs": {
       "dot_ok": 2,
       "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/jcode-chrome/src/cdp.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "crates/jcode-chrome/src/lib.rs": {
+      "dot_ok": 0,
+      "let_underscore": 3,
+      "unwrap_or_default": 0
+    },
+    "crates/jcode-chrome/src/process.rs": {
+      "dot_ok": 1,
+      "let_underscore": 1,
       "unwrap_or_default": 0
     },
     "crates/jcode-config-types/src/serde_lenient.rs": {
