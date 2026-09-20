@@ -1380,29 +1380,21 @@ async fn init_provider_with_options(
                 let has_antigravity = availability.has_antigravity;
                 let mut has_gemini = availability.has_gemini;
                 let mut has_openrouter = availability.has_openrouter;
-                let mut has_other_provider = has_claude
-                    || has_antigravity
-                    || has_gemini
-                    || has_openrouter;
+                let mut has_other_provider =
+                    has_claude || has_antigravity || has_gemini || has_openrouter;
 
                 if !has_openai {
                     has_openai = maybe_enable_legacy_codex_auth_for_auto(has_other_provider)?;
                 }
-                has_other_provider = has_openai
-                    || has_claude
-                    || has_antigravity
-                    || has_gemini
-                    || has_openrouter;
+                has_other_provider =
+                    has_openai || has_claude || has_antigravity || has_gemini || has_openrouter;
 
                 if !has_claude {
                     has_claude =
                         maybe_enable_claude_auth_for_auto(has_other_provider && !has_claude)?;
                 }
-                has_other_provider = has_openai
-                    || has_claude
-                    || has_antigravity
-                    || has_gemini
-                    || has_openrouter;
+                has_other_provider =
+                    has_openai || has_claude || has_antigravity || has_gemini || has_openrouter;
 
                 if !has_gemini {
                     has_gemini =
@@ -1413,11 +1405,8 @@ async fn init_provider_with_options(
                     has_openrouter = maybe_enable_config_default_provider_for_auto()?;
                 }
 
-                has_other_provider = has_openai
-                    || has_claude
-                    || has_antigravity
-                    || has_gemini
-                    || has_openrouter;
+                has_other_provider =
+                    has_openai || has_claude || has_antigravity || has_gemini || has_openrouter;
 
                 if !has_openrouter {
                     has_openrouter = maybe_enable_external_api_key_auth_for_auto(

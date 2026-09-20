@@ -144,4 +144,3 @@ fn macos_notification_bundle_validity_is_version_gated() {
         .expect("write stale marker");
     assert!(!macos_notification_broker_is_valid(&app));
 }
-

@@ -248,7 +248,8 @@ impl App {
             "Default provider",
             cfg.provider.default_provider.as_deref().unwrap_or("auto"),
             AccountPickerCommand::PromptValue {
-                prompt: "Enter the default provider: claude, openai, gemini, openrouter, or auto.".to_string(),
+                prompt: "Enter the default provider: claude, openai, gemini, openrouter, or auto."
+                    .to_string(),
                 command_prefix: "/account default-provider".to_string(),
                 empty_value: Some("auto".to_string()),
                 status_notice: "Account: editing default provider...".to_string(),

@@ -912,8 +912,7 @@ fn render_provider_settings_markdown(app: &App, provider_id: &str) -> String {
                 .unwrap_or("(provider default)")
         ));
         lines.push(
-            "  - /account default-provider <claude|openai|gemini|openrouter|auto>"
-                .to_string(),
+            "  - /account default-provider <claude|openai|gemini|openrouter|auto>".to_string(),
         );
         lines.push("  - /account default-model <model|clear>".to_string());
     }

@@ -147,7 +147,6 @@ fn model_id_for_capability_lookup(model: &str, provider: Option<&str>) -> (Strin
     (lookup, is_1m)
 }
 
-
 /// Return the static provider class for a built-in model name.
 ///
 /// Root providers may layer runtime-only provider catalogs on top of this.

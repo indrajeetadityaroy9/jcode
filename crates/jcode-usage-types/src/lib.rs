@@ -25,4 +25,3 @@ pub struct ProviderUsageProgress {
     pub done: bool,
     pub from_cache: bool,
 }
-

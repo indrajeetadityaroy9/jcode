@@ -300,5 +300,4 @@ mod tests {
             openai_api_pricing("gpt-5.4")
         );
     }
-
 }

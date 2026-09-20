@@ -2256,10 +2256,7 @@ mod tests {
     fn native_provider_specs_are_self_consistent() {
         // Every generic kind's spec must carry a switch_prefix that the wiring
         // contract's api_method-derived routes will satisfy, and a stable id.
-        for kind in [
-            NativeProviderKind::OpenAi,
-            NativeProviderKind::Gemini,
-        ] {
+        for kind in [NativeProviderKind::OpenAi, NativeProviderKind::Gemini] {
             let spec = kind.spec();
             assert!(!spec.provider_id.is_empty(), "{kind:?} has empty id");
             assert!(!spec.label.is_empty(), "{kind:?} has empty label");
@@ -2349,10 +2346,7 @@ mod tests {
     /// drivers must be accepted, and nothing else native-flavored.
     #[test]
     fn native_provider_roster_matches_base_predicate() {
-        for kind in [
-            NativeProviderKind::OpenAi,
-            NativeProviderKind::Gemini,
-        ] {
+        for kind in [NativeProviderKind::OpenAi, NativeProviderKind::Gemini] {
             let id = kind.spec().provider_id;
             assert!(
                 native_doctor_supports_provider(id),

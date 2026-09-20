@@ -1,8 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use super::{
-    OvernightManifest, OvernightRunStatus, format_minutes,
-};
+use super::{OvernightManifest, OvernightRunStatus, format_minutes};
 
 pub(crate) fn overnight_phase(manifest: &OvernightManifest, now: DateTime<Utc>) -> &'static str {
     match manifest.status {

@@ -449,12 +449,7 @@ fn model_picker_provider_hint_from_model_spec(model_spec: &str) -> Option<(&str,
     let normalized = provider_hint.to_ascii_lowercase();
     if matches!(
         normalized.as_str(),
-        "claude"
-            | "anthropic"
-            | "openai"
-            | "antigravity"
-            | "openrouter"
-            | "gemini"
+        "claude" | "anthropic" | "openai" | "antigravity" | "openrouter" | "gemini"
     ) || crate::provider_catalog::openai_compatible_profile_by_id(provider_hint).is_some()
     {
         Some((provider_hint, bare_model))

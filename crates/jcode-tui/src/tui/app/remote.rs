@@ -670,9 +670,7 @@ fn auth_changed_event_for_login_provider(provider: &str) -> Option<crate::protoc
     // `openai_compatible_profile_by_id`: native providers (`anthropic-api`,
     // `openai-api`) alias doctor-probe compat profiles with the same id, but
     // their auth activation deliberately routes through the native runtime.
-    if descriptor
-        .is_some_and(|d| matches!(d.target, LoginProviderTarget::OpenAiCompatible(_)))
-    {
+    if descriptor.is_some_and(|d| matches!(d.target, LoginProviderTarget::OpenAiCompatible(_))) {
         auth.expected_runtime = Some(crate::protocol::RuntimeProviderKey::new(
             "openai-compatible",
         ));
