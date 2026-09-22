@@ -18,6 +18,18 @@ use std::time::Duration;
 use tokio::process::Child;
 use tokio::sync::Mutex;
 
+/// How long to wait for a page's follow-up navigation after its first document
+/// turns out to be unusable.
+///
+/// Measured against Startpage, whose results page arrives as a second
+/// document: `loadEventFired` fires at 222 ms for the redirect stub and again
+/// at 986 ms for the real results — a 764 ms gap. The same measurement on a
+/// query Startpage genuinely has no results for produced exactly one load
+/// event and no further navigation, so the wait must be bounded or an empty
+/// result costs the caller's whole request budget. This is ~2.6x the observed
+/// gap, which is margin for a slow network without stalling the engine chain.
+const FOLLOW_UP_NAVIGATION_WINDOW: Duration = Duration::from_secs(2);
+
 pub struct ChromeOptions {
     /// Explicit binary; `None` auto-detects the installed Chrome.
     pub binary: Option<PathBuf>,
@@ -116,14 +128,15 @@ impl ChromeEngine {
     /// never resolve — resolve on `document.readyState` instead.
     ///
     /// `wants_retry` exists because a search engine's first document can be a
-    /// redirect stub: Startpage fires `loadEventFired` at ~200 ms on a page
-    /// with no results, schedules a second navigation ~215-245 ms later, and
-    /// only that second document carries the results. Measured on both cold
-    /// and warmed profiles, so it is the engine's normal behaviour, not a
-    /// cold-cache artifact. When the predicate says the evaluated value is
-    /// unusable, this waits for the follow-up navigation to land and evaluates
-    /// again. Pages that never navigate again return on the first evaluation,
-    /// so a genuinely empty result set costs nothing extra.
+    /// redirect stub: Startpage fires `loadEventFired` on a page with no
+    /// results, then navigates again, and only that second document carries
+    /// the results. When the predicate says the evaluated value is unusable,
+    /// this waits for that follow-up load and evaluates again.
+    ///
+    /// The wait is bounded by [`FOLLOW_UP_NAVIGATION_WINDOW`] rather than by
+    /// `timeout`, because a page that is genuinely empty never fires a second
+    /// load and would otherwise burn the caller's entire budget before the
+    /// next engine is tried.
     pub async fn eval_on_page(
         &self,
         url: &str,
@@ -238,7 +251,12 @@ impl ChromeEngine {
         // first value.
         if wants_retry(&value) {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if CdpClient::wait_for_event(events, "Page.loadEventFired", remaining)
+            // Bounded by the settle window, not the caller's budget: a page
+            // with genuinely nothing to show never fires a second load, and
+            // waiting the full budget for it delays the next engine by the
+            // whole request timeout.
+            let settle = remaining.min(FOLLOW_UP_NAVIGATION_WINDOW);
+            if CdpClient::wait_for_event(events, "Page.loadEventFired", settle)
                 .await?
                 .is_some()
             {
