@@ -263,7 +263,7 @@ impl RemoteConnection {
         }
         // Avoid a reconnect/reload thundering herd: every headed client used to
         // request the full expanded model catalog immediately after attach. On
-        // large OpenRouter catalogs this is ~800KB per client and can make many
+        // large catalogs this is ~800KB per client and can make many
         // TUI processes parse/render at once, which showed up as multi-second
         // draw stalls during scrolling. The TUI hydrates the persisted remote
         // catalog cache for normal `/model` use; explicit refresh paths still
@@ -1358,7 +1358,7 @@ mod tests {
         let (reader, _writer) = peer.into_split();
         let mut reader = BufReader::new(reader);
 
-        remote.notify_auth_changed_for_provider_detached(Some("openrouter"));
+        remote.notify_auth_changed_for_provider_detached(Some("gemini"));
 
         let mut line = String::new();
         tokio::time::timeout(Duration::from_secs(1), reader.read_line(&mut line))
@@ -1373,7 +1373,7 @@ mod tests {
                 id: 1,
                 provider: Some(provider),
                 auth: None,
-            } if provider == "openrouter"
+            } if provider == "gemini"
         ));
     }
 

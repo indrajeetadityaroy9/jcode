@@ -9,23 +9,23 @@ tracks (`jcode provider-test-coverage`), but as an interactive command you can r
 yourself, with clear pass/fail output and a "what to try next" hint on the first
 failure.
 
-It works with **OpenAI-compatible providers** (cerebras, fpt, nvidia-nim,
-comtegra, deepseek, groq, openrouter, and other `openai-compatible` profiles).
+It works with the native providers: `claude`, `openai`, `gemini`, and
+`antigravity`.
 
 ## Quick start
 
 ```bash
-# Validate jcode's own wiring for a provider, no API key, no spend:
-jcode provider-doctor cerebras --tier offline
+# Validate jcode's own wiring for a provider, no credential, no spend:
+jcode provider-doctor gemini --tier offline
 
-# Validate the key + live model catalog (needs a key, negligible spend):
-jcode provider-doctor cerebras --tier catalog
+# Validate the credential + live model catalog (needs a login, negligible spend):
+jcode provider-doctor gemini --tier catalog
 
 # Full readiness, including real chat, streaming, and tool calls (spends balance):
-jcode provider-doctor cerebras --tier full
+jcode provider-doctor gemini --tier full
 
 # Pin a specific model and emit JSON for scripting/CI:
-jcode provider-doctor cerebras --model gpt-oss-120b --tier full --json
+jcode provider-doctor gemini --model gemini-2.5-flash --tier full --json
 ```
 
 The model defaults to the provider's default model (or the first live catalog
@@ -38,8 +38,8 @@ constraints, so you can debug cheaply and escalate only when needed.
 
 | Tier | Needs key? | Spends balance? | What it adds | Catches |
 | --- | --- | --- | --- | --- |
-| `offline` | no | no | jcode-side wiring against a synthetic catalog | catalog reload, picker rendering, fallback labeling, and model-switch routing bugs for this provider |
-| `catalog` (default) | yes | ~none | live `GET /models` | bad/missing key, dead endpoint, model not in the live catalog |
+| `offline` | no | no | jcode-side wiring against the known model ids | catalog reload, picker rendering, fallback labeling, and model-switch routing bugs for this provider |
+| `catalog` (default) | yes | ~none | live model catalog fetch | bad/missing credential, dead endpoint, model not in the live catalog |
 | `full` | yes | yes | non-streaming chat, streaming, tool-call loop | the model actually chats, streams, and supports tool-calling |
 
 Only the `full` tier can earn strict ("READY") coverage. The lighter tiers
@@ -52,7 +52,7 @@ Every run reports these strict checkpoints in order. A pair is fully ready only
 when all of them pass on the `full` tier.
 
 1. `auth_credential_loaded` - a credential was found for the provider
-2. `model_catalog_live_endpoint` - the live `/models` endpoint returned models
+2. `model_catalog_live_endpoint` - the live model catalog returned models
 3. `catalog_hot_reload_current_session` - the catalog reloaded into the session
 4. `picker_live_models` - the picker shows the live models, including the selected one
 5. `picker_fallback_labeling` - routes are live-catalog backed, not static fallback
@@ -70,15 +70,15 @@ API-dependent ones gated behind `--tier full`.)
 ## Reading the output
 
 ```
-Provider doctor: Cerebras / gpt-oss-120b
+Provider doctor: Google Gemini / gemini-2.5-flash
 Tier: catalog (API key, ~no spend: adds live catalog fetch)
 ...
-  [ PASS] Credential loaded                      Loaded credential from CEREBRAS_API_KEY
-  [ PASS] Live model catalog endpoint            2 live model(s) returned
-  [ PASS] Catalog hot reload in current session  2 catalog route(s) reloaded
-  [ PASS] Picker shows live models               2 model(s) in picker, selected `gpt-oss-120b`
+  [ PASS] Credential loaded                      Gemini Code Assist OAuth credential resolved
+  [ PASS] Live model catalog endpoint            4 live model(s) available
+  [ PASS] Catalog hot reload in current session  4 catalog route(s) reloaded
+  [ PASS] Picker shows live models               4 model(s) in picker, selected `gemini-2.5-flash`
   [ PASS] Picker fallback labeling               all routes backed by live catalog (no static fallback)
-  [ PASS] Model switch route                     switch request `cerebras:...` routed via `openai-compatible:cerebras`
+  [ PASS] Model switch route                     switch request `gemini:...` routed via `code-assist-oauth`
   [ skip] Non-streaming chat completion          catalog tier: requires --tier full (spends balance)
   ...
 Verdict: tier `catalog` passed. Run `--tier full` to confirm full readiness (spends balance).
@@ -103,12 +103,10 @@ Spend this run: 3 billable API calls, 554 tokens (289 in + 265 out), cost not re
 
 - **billable API calls** - how many requests actually hit the provider.
 - **tokens** - prompt + completion totals summed across those calls, when the
-  provider returns a `usage` block. Streaming probes request
-  `stream_options.include_usage` so streamed calls are counted too.
+  provider returns usage data.
 - **cost** - shown as a USD figure only when the provider reports a `cost`
-  field; many providers (e.g. cerebras) only return tokens, so you'll see
-  "cost not reported by provider" and can multiply tokens by your plan's rate.
-  A full cerebras run is roughly 550-620 tokens (about $0.0003).
+  field; otherwise you'll see "cost not reported by provider" and can multiply
+  tokens by your plan's rate.
 
 `--json` includes the same data under a `spend` object
 (`billable_calls`, `prompt_tokens`, `completion_tokens`, `total_tokens`,
@@ -155,8 +153,8 @@ and hands you the doctor command to advance it.
 Each line ends with a freshness note, e.g.:
 
 ```
-  READY  cerebras / gpt-oss-120b   last tested 9 minutes ago (2026-05-30) by developer (dev build)
-  6/11   nvidia-nim / gemma-4-31b  failed at `streaming reply`; run `jcode provider-doctor nvidia-nim --model gemma-4-31b --tier full`; last tested 2 days ago ...
+  READY  gemini / gemini-2.5-flash   last tested 9 minutes ago (2026-05-30) by developer (dev build)
+  6/11   openai / gpt-5.1           failed at `streaming reply`; run `jcode provider-doctor openai --model gpt-5.1 --tier full`; last tested 2 days ago ...
 ```
 
 - **how long ago** the most recent run was, in plain English plus the absolute

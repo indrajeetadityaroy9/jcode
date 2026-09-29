@@ -3715,7 +3715,6 @@ impl App {
         self.streaming.streaming_cache_read_tokens = None;
         self.streaming.streaming_cache_creation_tokens = None;
         self.kv_cache.current_api_usage_recorded = false;
-        self.upstream_provider = None;
         self.status_detail = None;
         self.streaming.streaming_tps_start = None;
         self.streaming.streaming_tps_elapsed = Duration::ZERO;
@@ -3783,7 +3782,6 @@ impl App {
             self.streaming.streaming_cache_read_tokens = None;
             self.streaming.streaming_cache_creation_tokens = None;
             self.kv_cache.current_api_usage_recorded = false;
-            self.upstream_provider = None;
             self.status_detail = None;
             self.streaming.streaming_tps_start = None;
             self.streaming.streaming_tps_elapsed = Duration::ZERO;

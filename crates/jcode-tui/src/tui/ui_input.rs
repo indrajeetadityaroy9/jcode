@@ -647,7 +647,6 @@ fn transport_label_overlaps(left: &str, right: &str) -> bool {
 fn collect_transport_context_labels(
     detail: Option<String>,
     connection: Option<String>,
-    upstream: Option<String>,
 ) -> Vec<String> {
     let mut labels = Vec::new();
 
@@ -664,13 +663,6 @@ fn collect_transport_context_labels(
         }
     }
 
-    if let Some(upstream) = upstream
-        .map(|upstream| upstream.trim().to_string())
-        .filter(|upstream| !upstream.is_empty())
-    {
-        labels.push(format!("via {}", upstream));
-    }
-
     labels
 }
 
@@ -681,7 +673,6 @@ fn transport_context_labels(app: &dyn TuiState) -> Vec<String> {
         app.connection_type()
             .map(|conn| display_connection_type(&conn))
             .filter(|conn| !conn.is_empty()),
-        app.upstream_provider(),
     )
 }
 
@@ -758,11 +749,9 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
     let user_turn_count = app.display_user_message_count();
     let (streaming_input_tokens, _) = app.streaming_tokens();
     let provider_name = app.provider_name();
-    let upstream_provider = app.upstream_provider();
     let cache_ttl = app.cache_ttl_status();
     let kv_cache_problem = detect_kv_cache_problem(
         &provider_name,
-        upstream_provider.as_deref(),
         user_turn_count,
         streaming_input_tokens,
         cache_read,
@@ -1630,19 +1619,14 @@ mod tests {
             collect_transport_context_labels(
                 normalize_status_detail("reusing websocket"),
                 Some(display_connection_type("websocket/persistent-reuse")),
-                Some("OpenRouter".to_string())
             ),
-            vec![
-                "using existing websocket".to_string(),
-                "via OpenRouter".to_string()
-            ]
+            vec!["using existing websocket".to_string()]
         );
 
         assert_eq!(
             collect_transport_context_labels(
                 normalize_status_detail("https fallback"),
                 Some(display_connection_type("https/sse")),
-                None,
             ),
             vec!["using https fallback".to_string()]
         );
@@ -2165,8 +2149,6 @@ fn overscroll_provider_display(provider: &str) -> String {
         "claude" => "Claude".to_string(),
         "anthropic" => "Anthropic".to_string(),
         "openai" => "OpenAI".to_string(),
-        "openrouter" => "OpenRouter".to_string(),
-        "opencode" => "OpenCode".to_string(),
         "gemini" => "Gemini".to_string(),
         "antigravity" => "Antigravity".to_string(),
         _ => provider.to_string(),
@@ -2179,11 +2161,8 @@ fn overscroll_auth_label(
     use crate::tui::info_widget::AuthMethod;
     match method {
         AuthMethod::Unknown => None,
-        AuthMethod::ApiKey | AuthMethod::AnthropicApiKey | AuthMethod::OpenAIApiKey => {
+        AuthMethod::AnthropicApiKey | AuthMethod::OpenAIApiKey => {
             Some(("API key", rgb(180, 180, 190)))
-        }
-        AuthMethod::OpenRouterApiKey | AuthMethod::OpenCodeApiKey => {
-            Some(("API key", rgb(140, 180, 255)))
         }
         AuthMethod::AnthropicOAuth => Some(("OAuth", rgb(255, 160, 100))),
         AuthMethod::OpenAIOAuth => Some(("OAuth", rgb(100, 200, 180))),

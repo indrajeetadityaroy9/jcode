@@ -1552,7 +1552,7 @@ pub(super) async fn run_swarm_task(
     let child_session_id = session.id.clone();
     session.model = Some(coordinator_model);
     // Inherit the coordinator's exact auth identity so the forked worker keeps
-    // the same provider/auth route (OAuth vs API, openai-compatible profile)
+    // the same provider/auth route (OAuth vs API)
     // instead of silently falling back to the config default on persistence.
     session.provider_key = provider_key;
     session.route_api_method = route;

@@ -141,7 +141,7 @@ pub use pinned_ui::{
 };
 pub(crate) use pinned_ui::{
     clear_side_panel_debug_snapshot, clear_side_panel_render_caches, prewarm_focused_side_panel,
-    reset_side_panel_debug_stats, side_panel_debug_json, side_panel_debug_stats,
+    reset_side_panel_debug_stats, side_panel_debug_json,
 };
 use pinned_ui::{
     collect_pinned_diffs_cached, draw_pinned_content_cached, draw_side_panel_markdown,

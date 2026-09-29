@@ -495,7 +495,7 @@ impl BridgeState {
                     return Self::error_reply(
                         api_id,
                         ErrorCode::InvalidRequest,
-                        "unsupported API-key provider; supported: claude-api, openai-api, openrouter, cursor, gemini, jcode",
+                        "unsupported API-key provider; supported: claude-api, openai-api, gemini",
                     );
                 };
                 let configured = req == "set_api_key";
@@ -1310,7 +1310,6 @@ impl BridgeState {
             "openai-api" | "openai-key" | "openai-apikey" => {
                 Some(("openai-api", &["OPENAI_API_KEY"], "openai.env"))
             }
-            "openrouter" => Some(("openrouter", &["OPENROUTER_API_KEY"], "openrouter.env")),
             "gemini" | "gemini-api" | "google-gemini" => Some((
                 "gemini",
                 &["GEMINI_API_KEY", "GOOGLE_API_KEY"],

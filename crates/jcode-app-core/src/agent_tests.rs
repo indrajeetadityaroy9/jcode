@@ -17,67 +17,6 @@ struct NativeAutoCompactionProvider;
 
 struct NativeCompactionStreamProvider;
 
-#[derive(Clone)]
-struct ExplicitPinProvider {
-    model: Arc<std::sync::Mutex<String>>,
-    pin: Arc<std::sync::Mutex<Option<String>>>,
-    set_model_requests: Arc<std::sync::Mutex<Vec<String>>>,
-}
-
-impl ExplicitPinProvider {
-    fn new(model: &str) -> Self {
-        Self {
-            model: Arc::new(std::sync::Mutex::new(model.to_string())),
-            pin: Arc::new(std::sync::Mutex::new(None)),
-            set_model_requests: Arc::new(std::sync::Mutex::new(Vec::new())),
-        }
-    }
-}
-
-#[async_trait]
-impl Provider for ExplicitPinProvider {
-    async fn complete(
-        &self,
-        _messages: &[Message],
-        _tools: &[ToolDefinition],
-        _system: &str,
-        _resume_session_id: Option<&str>,
-    ) -> Result<EventStream> {
-        unreachable!("ExplicitPinProvider does not complete requests")
-    }
-
-    fn name(&self) -> &str {
-        "openrouter"
-    }
-
-    fn model(&self) -> String {
-        self.model.lock().unwrap().clone()
-    }
-
-    fn set_model(&self, request: &str) -> Result<()> {
-        self.set_model_requests
-            .lock()
-            .unwrap()
-            .push(request.to_string());
-        let spec = request.strip_prefix("openrouter:").unwrap_or(request);
-        let (model, pin) = spec
-            .rsplit_once('@')
-            .map(|(model, pin)| (model, Some(pin.to_string())))
-            .unwrap_or((spec, None));
-        *self.model.lock().unwrap() = model.to_string();
-        *self.pin.lock().unwrap() = pin;
-        Ok(())
-    }
-
-    fn explicit_provider_pin_for_current_model(&self) -> Option<String> {
-        self.pin.lock().unwrap().clone()
-    }
-
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
-}
-
 fn content_text(content: &[ContentBlock]) -> &str {
     match content.first() {
         Some(ContentBlock::Text { text, .. }) => text,
@@ -860,7 +799,6 @@ fn seed_transient_session_state(agent: &mut Agent) {
     agent.tool_call_ids.insert("tool_call_old".to_string());
     agent.tool_result_ids.insert("tool_result_old".to_string());
     agent.tool_output_scan_index = 7;
-    agent.last_upstream_provider = Some("upstream_old".to_string());
     agent.last_connection_type = Some("websocket".to_string());
     agent.current_turn_system_reminder = Some("reminder".to_string());
     agent.last_usage = TokenUsage {
@@ -897,7 +835,6 @@ async fn clear_resets_runtime_interrupt_and_queue_state() {
     assert!(agent.tool_call_ids.is_empty());
     assert!(agent.tool_result_ids.is_empty());
     assert_eq!(agent.tool_output_scan_index, 0);
-    assert!(agent.last_upstream_provider.is_none());
     assert!(agent.last_connection_type.is_none());
     assert!(agent.current_turn_system_reminder.is_none());
     assert_eq!(agent.last_usage.input_tokens, 0);
@@ -937,44 +874,11 @@ async fn restore_session_resets_runtime_interrupt_and_queue_state() {
     assert!(agent.tool_call_ids.is_empty());
     assert!(agent.tool_result_ids.is_empty());
     assert_eq!(agent.tool_output_scan_index, 0);
-    assert!(agent.last_upstream_provider.is_none());
     assert!(agent.last_connection_type.is_none());
     assert!(agent.current_turn_system_reminder.is_none());
     assert_eq!(agent.last_usage.input_tokens, 0);
     assert_eq!(agent.last_usage.output_tokens, 0);
     assert!(agent.locked_tools.is_none());
-}
-
-#[tokio::test]
-async fn explicit_provider_pin_is_persisted_and_reapplied_on_restore() {
-    let _guard = crate::storage::lock_test_env();
-    let provider = Arc::new(ExplicitPinProvider::new("z-ai/glm-5.2"));
-    let provider_dyn: Arc<dyn Provider> = provider.clone();
-    let registry = Registry::new(provider_dyn.clone()).await;
-    let mut agent = Agent::new(provider_dyn, registry);
-
-    agent
-        .set_model("z-ai/glm-5.2@Novita")
-        .expect("set explicitly pinned model");
-    assert_eq!(agent.provider_model(), "z-ai/glm-5.2@Novita");
-    let persisted = crate::session::Session::load(agent.session_id()).expect("load saved session");
-    assert_eq!(persisted.model.as_deref(), Some("z-ai/glm-5.2@Novita"));
-
-    let restored_provider = Arc::new(ExplicitPinProvider::new("other/model"));
-    let restored_provider_dyn: Arc<dyn Provider> = restored_provider.clone();
-    let restored_registry = Registry::new(restored_provider_dyn.clone()).await;
-    let restored_agent =
-        Agent::new_with_session(restored_provider_dyn, restored_registry, persisted, None);
-
-    assert_eq!(
-        restored_provider
-            .set_model_requests
-            .lock()
-            .unwrap()
-            .as_slice(),
-        ["openrouter:z-ai/glm-5.2@Novita"]
-    );
-    assert_eq!(restored_agent.provider_model(), "z-ai/glm-5.2@Novita");
 }
 
 #[tokio::test]

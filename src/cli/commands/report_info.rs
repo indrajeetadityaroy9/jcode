@@ -394,7 +394,7 @@ pub(super) async fn run_provider_current_command(
     let report = ProviderCurrentReport {
         requested_provider: choice.as_arg_value().to_string(),
         requested_model: model.map(str::to_string),
-        resolved_provider: crate::provider_catalog::runtime_provider_display_name(provider.name()),
+        resolved_provider: provider.name().to_string(),
         selected_model: provider.model(),
     };
 
@@ -562,20 +562,6 @@ pub(super) fn list_cli_providers() -> Vec<ProviderListEntry> {
     let choices = [
         ProviderChoice::Claude,
         ProviderChoice::Openai,
-        ProviderChoice::Openrouter,
-        ProviderChoice::Opencode,
-        ProviderChoice::OpencodeGo,
-        ProviderChoice::Zai,
-        ProviderChoice::Kimi,
-        ProviderChoice::Groq,
-        ProviderChoice::Mistral,
-        ProviderChoice::Perplexity,
-        ProviderChoice::TogetherAi,
-        ProviderChoice::Deepinfra,
-        ProviderChoice::Chutes,
-        ProviderChoice::Cerebras,
-        ProviderChoice::AlibabaCodingPlan,
-        ProviderChoice::OpenaiCompatible,
         ProviderChoice::Gemini,
         ProviderChoice::Antigravity,
         ProviderChoice::Auto,
@@ -616,150 +602,5 @@ fn auth_state_label(state: crate::auth::AuthState) -> &'static str {
         crate::auth::AuthState::Available => "available",
         crate::auth::AuthState::Expired => "expired",
         crate::auth::AuthState::NotConfigured => "not_configured",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn provider_status<'a>(
-        report: &'a AuthStatusReport,
-        provider_id: &str,
-    ) -> &'a AuthStatusProviderReport {
-        report
-            .providers
-            .iter()
-            .find(|provider| provider.id == provider_id)
-            .unwrap_or_else(|| panic!("missing auth status provider `{}`", provider_id))
-    }
-
-    fn provider_doctor<'a>(
-        report: &'a AuthDoctorReport,
-        provider_id: &str,
-    ) -> &'a AuthDoctorProviderReport {
-        report
-            .providers
-            .iter()
-            .find(|provider| provider.id == provider_id)
-            .unwrap_or_else(|| panic!("missing auth doctor provider `{}`", provider_id))
-    }
-
-    #[tokio::test]
-    async fn cli_auth_status_doctor_and_login_lifecycle_uses_fresh_sandbox() {
-        let sandbox = crate::auth::test_sandbox::AuthTestSandbox::new().expect("sandbox");
-        let provider = crate::provider_catalog::CEREBRAS_LOGIN_PROVIDER;
-        let profile = crate::provider_catalog::CEREBRAS_PROFILE;
-        let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-        let env_file = sandbox.env_file_path(&resolved.env_file);
-
-        assert!(
-            !env_file.exists(),
-            "fresh CLI sandbox should start without {}",
-            env_file.display()
-        );
-        crate::auth::AuthStatus::invalidate_cache();
-
-        let before_status = build_auth_status_report();
-        let before_cerebras = provider_status(&before_status, provider.id);
-        assert_eq!(before_cerebras.status, "not_configured");
-        assert_eq!(before_cerebras.auth_kind, "API key");
-        assert_eq!(before_cerebras.credential_source, "none");
-        assert_eq!(before_cerebras.method, "not configured");
-
-        let before_doctor = build_auth_doctor_report(Some(provider.id), false)
-            .await
-            .expect("doctor before login");
-        assert_eq!(before_doctor.checked_provider.as_deref(), Some(provider.id));
-        assert!(before_doctor.any_issue);
-        let before_doctor_provider = provider_doctor(&before_doctor, provider.id);
-        assert_eq!(before_doctor_provider.status, "not_configured");
-        assert!(before_doctor_provider.needs_attention);
-        assert!(before_doctor_provider.diagnostics.iter().any(|line| {
-            line == &format!("{} is not configured for jcode yet.", provider.display_name)
-        }));
-        assert!(
-            before_doctor_provider
-                .recommended_actions
-                .iter()
-                .any(|line| {
-                    line == &format!("Connect it: jcode login --provider {}", provider.id)
-                })
-        );
-
-        crate::cli::login::run_login(
-            &crate::cli::provider_init::ProviderChoice::Cerebras,
-            None,
-            crate::cli::login::LoginOptions {
-                no_validate: true,
-                openai_compatible_api_key: Some("test-cerebras-cli-key".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .expect("CLI login should save Cerebras key in sandbox");
-
-        assert!(
-            env_file.exists(),
-            "CLI login should create provider env file"
-        );
-        assert_eq!(
-            crate::provider_catalog::load_api_key_from_env_or_config(
-                &resolved.api_key_env,
-                &resolved.env_file,
-            )
-            .as_deref(),
-            Some("test-cerebras-cli-key")
-        );
-        crate::env::remove_var(&resolved.api_key_env);
-        crate::auth::AuthStatus::invalidate_cache();
-
-        let after_status = build_auth_status_report();
-        let after_cerebras = provider_status(&after_status, provider.id);
-        // NOTE: `any_available` only reflects the 11 first-party providers in
-        // `AuthStatus::has_any_available`; Cerebras is an OpenAI-compatible
-        // profile, so a profile-only login never sets it. The per-provider
-        // assertions below are what validate the sandbox login lifecycle.
-        assert_eq!(after_cerebras.status, "available");
-        assert_eq!(after_cerebras.auth_kind, "API key");
-        assert_eq!(after_cerebras.credential_source, "app config file");
-        assert!(after_cerebras.method.contains(&resolved.api_key_env));
-        assert!(
-            after_cerebras.health.contains(&resolved.env_file),
-            "status should show the sandbox env-file-backed source detail: {:?}",
-            after_cerebras
-        );
-
-        let after_doctor = build_auth_doctor_report(Some(provider.id), false)
-            .await
-            .expect("doctor after login");
-        assert_eq!(after_doctor.checked_provider.as_deref(), Some(provider.id));
-        let after_doctor_provider = provider_doctor(&after_doctor, provider.id);
-        assert_eq!(after_doctor_provider.status, "available");
-        assert_eq!(after_doctor_provider.credential_source, "app config file");
-        assert!(after_doctor_provider.needs_attention);
-        assert!(
-            after_doctor_provider
-                .diagnostics
-                .iter()
-                .any(|line| { line == "No runtime validation has been recorded." })
-        );
-        assert!(
-            after_doctor_provider
-                .recommended_actions
-                .iter()
-                .any(|line| {
-                    line == &format!(
-                        "Run runtime verification: jcode auth-test --provider {}",
-                        provider.id
-                    )
-                })
-        );
-        assert!(
-            after_doctor_provider
-                .recommended_actions
-                .iter()
-                .any(|line| { line == "Review current state: jcode auth status --json" })
-        );
     }
 }

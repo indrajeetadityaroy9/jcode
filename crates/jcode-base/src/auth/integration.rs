@@ -58,9 +58,9 @@ pub fn runtime_id_for_login_provider(
         LoginProviderTarget::ClaudeApiKey => Some(RuntimeProviderId::ClaudeApiKey),
         LoginProviderTarget::OpenAi => Some(RuntimeProviderId::OpenAi),
         LoginProviderTarget::OpenAiApiKey => Some(RuntimeProviderId::OpenAiApiKey),
-        LoginProviderTarget::OpenRouter => Some(RuntimeProviderId::OpenRouter),
-        LoginProviderTarget::OpenAiCompatible(_) => Some(RuntimeProviderId::OpenAiCompatible),
-        LoginProviderTarget::Gemini => Some(RuntimeProviderId::Gemini),
+        LoginProviderTarget::Gemini | LoginProviderTarget::GeminiApiKey => {
+            Some(RuntimeProviderId::Gemini)
+        }
         LoginProviderTarget::Antigravity => Some(RuntimeProviderId::Antigravity),
     }
 }
@@ -68,7 +68,7 @@ pub fn runtime_id_for_login_provider(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER;
+    use crate::provider_catalog::GEMINI_API_LOGIN_PROVIDER;
     use std::collections::HashSet;
 
     #[test]
@@ -94,8 +94,8 @@ mod tests {
     #[test]
     fn integration_registry_preserves_runtime_identity() {
         assert_eq!(
-            runtime_id_for_login_provider(OPENAI_COMPAT_LOGIN_PROVIDER),
-            Some(RuntimeProviderId::OpenAiCompatible)
+            runtime_id_for_login_provider(GEMINI_API_LOGIN_PROVIDER),
+            Some(RuntimeProviderId::Gemini)
         );
     }
 

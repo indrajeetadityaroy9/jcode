@@ -7,7 +7,7 @@ cd "$repo_root"
 bin=${JCODE_AUTH_MATRIX_BIN:-}
 out_dir=${JCODE_AUTH_MATRIX_OUT:-"$repo_root/target/auth-test-reports"}
 prompt=${JCODE_AUTH_MATRIX_PROMPT:-"Reply with exactly AUTH_TEST_OK and nothing else. Do not call tools."}
-providers=${JCODE_AUTH_MATRIX_PROVIDERS:-"claude openrouter deepseek zai alibaba-coding-plan openai-compatible"}
+providers=${JCODE_AUTH_MATRIX_PROVIDERS:-"claude anthropic-api openai openai-api gemini antigravity"}
 mode=${JCODE_AUTH_MATRIX_MODE:-configured}
 keep_going=${JCODE_AUTH_MATRIX_KEEP_GOING:-1}
 per_command_timeout=${JCODE_AUTH_MATRIX_TIMEOUT:-90}
@@ -36,7 +36,7 @@ Options:
 Environment equivalents:
   JCODE_AUTH_MATRIX_BIN=/path/to/jcode
   JCODE_AUTH_MATRIX_OUT=target/auth-test-reports
-  JCODE_AUTH_MATRIX_PROVIDERS="claude deepseek zai"
+  JCODE_AUTH_MATRIX_PROVIDERS="claude openai gemini"
   JCODE_AUTH_MATRIX_MODE=configured|all
   JCODE_AUTH_MATRIX_LOGIN=1
   JCODE_AUTH_MATRIX_NO_SMOKE=1
@@ -46,7 +46,7 @@ Environment equivalents:
 
 Examples:
   scripts/auth_regression_matrix.sh --configured --no-smoke
-  scripts/auth_regression_matrix.sh --provider deepseek --provider zai
+  scripts/auth_regression_matrix.sh --provider claude --provider gemini
   JCODE_AUTH_MATRIX_BIN=target/selfdev/jcode scripts/auth_regression_matrix.sh --all
 EOF
 }

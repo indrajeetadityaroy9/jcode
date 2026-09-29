@@ -30,45 +30,6 @@ fn test_session_exists_roundtrip() -> Result<()> {
 }
 
 #[test]
-fn derive_session_provider_key_prefers_runtime_identity_over_transport() {
-    let _lock = lock_env();
-    let _runtime = EnvVarGuard::set("JCODE_RUNTIME_PROVIDER", "custom-gateway");
-    let _namespace = EnvVarGuard::set("JCODE_OPENROUTER_CACHE_NAMESPACE", "custom-cache");
-    let _active = EnvVarGuard::set("JCODE_ACTIVE_PROVIDER", "openrouter");
-
-    assert_eq!(
-        derive_session_provider_key("openrouter").as_deref(),
-        Some("custom-gateway")
-    );
-}
-
-#[test]
-fn derive_session_provider_key_falls_back_to_openrouter_namespace() {
-    let _lock = lock_env();
-    let _runtime = EnvVarGuard::remove("JCODE_RUNTIME_PROVIDER");
-    let _namespace = EnvVarGuard::set("JCODE_OPENROUTER_CACHE_NAMESPACE", "custom-gateway");
-    let _active = EnvVarGuard::set("JCODE_ACTIVE_PROVIDER", "openrouter");
-
-    assert_eq!(
-        derive_session_provider_key("openrouter").as_deref(),
-        Some("custom-gateway")
-    );
-}
-
-#[test]
-fn derive_session_provider_key_keeps_openai_compatible_profile_namespace() {
-    let _lock = lock_env();
-    let _runtime = EnvVarGuard::set("JCODE_RUNTIME_PROVIDER", "openai-compatible");
-    let _namespace = EnvVarGuard::set("JCODE_OPENROUTER_CACHE_NAMESPACE", "zai");
-    let _active = EnvVarGuard::set("JCODE_ACTIVE_PROVIDER", "openrouter");
-
-    assert_eq!(
-        derive_session_provider_key("openrouter").as_deref(),
-        Some("zai")
-    );
-}
-
-#[test]
 fn rename_title_preserves_generated_title_for_clear() {
     let mut session = Session::create_with_id(
         "session_rename_clear_123".to_string(),
@@ -966,7 +927,7 @@ fn test_save_persists_full_session_content() -> Result<()> {
         Role::User,
         vec![ContentBlock::ToolResult {
             tool_use_id: "tool_1".to_string(),
-            content: "OPENROUTER_API_KEY=sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789".to_string(),
+            content: "GEMINI_API_KEY=AIzaSyabcdefghijklmnopqrstuvwxyz0123456789".to_string(),
             is_error: None,
         }],
     );
@@ -990,7 +951,7 @@ fn test_save_persists_full_session_content() -> Result<()> {
     let ContentBlock::ToolResult { content, .. } = &loaded.messages[0].content[0] else {
         return Err(anyhow!("expected tool result block"));
     };
-    assert!(content.contains("sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789"));
+    assert!(content.contains("AIzaSyabcdefghijklmnopqrstuvwxyz0123456789"));
     assert!(!content.contains("[REDACTED_SECRET]"));
 
     let ContentBlock::ToolUse { input, .. } = &loaded.messages[1].content[0] else {
@@ -1371,7 +1332,7 @@ fn test_redacted_for_export_redacts_tool_result_and_tool_input() -> Result<()> {
         Role::User,
         vec![ContentBlock::ToolResult {
             tool_use_id: "tool_1".to_string(),
-            content: "OPENROUTER_API_KEY=sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789".to_string(),
+            content: "GEMINI_API_KEY=AIzaSyabcdefghijklmnopqrstuvwxyz0123456789".to_string(),
             is_error: None,
         }],
     );
@@ -1396,8 +1357,8 @@ fn test_redacted_for_export_redacts_tool_result_and_tool_input() -> Result<()> {
     let ContentBlock::ToolResult { content, .. } = first_content else {
         return Err(anyhow!("expected tool result block"));
     };
-    assert!(content.contains("OPENROUTER_API_KEY=[REDACTED_SECRET]"));
-    assert!(!content.contains("sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789"));
+    assert!(content.contains("GEMINI_API_KEY=[REDACTED_SECRET]"));
+    assert!(!content.contains("AIzaSyabcdefghijklmnopqrstuvwxyz0123456789"));
 
     let second_content = &persisted.messages[1].content[0];
     let ContentBlock::ToolUse { input, .. } = second_content else {
@@ -1422,7 +1383,7 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
     session.record_replay_display_message(
         "swarm",
         Some("DM from fox".to_string()),
-        "OPENROUTER_API_KEY=sk-or-v1-secret-value",
+        "GEMINI_API_KEY=AIza-secret-value",
     );
     session.record_swarm_status_event(vec![crate::protocol::SwarmMemberStatus {
         session_id: "session_fox".to_string(),
@@ -1444,7 +1405,7 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
         "swarm_test".to_string(),
         1,
         vec![crate::plan::PlanItem {
-            content: "OPENROUTER_API_KEY=sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789".to_string(),
+            content: "GEMINI_API_KEY=AIzaSyabcdefghijklmnopqrstuvwxyz0123456789".to_string(),
             status: "pending".to_string(),
             priority: "high".to_string(),
             id: "task-1".to_string(),
@@ -1464,8 +1425,8 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
     else {
         return Err(anyhow!("expected display message replay event"));
     };
-    assert!(content.contains("OPENROUTER_API_KEY=[REDACTED_SECRET]"));
-    assert!(!content.contains("sk-or-v1-secret-value"));
+    assert!(content.contains("GEMINI_API_KEY=[REDACTED_SECRET]"));
+    assert!(!content.contains("AIza-secret-value"));
 
     let StoredReplayEventKind::SwarmStatus { members } = &redacted.replay_events[1].kind else {
         return Err(anyhow!("expected swarm status replay event"));
@@ -1478,15 +1439,11 @@ fn test_redacted_for_export_redacts_replay_events() -> Result<()> {
     else {
         return Err(anyhow!("expected swarm plan replay event"));
     };
-    assert!(
-        items[0]
-            .content
-            .contains("OPENROUTER_API_KEY=[REDACTED_SECRET]")
-    );
+    assert!(items[0].content.contains("GEMINI_API_KEY=[REDACTED_SECRET]"));
     assert!(
         !items[0]
             .content
-            .contains("sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789")
+            .contains("AIzaSyabcdefghijklmnopqrstuvwxyz0123456789")
     );
     let reason = reason.as_deref().unwrap_or_default();
     assert!(reason.contains("ANTHROPIC_API_KEY=[REDACTED_SECRET]"));

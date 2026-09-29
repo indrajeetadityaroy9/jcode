@@ -172,9 +172,6 @@ impl crate::tui::TuiState for TestState {
             .clone()
             .unwrap_or_else(|| "mock-model".to_string())
     }
-    fn upstream_provider(&self) -> Option<String> {
-        None
-    }
     fn connection_type(&self) -> Option<String> {
         None
     }

@@ -839,10 +839,6 @@ pub enum ServerEvent {
     #[serde(rename = "retry_rollback")]
     RetryRollback { attempt: u32, max: u32 },
 
-    /// Upstream provider info (e.g., which provider OpenRouter routed to)
-    #[serde(rename = "upstream_provider")]
-    UpstreamProvider { provider: String },
-
     /// Swarm status update (subagent/session lifecycle info)
     #[serde(rename = "swarm_status")]
     SwarmStatus { members: Vec<SwarmMemberStatus> },
@@ -1090,9 +1086,6 @@ pub enum ServerEvent {
         /// Last observed provider-supplied status detail for this session.
         #[serde(skip_serializing_if = "Option::is_none")]
         status_detail: Option<String>,
-        /// Upstream provider (e.g., which provider OpenRouter routed to, or calculated preference)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        upstream_provider: Option<String>,
         /// Server-resolved billing credential for this session: `Oauth`
         /// (subscription) vs `ApiKey` (cost-based), or `None` when the active
         /// provider has no OAuth-vs-API-key distinction. Lets remote clients

@@ -4,15 +4,10 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 use crate::auth;
-use crate::provider_catalog::{
-    LoginProviderDescriptor, LoginProviderTarget, OPENAI_COMPAT_LOCAL_ENABLED_ENV,
-    OpenAiCompatibleProfile, resolve_openai_compatible_profile,
-};
+use crate::provider_catalog::{LoginProviderDescriptor, LoginProviderTarget};
 
 use super::provider_init::{ProviderChoice, login_provider_for_choice, save_named_api_key};
 
-mod existing_key_notice;
-mod next_step;
 mod scriptable;
 use scriptable::*;
 
@@ -24,10 +19,6 @@ pub struct LoginOptions {
     pub auth_code: Option<String>,
     pub json: bool,
     pub no_validate: bool,
-    pub openai_compatible_api_base: Option<String>,
-    pub openai_compatible_api_key: Option<String>,
-    pub openai_compatible_api_key_env: Option<String>,
-    pub openai_compatible_default_model: Option<String>,
 }
 
 impl LoginOptions {
@@ -260,16 +251,12 @@ pub async fn run_login_provider(
             LoginProviderTarget::OpenAiApiKey => {
                 login_openai_api_key_flow().map(|_| LoginFlowOutcome::Completed)
             }
-            LoginProviderTarget::OpenRouter => {
-                login_openrouter_flow().map(|_| LoginFlowOutcome::Completed)
-            }
-            LoginProviderTarget::OpenAiCompatible(profile) => {
-                login_openai_compatible_flow(&profile, &options)
-                    .map(|_| LoginFlowOutcome::Completed)
-            }
             LoginProviderTarget::Gemini => login_gemini_flow(options.no_browser)
                 .await
                 .map(|_| LoginFlowOutcome::Completed),
+            LoginProviderTarget::GeminiApiKey => {
+                login_gemini_api_key_flow().map(|_| LoginFlowOutcome::Completed)
+            }
             LoginProviderTarget::Antigravity => login_antigravity_flow(options.no_browser)
                 .await
                 .map(|_| LoginFlowOutcome::Completed),
@@ -312,7 +299,7 @@ pub async fn run_login_provider(
             provider.id,
             &[("reason", "no_validate")],
         );
-        maybe_persist_default_provider_after_login(provider, &options);
+        maybe_persist_default_provider_after_login(provider);
         notify_running_server_auth_changed_best_effort(Some(provider.id)).await;
         return Ok(());
     }
@@ -340,15 +327,12 @@ pub async fn run_login_provider(
             ("validated", "true"),
         ],
     );
-    maybe_persist_default_provider_after_login(provider, &options);
+    maybe_persist_default_provider_after_login(provider);
     notify_running_server_auth_changed_best_effort(Some(provider.id)).await;
     Ok(())
 }
 
-fn maybe_persist_default_provider_after_login(
-    provider: LoginProviderDescriptor,
-    options: &LoginOptions,
-) {
+fn maybe_persist_default_provider_after_login(provider: LoginProviderDescriptor) {
     let cfg = crate::config::Config::load();
     if cfg.provider.default_provider.is_some() {
         return;
@@ -360,22 +344,7 @@ fn maybe_persist_default_provider_after_login(
         return;
     };
 
-    let suggested_model = match provider.target {
-        LoginProviderTarget::OpenAiCompatible(profile) => options
-            .openai_compatible_default_model
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string)
-            .or_else(|| resolve_openai_compatible_profile(profile).default_model),
-        _ => None,
-    };
-
-    let model_to_save = cfg
-        .provider
-        .default_model
-        .as_deref()
-        .or(suggested_model.as_deref());
+    let model_to_save = cfg.provider.default_model.as_deref();
 
     if let Err(err) = crate::config::Config::set_default_model(model_to_save, Some(provider_id)) {
         crate::logging::warn(&format!(
@@ -503,211 +472,6 @@ async fn login_openai_flow(requested_label: Option<&str>, no_browser: bool) -> R
             .join("openai-auth.json")
             .display()
     );
-    Ok(())
-}
-
-fn login_openrouter_flow() -> Result<()> {
-    eprintln!("Setting up OpenRouter...");
-    eprintln!("Get your API key from: https://openrouter.ai/keys\n");
-    eprint!("Paste your OpenRouter API key: ");
-    io::stdout().flush()?;
-
-    let key = read_secret_line()?;
-
-    if key.is_empty() {
-        anyhow::bail!("No API key provided.");
-    }
-
-    if !key.starts_with("sk-or-") {
-        eprintln!("Warning: OpenRouter API keys typically start with 'sk-or-'. Saving anyway.");
-    }
-
-    save_named_api_key("openrouter.env", "OPENROUTER_API_KEY", &key)?;
-    eprintln!("\nSuccessfully saved OpenRouter API key!");
-    eprintln!(
-        "Stored at {}",
-        crate::storage::app_config_dir()?
-            .join("openrouter.env")
-            .display()
-    );
-    Ok(())
-}
-
-fn login_openai_compatible_flow(
-    profile: &OpenAiCompatibleProfile,
-    options: &LoginOptions,
-) -> Result<()> {
-    let is_custom_profile = profile.id == crate::provider_catalog::OPENAI_COMPAT_PROFILE.id;
-    let mut resolved = resolve_openai_compatible_profile(*profile);
-
-    eprintln!("Setting up {}...", resolved.display_name);
-    let setup_url_depends_on_key = profile.id == crate::provider_catalog::MINIMAX_PROFILE.id;
-    if !setup_url_depends_on_key {
-        eprintln!("See setup details: {}\n", resolved.setup_url);
-    }
-
-    if is_custom_profile {
-        if !io::stdin().is_terminal()
-            && options.openai_compatible_api_base.is_none()
-            && options.openai_compatible_api_key.is_none()
-        {
-            anyhow::bail!(
-                "Non-interactive OpenAI-compatible login requires --api-base and --api-key. \
-                 This avoids accidentally saving a piped model name or other answer as the API key."
-            );
-        }
-        eprintln!(
-            "You can point this at a hosted OpenAI-compatible API or a local server such as LM Studio or Ollama."
-        );
-        let api_base_input = match options.openai_compatible_api_base.as_deref() {
-            Some(value) => value.trim().to_string(),
-            None => read_line_trimmed(&format!("API base URL [{}]: ", resolved.api_base))?,
-        };
-        if !api_base_input.is_empty() {
-            let normalized = crate::provider_catalog::normalize_api_base(&api_base_input)
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Invalid OpenAI-compatible API base. Use https://... or http://localhost..."
-                    )
-                })?;
-            crate::provider_catalog::save_env_value_to_env_file(
-                "JCODE_OPENAI_COMPAT_API_BASE",
-                crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
-                Some(&normalized),
-            )?;
-            resolved = resolve_openai_compatible_profile(*profile);
-        }
-
-        if let Some(api_key_env) = options
-            .openai_compatible_api_key_env
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            if !crate::provider_catalog::is_safe_env_key_name(api_key_env) {
-                anyhow::bail!("Invalid API key environment variable name: {}", api_key_env);
-            }
-            crate::provider_catalog::save_env_value_to_env_file(
-                "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-                crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
-                Some(api_key_env),
-            )?;
-            resolved = resolve_openai_compatible_profile(*profile);
-        }
-
-        let default_model_input = match options.openai_compatible_default_model.as_deref() {
-            Some(value) => value.trim().to_string(),
-            None if !io::stdin().is_terminal() => String::new(),
-            None => read_line_trimmed("Default model name (optional, press Enter to skip): ")?,
-        };
-        if !default_model_input.is_empty() {
-            crate::provider_catalog::save_env_value_to_env_file(
-                "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
-                crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
-                Some(&default_model_input),
-            )?;
-            resolved = resolve_openai_compatible_profile(*profile);
-        }
-        eprintln!();
-    } else if let Some(model) = options
-        .openai_compatible_default_model
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        resolved.default_model = Some(model.to_string());
-    }
-
-    let _auth_method = if resolved.requires_api_key {
-        eprintln!("API key env variable: {}\n", resolved.api_key_env);
-        if options.openai_compatible_api_key.is_none() {
-            existing_key_notice::announce_existing_api_key(&resolved);
-        }
-        let key = match options.openai_compatible_api_key.as_deref() {
-            Some(value) => value.trim().to_string(),
-            None => {
-                eprint!("Paste your {} API key: ", resolved.display_name);
-                io::stdout().flush()?;
-                read_secret_line()?
-            }
-        };
-        if key.is_empty() {
-            anyhow::bail!("No API key provided.");
-        }
-        resolved = crate::provider_catalog::resolve_openai_compatible_profile_with_api_key_hint(
-            *profile,
-            Some(&key),
-        );
-        eprintln!("Endpoint: {}", resolved.api_base);
-        if setup_url_depends_on_key {
-            eprintln!("See setup details: {}", resolved.setup_url);
-        }
-
-        crate::provider_catalog::save_env_value_to_env_file(
-            OPENAI_COMPAT_LOCAL_ENABLED_ENV,
-            &resolved.env_file,
-            None,
-        )?;
-        save_named_api_key(&resolved.env_file, &resolved.api_key_env, &key)?;
-        eprintln!("\nSuccessfully saved {} API key!", resolved.display_name);
-        "api_key"
-    } else {
-        eprintln!("Endpoint: {}", resolved.api_base);
-        if setup_url_depends_on_key {
-            eprintln!("See setup details: {}", resolved.setup_url);
-        }
-        eprintln!("This provider uses a local OpenAI-compatible endpoint.");
-        eprintln!(
-            "An API key is optional here. Press Enter to skip if your local server does not require one.\n"
-        );
-        let key = match options.openai_compatible_api_key.as_deref() {
-            Some(value) => value.trim().to_string(),
-            None => {
-                eprint!("Optional {} API key: ", resolved.display_name);
-                io::stdout().flush()?;
-                read_secret_line()?
-            }
-        };
-        crate::provider_catalog::save_env_value_to_env_file(
-            OPENAI_COMPAT_LOCAL_ENABLED_ENV,
-            &resolved.env_file,
-            Some("1"),
-        )?;
-        if key.trim().is_empty() {
-            crate::provider_catalog::save_env_value_to_env_file(
-                &resolved.api_key_env,
-                &resolved.env_file,
-                None,
-            )?;
-            eprintln!("\nSaved {} local endpoint setup.", resolved.display_name);
-            "local_endpoint"
-        } else {
-            crate::provider_catalog::save_env_value_to_env_file(
-                &resolved.api_key_env,
-                &resolved.env_file,
-                Some(key.trim()),
-            )?;
-            eprintln!(
-                "\nSaved {} local endpoint setup and optional API key.",
-                resolved.display_name
-            );
-            "local_endpoint_with_optional_api_key"
-        }
-    };
-
-    if !resolved.requires_api_key && resolved.default_model.is_none() {
-        eprintln!("{}", next_step::local_endpoint_hint(&resolved.id));
-    }
-
-    eprintln!(
-        "Stored at {}",
-        crate::storage::app_config_dir()?
-            .join(&resolved.env_file)
-            .display()
-    );
-    if let Some(default_model) = resolved.default_model {
-        eprintln!("Default model hint: {}", default_model);
-    }
     Ok(())
 }
 

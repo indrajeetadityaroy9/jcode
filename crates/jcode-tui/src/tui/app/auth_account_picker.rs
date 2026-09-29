@@ -183,61 +183,6 @@ impl App {
                         },
                     ));
                 }
-                "openai-compatible" => {
-                    let compat = crate::provider_catalog::resolve_openai_compatible_profile(
-                        crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-                    );
-                    items.push(AccountPickerItem::action(
-                        provider.id,
-                        provider.display_name,
-                        "Step 1: API base URL",
-                        compat.api_base,
-                        AccountPickerCommand::PromptValue {
-                            prompt: "Step 1/2: enter the OpenAI-compatible API base URL, for example https://llm.example.com/v1.".to_string(),
-                            command_prefix: "/account openai-compatible api-base".to_string(),
-                            empty_value: Some("clear".to_string()),
-                            status_notice: "Account: editing OpenAI-compatible API base URL (step 1/2)...".to_string(),
-                        },
-                    ));
-                    items.push(AccountPickerItem::action(
-                        provider.id,
-                        provider.display_name,
-                        "Step 2: API key variable",
-                        compat.api_key_env,
-                        AccountPickerCommand::PromptValue {
-                            prompt: "Step 2/2: enter the env var name that stores the API key, for example OPENAI_API_KEY.".to_string(),
-                            command_prefix: "/account openai-compatible api-key-name".to_string(),
-                            empty_value: Some("clear".to_string()),
-                            status_notice: "Account: editing OpenAI-compatible API key variable (step 2/2)...".to_string(),
-                        },
-                    ));
-                    items.push(AccountPickerItem::action(
-                        provider.id,
-                        provider.display_name,
-                        "Env file",
-                        compat.env_file,
-                        AccountPickerCommand::PromptValue {
-                            prompt: "Enter the env file name for this profile.".to_string(),
-                            command_prefix: "/account openai-compatible env-file".to_string(),
-                            empty_value: Some("clear".to_string()),
-                            status_notice: "Account: editing env file...".to_string(),
-                        },
-                    ));
-                    items.push(AccountPickerItem::action(
-                        provider.id,
-                        provider.display_name,
-                        "Default model hint",
-                        compat
-                            .default_model
-                            .unwrap_or_else(|| "(unset)".to_string()),
-                        AccountPickerCommand::PromptValue {
-                            prompt: "Enter the default model hint for this profile.".to_string(),
-                            command_prefix: "/account openai-compatible default-model".to_string(),
-                            empty_value: Some("clear".to_string()),
-                            status_notice: "Account: editing default model hint...".to_string(),
-                        },
-                    ));
-                }
                 _ => {}
             }
         }
@@ -248,8 +193,7 @@ impl App {
             "Default provider",
             cfg.provider.default_provider.as_deref().unwrap_or("auto"),
             AccountPickerCommand::PromptValue {
-                prompt: "Enter the default provider: claude, openai, gemini, openrouter, or auto."
-                    .to_string(),
+                prompt: "Enter the default provider: claude, openai, gemini, or auto.".to_string(),
                 command_prefix: "/account default-provider".to_string(),
                 empty_value: Some("auto".to_string()),
                 status_notice: "Account: editing default provider...".to_string(),
@@ -503,8 +447,6 @@ impl App {
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
-                old: false,
-                created_date: None,
                 effort: None,
             });
         }
@@ -552,8 +494,6 @@ impl App {
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
-                old: false,
-                created_date: None,
                 effort: None,
             });
         }
@@ -577,8 +517,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 
@@ -601,8 +539,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 
@@ -636,8 +572,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 
@@ -671,8 +605,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 
@@ -697,8 +629,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 
@@ -761,8 +691,6 @@ impl App {
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
-                old: false,
-                created_date: None,
                 effort: None,
             });
         }
@@ -786,8 +714,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 
@@ -821,8 +747,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 
@@ -847,8 +771,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 
@@ -911,8 +833,6 @@ impl App {
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
-                old: false,
-                created_date: None,
                 effort: None,
             });
         }
@@ -936,8 +856,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 
@@ -971,8 +889,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 
@@ -997,8 +913,6 @@ impl App {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         });
 

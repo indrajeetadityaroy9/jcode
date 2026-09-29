@@ -197,8 +197,6 @@ pub struct Agent {
     disabled_tools: HashSet<String>,
     /// Provider-specific session ID for conversation resume (e.g., Claude Code CLI session)
     provider_session_id: Option<String>,
-    /// Last upstream provider (OpenRouter) observed for this session
-    last_upstream_provider: Option<String>,
     /// Last observed transport/connection type for this session
     last_connection_type: Option<String>,
     /// Last provider-supplied human-readable transport detail for this session
@@ -289,7 +287,6 @@ impl Agent {
             allowed_tools,
             disabled_tools,
             provider_session_id: None,
-            last_upstream_provider: None,
             last_connection_type: None,
             last_status_detail: None,
             pending_alerts: Vec::new(),
@@ -374,7 +371,6 @@ impl Agent {
         agent.session.mark_active();
         agent.session.model = Some(agent.provider_model());
         agent.session.provider_key = agent.provider_key_for_new_session();
-        agent.reconcile_explicit_provider_pin_route();
         agent.session.ensure_initial_session_context_message();
         agent.seed_compaction_from_session();
         agent.log_env_snapshot("create");
@@ -529,7 +525,6 @@ impl Agent {
 
     fn reset_runtime_state_for_session_change(&mut self) {
         self.active_skill = None;
-        self.last_upstream_provider = None;
         self.last_connection_type = None;
         self.last_status_detail = None;
         self.pending_alerts.clear();

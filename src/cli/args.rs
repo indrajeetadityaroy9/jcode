@@ -10,22 +10,12 @@ pub(crate) enum TranscriptModeArg {
     Send,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
-pub(crate) enum ProviderAuthArg {
-    /// Send the API key as Authorization: Bearer <key> (OpenAI-compatible default)
-    Bearer,
-    /// Send the API key in an API-key header (defaults to api-key)
-    ApiKey,
-    /// Do not send authentication, useful for localhost model servers
-    None,
-}
-
 #[derive(Parser, Debug)]
 #[command(name = "jcode")]
 #[command(version = jcode_build_meta::version())]
 #[command(about = "J-Code: A coding agent using Claude Max or ChatGPT Pro subscriptions")]
 pub(crate) struct Args {
-    /// Initial provider to use (claude, openai, openai-api, openrouter, opencode, opencode-go, zai, 302ai, baseten, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, gemini, antigravity, or auto-detect). Interactive sessions can switch providers with /model.
+    /// Initial provider to use (claude, anthropic-api, openai, openai-api, gemini, gemini-api, antigravity, or auto-detect). Interactive sessions can switch providers with /model.
     #[arg(short, long, default_value = "auto", global = true)]
     pub(crate) provider: ProviderChoice,
 
@@ -67,7 +57,6 @@ pub(crate) struct Args {
     pub(crate) model: Option<String>,
 
     /// Named provider profile from [providers.<name>] in config.toml.
-    /// Implies --provider openai-compatible for OpenAI-compatible profiles.
     #[arg(long, global = true)]
     pub(crate) provider_profile: Option<String>,
 
@@ -179,18 +168,6 @@ pub(crate) enum Command {
         /// Useful for offline setup, CI, or when entering credentials before network access is available.
         #[arg(long)]
         no_validate: bool,
-
-        /// OpenAI-compatible API base URL. Used with --provider openai-compatible/custom profiles.
-        #[arg(long)]
-        api_base: Option<String>,
-
-        /// OpenAI-compatible API key. If omitted, jcode prompts securely when needed.
-        #[arg(long)]
-        api_key: Option<String>,
-
-        /// Environment variable name to store/use for an OpenAI-compatible API key.
-        #[arg(long)]
-        api_key_env: Option<String>,
     },
 
     /// Run in simple REPL mode (no TUI)
@@ -329,7 +306,7 @@ pub(crate) enum Command {
     /// strict end-to-end checkpoints (catalog, picker, model-switch, chat, streaming, tools).
     #[command(name = "provider-doctor", alias = "provider-strict-e2e")]
     ProviderDoctor {
-        /// OpenAI-compatible provider id to diagnose (e.g. cerebras, fpt, nvidia-nim)
+        /// Provider id to diagnose (e.g. claude, openai, gemini, antigravity)
         #[arg(id = "doctor_provider", value_name = "PROVIDER")]
         provider: String,
 
@@ -372,10 +349,6 @@ pub(crate) enum Command {
         /// Write the full auth-test report JSON to a file
         #[arg(long)]
         output: Option<String>,
-
-        /// Fetch live model catalogs and verify context-window resolution for each model with metadata
-        #[arg(long, conflicts_with_all = ["login", "no_smoke", "no_tool_smoke", "prompt"])]
-        context_audit: bool,
     },
 
     /// Save or restore the current set of open jcode windows across a system reboot
@@ -539,72 +512,6 @@ pub(crate) enum ProviderCommand {
     /// Show the currently requested and resolved provider selection
     Current {
         /// Emit JSON instead of plain text
-        #[arg(long)]
-        json: bool,
-    },
-
-    /// Add a named OpenAI-compatible API provider profile
-    Add {
-        /// Profile name used with --provider-profile and config defaults, e.g. my-gateway
-        name: String,
-
-        /// OpenAI-compatible API base URL, e.g. https://llm.example.com/v1
-        #[arg(long, alias = "api-base")]
-        base_url: String,
-
-        /// Default model id for this provider profile
-        #[arg(short, long)]
-        model: String,
-
-        /// Optional model context window in tokens
-        #[arg(long)]
-        context_window: Option<usize>,
-
-        /// Environment variable name that contains the API key
-        #[arg(long, conflicts_with = "no_api_key")]
-        api_key_env: Option<String>,
-
-        /// API key value to store in jcode's private provider env file. Prefer --api-key-stdin for shell history safety.
-        #[arg(long, conflicts_with_all = ["api_key_stdin", "no_api_key"])]
-        api_key: Option<String>,
-
-        /// Read the API key from stdin and store it in jcode's private provider env file
-        #[arg(long, conflicts_with = "no_api_key")]
-        api_key_stdin: bool,
-
-        /// Configure the provider with no API key/authentication
-        #[arg(long, conflicts_with_all = ["api_key", "api_key_stdin", "api_key_env"])]
-        no_api_key: bool,
-
-        /// Authentication style for the API key
-        #[arg(long, value_enum)]
-        auth: Option<ProviderAuthArg>,
-
-        /// Header name when --auth api-key is used (default: api-key)
-        #[arg(long)]
-        auth_header: Option<String>,
-
-        /// Private env file name under jcode's app config directory for stored API keys
-        #[arg(long)]
-        env_file: Option<String>,
-
-        /// Make this profile the startup default provider/model
-        #[arg(long, alias = "default")]
-        set_default: bool,
-
-        /// Replace an existing profile with the same name
-        #[arg(long)]
-        overwrite: bool,
-
-        /// Allow provider-routing features for OpenRouter-style gateways
-        #[arg(long)]
-        provider_routing: bool,
-
-        /// Fetch/list models from the provider's /models endpoint
-        #[arg(long)]
-        model_catalog: bool,
-
-        /// Emit JSON instead of human-readable setup output
         #[arg(long)]
         json: bool,
     },

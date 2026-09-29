@@ -67,20 +67,13 @@ fn header_version_label(version: &str, include_hash: bool) -> String {
 
 fn format_model_name(short: &str, provider_name: &str) -> String {
     if short.contains('/') {
-        // Slashed model ids (e.g. `nvidia/nemotron-...`) are served by the
-        // OpenRouter slot, which also fronts direct OpenAI-compatible profiles
-        // such as NVIDIA NIM or DeepSeek. Label the line with the active
-        // provider's display name instead of hard-coding "OpenRouter" so the
-        // header matches the profile the user actually selected.
-        let label = {
-            let trimmed = provider_name.trim();
-            if trimmed.is_empty() {
-                "OpenRouter".to_string()
-            } else {
-                trimmed.to_string()
-            }
-        };
-        return format!("{}: {}", label, short);
+        // Slashed (namespaced) model ids have no pretty family name; label the
+        // line with the active provider's display name.
+        let trimmed = provider_name.trim();
+        if trimmed.is_empty() {
+            return short.to_string();
+        }
+        return format!("{}: {}", trimmed, short);
     }
     if short.contains("opus") {
         if short.contains("4.5") {
@@ -374,7 +367,6 @@ fn auth_full_specs(
 
     vec![
         (anthropic_label, auth.anthropic.state),
-        ("openrouter".to_string(), auth.openrouter),
         (openai_label, auth.openai),
         (gemini_label, auth.gemini),
         (
@@ -461,20 +453,7 @@ fn header_provider_auth_tag(
         }
     }
 
-    match name {
-        "openrouter" | "openai-compatible" => "api-key",
-        other
-            if crate::provider_catalog::resolve_openai_compatible_profile_selection(other)
-                .is_some()
-                || crate::provider_catalog::openai_compatible_profile_id_for_display_name(
-                    other,
-                )
-                .is_some() =>
-        {
-            "api-key"
-        }
-        _ => "",
-    }
+    ""
 }
 
 fn header_provider_label(
@@ -578,7 +557,6 @@ fn version_display_candidates() -> Vec<String> {
 fn configured_auth_count(auth: &AuthStatus) -> usize {
     [
         auth.anthropic.state,
-        auth.openrouter,
         auth.openai,
         auth.gemini,
         auth.antigravity,
@@ -727,7 +705,7 @@ fn build_persistent_header_with_auth(
     }
 
     // Single model line: dim active-route method on the left, styled model
-    // name in the middle, dim upstream/hint detail after. This used to be a
+    // name in the middle, dim hint detail before. This used to be a
     // second, unstyled line in the secondary header duplicating the model name.
     let model_is_placeholder = {
         let trimmed = model.trim();
@@ -740,11 +718,6 @@ fn build_persistent_header_with_auth(
         String::new()
     } else {
         header_provider_label(&app.provider_name(), auth, active)
-    };
-    let upstream = if model_is_placeholder {
-        None
-    } else {
-        app.upstream_provider()
     };
     let mut model_spans: Vec<Span> = Vec::new();
     let mut model_line_len = nice_model.chars().count();
@@ -764,7 +737,6 @@ fn build_persistent_header_with_auth(
     if !provider_label.is_empty() {
         let prefix = format!("{} · ", provider_label);
         if model_line_len + prefix.chars().count() <= fit_width {
-            model_line_len += prefix.chars().count();
             model_spans.push(Span::styled(prefix, Style::default().fg(dim_color())));
         }
     }
@@ -774,12 +746,6 @@ fn build_persistent_header_with_auth(
         // white so the model reads as a distinct, styled element.
         Style::default().fg(rgb(255, 150, 200)).bold(),
     ));
-    if let Some(upstream) = upstream.as_deref() {
-        let suffix = format!(" via {}", upstream);
-        if model_line_len + suffix.chars().count() <= fit_width {
-            model_spans.push(Span::styled(suffix, Style::default().fg(dim_color())));
-        }
-    }
     if !nice_model.is_empty() {
         lines.push(Line::from(model_spans).alignment(align));
     }
@@ -1354,8 +1320,8 @@ mod tests {
 
         // Slashed ids keep the provider label form.
         assert_eq!(
-            header_model_display_name("deepseek/deepseek-chat", "OpenRouter"),
-            "OpenRouter: deepseek/deepseek-chat"
+            header_model_display_name("vendor/model-x", "Gemini"),
+            "Gemini: vendor/model-x"
         );
         // Placeholders pass through untouched.
         assert_eq!(
@@ -1384,7 +1350,7 @@ mod tests {
                 oauth_state: AuthState::Expired,
                 has_api_key: false,
             },
-            openrouter: AuthState::Available,
+            gemini: AuthState::Available,
             ..AuthStatus::default()
         };
 
@@ -1647,7 +1613,6 @@ mod tests {
         );
         assert!(rendered.contains("openai(key)"), "rendered: {rendered}");
         // Providers the user has no credentials for stay out of the header.
-        assert!(!rendered.contains("openrouter"), "rendered: {rendered}");
         assert!(!rendered.contains("gemini"), "rendered: {rendered}");
         assert!(!rendered.contains("○"), "rendered: {rendered}");
     }
@@ -1707,30 +1672,5 @@ mod tests {
             Some(value) => crate::env::set_var("JCODE_RUNTIME_PROVIDER", value),
             None => crate::env::remove_var("JCODE_RUNTIME_PROVIDER"),
         }
-    }
-
-    #[test]
-    fn format_model_name_labels_slashed_models_with_active_provider() {
-        // Regression for issue #329: a NVIDIA NIM model must be labeled with the
-        // active provider's display name, not the fixed "OpenRouter" aggregator.
-        assert_eq!(
-            format_model_name("nvidia/nemotron-3-super-120b-a12b", "NVIDIA NIM"),
-            "NVIDIA NIM: nvidia/nemotron-3-super-120b-a12b"
-        );
-        // The public aggregator still reads "OpenRouter".
-        assert_eq!(
-            format_model_name("anthropic/claude-sonnet-4", "OpenRouter"),
-            "OpenRouter: anthropic/claude-sonnet-4"
-        );
-        // Missing provider name falls back to "OpenRouter" rather than an empty label.
-        assert_eq!(
-            format_model_name("deepseek/deepseek-chat", ""),
-            "OpenRouter: deepseek/deepseek-chat"
-        );
-        // Non-slashed models are unaffected by the provider label.
-        assert_eq!(
-            format_model_name("claude-opus-4-6", "OpenRouter"),
-            "Claude Opus"
-        );
     }
 }

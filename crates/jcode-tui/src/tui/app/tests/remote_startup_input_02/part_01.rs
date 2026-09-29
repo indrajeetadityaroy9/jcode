@@ -41,32 +41,6 @@ fn test_remote_placeholder_only_openai_routes_are_replaced_with_real_routes() {
 }
 
 #[test]
-fn test_remote_current_fpt_live_model_uses_fpt_route_without_cache() {
-    with_temp_jcode_home(|| {
-        crate::env::set_var("FPT_API_KEY", "test-fpt-key");
-
-        let mut app = create_test_app();
-        app.is_remote = true;
-        app.remote_provider_name = Some("FPT AI Marketplace".to_string());
-        app.remote_available_entries = vec!["GLM-5.1".to_string()];
-        app.remote_model_options.clear();
-
-        let routes = app.build_remote_model_routes_fallback();
-
-        assert!(
-            routes.iter().any(|route| {
-                route.model == "GLM-5.1"
-                    && route.provider == "FPT AI Marketplace"
-                    && route.api_method == "openai-compatible:fpt"
-            }),
-            "FPT current-provider live model should use FPT route, got {routes:?}"
-        );
-
-        crate::env::remove_var("FPT_API_KEY");
-    });
-}
-
-#[test]
 fn test_remote_fallback_claude_model_gets_api_key_route_without_oauth() {
     // A newly released Claude model can reach the picker via the names-only
     // catalog fallback (oversized route frames are downgraded to model names).
@@ -164,11 +138,11 @@ fn test_model_picker_ctrl_o_selection_saves_provider_qualified_default() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.is_remote = true;
-        app.remote_available_entries = vec!["glm-51-nvfp4".to_string()];
+        app.remote_available_entries = vec!["claude-sonnet-4-6".to_string()];
         app.remote_model_options = vec![crate::provider::ModelRoute {
-            model: "glm-51-nvfp4".to_string(),
-            provider: "Comtegra GPU Cloud".to_string(),
-            api_method: "openai-compatible:comtegra".to_string(),
+            model: "claude-sonnet-4-6".to_string(),
+            provider: "Antigravity".to_string(),
+            api_method: "cli".to_string(),
             available: true,
             detail: String::new(),
             cheapness: None,
@@ -183,13 +157,13 @@ fn test_model_picker_ctrl_o_selection_saves_provider_qualified_default() {
         let model_idx = picker
             .entries
             .iter()
-            .position(|m| m.name == "glm-51-nvfp4")
-            .expect("Comtegra model should be in picker");
+            .position(|m| m.name == "claude-sonnet-4-6")
+            .expect("Antigravity model should be in picker");
         let filtered_pos = picker
             .filtered
             .iter()
             .position(|&i| i == model_idx)
-            .expect("Comtegra model should be in filtered list");
+            .expect("Antigravity model should be in filtered list");
         app.inline_interactive_state.as_mut().unwrap().selected = filtered_pos;
 
         // Ctrl+O replaced Ctrl+B so the picker no longer steals tmux's prefix.
@@ -199,9 +173,9 @@ fn test_model_picker_ctrl_o_selection_saves_provider_qualified_default() {
         let cfg = crate::config::Config::load();
         assert_eq!(
             cfg.provider.default_model.as_deref(),
-            Some("glm-51-nvfp4")
+            Some("antigravity:claude-sonnet-4-6")
         );
-        assert_eq!(cfg.provider.default_provider.as_deref(), Some("comtegra"));
+        assert_eq!(cfg.provider.default_provider.as_deref(), Some("antigravity"));
     });
 }
 
@@ -1178,14 +1152,6 @@ fn test_model_picker_effort_variant_selection_stages_effort_in_remote_mode() {
 fn test_model_picker_effort_variants_follow_each_route_vocabulary() {
     let mut app = create_test_app();
     configure_test_remote_models_with_openai_recommendations(&mut app);
-    app.remote_model_options.push(crate::provider::ModelRoute {
-        model: "gpt-5.5".to_string(),
-        provider: "OpenRouter".to_string(),
-        api_method: "openrouter".to_string(),
-        available: true,
-        detail: String::new(),
-        cheapness: None,
-    });
 
     app.open_model_picker();
     let picker = app
@@ -1205,12 +1171,6 @@ fn test_model_picker_effort_variants_follow_each_route_vocabulary() {
 
     assert!(has_route_effort("openai-oauth", "max"));
     assert!(has_route_effort("openai-oauth", "minimal"));
-    assert!(has_route_effort("openrouter", "xhigh"));
-    assert!(has_route_effort("openrouter", "minimal"));
-    assert!(
-        !has_route_effort("openrouter", "max"),
-        "OpenRouter must not advertise max as a distinct rung because it aliases xhigh"
-    );
 }
 
 /// Plain model rows (no effort suffix) must not stage a reasoning effort.

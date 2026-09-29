@@ -20,7 +20,7 @@ can reconnect transparently after disconnects or server reloads.
 │  ├── Unix socket:  $TMPDIR/jcode.sock  (macOS default)                      │
 │  ├── Debug socket: $TMPDIR/jcode-debug.sock                                 │
 │  ├── Registry:     ~/.jcode/servers.json                                    │
-│  ├── Provider (Claude/OpenAI/OpenRouter)                                    │
+│  ├── Provider (Claude/OpenAI/Gemini)                                        │
 │  ├── MCP pool (shared across sessions)                                      │
 │  └── Sessions:                                                              │
 │        ├── 🦊 fox   (active)  → "🔥 blazing 🦊 fox"                         │

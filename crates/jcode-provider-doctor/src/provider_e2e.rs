@@ -19,14 +19,12 @@
 //! over-credited in the ledger.
 
 use crate::live_provider_probes::{
-    fetch_live_openai_compatible_models, run_live_antigravity_native_reasoning_smoke,
-    run_live_antigravity_native_smoke, run_live_antigravity_native_stream_smoke,
-    run_live_antigravity_native_tool_smoke, run_live_claude_native_reasoning_smoke,
-    run_live_claude_native_smoke, run_live_claude_native_stream_smoke,
-    run_live_claude_native_tool_smoke, run_live_native_provider_reasoning_smoke,
-    run_live_native_provider_smoke, run_live_native_provider_stream_smoke,
-    run_live_native_provider_tool_smoke, run_live_openai_compatible_smoke,
-    run_live_openai_compatible_stream_smoke, run_live_openai_compatible_tool_smoke,
+    run_live_antigravity_native_reasoning_smoke, run_live_antigravity_native_smoke,
+    run_live_antigravity_native_stream_smoke, run_live_antigravity_native_tool_smoke,
+    run_live_claude_native_reasoning_smoke, run_live_claude_native_smoke,
+    run_live_claude_native_stream_smoke, run_live_claude_native_tool_smoke,
+    run_live_native_provider_reasoning_smoke, run_live_native_provider_smoke,
+    run_live_native_provider_stream_smoke, run_live_native_provider_tool_smoke,
 };
 use jcode_base::auth::lifecycle::{
     AuthActivationRequest, activate_auth_change, validate_catalog_invariants,
@@ -35,9 +33,8 @@ use jcode_base::live_tests::{
     self, LiveVerificationAuth, LiveVerificationEvent, LiveVerificationResult,
     LiveVerificationStage, LiveVerificationStageStatus, checkpoints,
 };
-use jcode_base::protocol::{AuthChanged, CatalogNamespace, RuntimeProviderKey};
+use jcode_base::protocol::{AuthChanged, RuntimeProviderKey};
 use jcode_base::provider::ModelRoute;
-use jcode_base::provider_catalog::OpenAiCompatibleProfile;
 
 /// How much of the strict pipeline to exercise.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -391,158 +388,8 @@ const API_DEPENDENT_CHECKPOINTS: &[&str] = &[
     checkpoints::REASONING_CAPABILITY,
 ];
 
-/// Run the strict provider/model diagnostic.
-///
-/// `api_key` may be `None` only when `tier == DoctorTier::Offline`.
-pub async fn run_provider_e2e(
-    profile: OpenAiCompatibleProfile,
-    api_key: Option<&str>,
-    requested_model: Option<&str>,
-    tier: DoctorTier,
-) -> anyhow::Result<DoctorReport> {
-    let resolved = jcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
-    let provider_id = profile.id.to_string();
-    let provider_label = profile.display_name.to_string();
-    let mut checks: Vec<DoctorCheck> = Vec::new();
-
-    if tier.requires_api_key() && api_key.map(str::trim).unwrap_or("").is_empty() {
-        anyhow::bail!(
-            "tier `{}` requires an API key for provider `{}` but none was supplied",
-            tier.as_str(),
-            provider_id
-        );
-    }
-
-    // --- Stage 1: credential loaded ---
-    match api_key.map(str::trim).filter(|key| !key.is_empty()) {
-        Some(_) => checks.push(DoctorCheck::passed(
-            checkpoints::AUTH_CREDENTIAL_LOADED,
-            label_for(checkpoints::AUTH_CREDENTIAL_LOADED),
-            format!("Loaded credential from {}", resolved.api_key_env),
-        )),
-        None => checks.push(DoctorCheck::skipped(
-            checkpoints::AUTH_CREDENTIAL_LOADED,
-            label_for(checkpoints::AUTH_CREDENTIAL_LOADED),
-            "offline tier: no credential required".to_string(),
-        )),
-    }
-
-    // --- Stage 2: live model catalog (or synthetic for offline) ---
-    let catalog_models: Vec<String> = if tier.requires_api_key() {
-        match fetch_live_openai_compatible_models(profile, api_key.unwrap_or_default()).await {
-            Ok(models) => {
-                checks.push(DoctorCheck::passed(
-                    checkpoints::MODEL_CATALOG_LIVE_ENDPOINT,
-                    label_for(checkpoints::MODEL_CATALOG_LIVE_ENDPOINT),
-                    format!("{} live model(s) returned", models.len()),
-                ));
-                models
-            }
-            Err(error) => {
-                checks.push(DoctorCheck::failed(
-                    checkpoints::MODEL_CATALOG_LIVE_ENDPOINT,
-                    label_for(checkpoints::MODEL_CATALOG_LIVE_ENDPOINT),
-                    format_error_chain(&error),
-                ));
-                return Ok(finish_report(
-                    provider_id,
-                    provider_label,
-                    requested_model.unwrap_or("").to_string(),
-                    tier,
-                    checks,
-                    DoctorSpend::default(),
-                    compat_auth(api_key, &resolved.api_key_env, &resolved.env_file),
-                ));
-            }
-        }
-    } else {
-        // Offline tier: synthesize a small catalog so we can still validate wiring.
-        checks.push(DoctorCheck::skipped(
-            checkpoints::MODEL_CATALOG_LIVE_ENDPOINT,
-            label_for(checkpoints::MODEL_CATALOG_LIVE_ENDPOINT),
-            "offline tier: using synthetic catalog (no network)".to_string(),
-        ));
-        let default_model = profile.default_model.unwrap_or("fixture-model");
-        vec![
-            default_model.to_string(),
-            format!("{}-alternate-fixture-model", profile.id),
-        ]
-    };
-
-    // Pick the model under test.
-    let selected = match requested_model.map(str::trim).filter(|m| !m.is_empty()) {
-        Some(model) => {
-            if tier.requires_api_key() && !catalog_models.iter().any(|m| m == model) {
-                checks.push(DoctorCheck::failed(
-                    checkpoints::MODEL_CATALOG_LIVE_ENDPOINT,
-                    label_for(checkpoints::MODEL_CATALOG_LIVE_ENDPOINT),
-                    format!(
-                        "requested model `{model}` is not in the live catalog ({} model(s): {})",
-                        catalog_models.len(),
-                        truncate_list(&catalog_models)
-                    ),
-                ));
-                return Ok(finish_report(
-                    provider_id,
-                    provider_label,
-                    model.to_string(),
-                    tier,
-                    checks,
-                    DoctorSpend::default(),
-                    compat_auth(api_key, &resolved.api_key_env, &resolved.env_file),
-                ));
-            }
-            model.to_string()
-        }
-        None => profile
-            .default_model
-            .filter(|default| catalog_models.iter().any(|m| m == default))
-            .map(ToString::to_string)
-            .or_else(|| catalog_models.first().cloned())
-            .unwrap_or_else(|| "fixture-model".to_string()),
-    };
-
-    // --- Stage 3: auth-lifecycle wiring (catalog reload, picker, fallback, switch) ---
-    run_wiring_checks(profile, &selected, &catalog_models, &mut checks);
-
-    // --- Stage 4: API-dependent checkpoints ---
-    let mut spend = DoctorSpend::default();
-    if tier == DoctorTier::Full {
-        run_full_api_checks(
-            profile,
-            api_key.unwrap_or_default(),
-            &selected,
-            &mut checks,
-            &mut spend,
-        )
-        .await;
-    } else {
-        for checkpoint in API_DEPENDENT_CHECKPOINTS {
-            checks.push(DoctorCheck::skipped(
-                checkpoint,
-                label_for(checkpoint),
-                format!(
-                    "{} tier: requires --tier full (spends balance)",
-                    tier.as_str()
-                ),
-            ));
-        }
-    }
-
-    Ok(finish_report(
-        provider_id,
-        provider_label,
-        selected,
-        tier,
-        checks,
-        spend,
-        compat_auth(api_key, &resolved.api_key_env, &resolved.env_file),
-    ))
-}
-
-/// The native-runtime providers this doctor can drive directly (i.e. providers
-/// whose live path is not OpenAI-compatible and so cannot be exercised by
-/// [`run_provider_e2e`]). Today this is the Claude OAuth/subscription provider,
+/// The native-runtime providers this doctor can drive directly. Today this is
+/// the Claude OAuth/subscription provider,
 /// the Antigravity (Google OAuth Cloud Code) provider, and the generic
 /// native-runtime providers (OpenAI, Gemini).
 ///
@@ -562,7 +409,6 @@ fn native_claude_wiring_contract() -> WiringContract {
         api_method: "claude-oauth".to_string(),
         route_provider: "Anthropic".to_string(),
         expected_runtime: "claude",
-        expected_namespace: None,
         switch_prefix: "claude-oauth:".to_string(),
     }
 }
@@ -589,8 +435,7 @@ fn cheapest_catalog_model(catalog_models: &[String]) -> Option<String> {
 
 /// Run the strict provider/model diagnostic for the **native Claude** provider.
 ///
-/// This is the native-runtime counterpart to [`run_provider_e2e`]: instead of
-/// driving an OpenAI-compatible HTTP shim, it exercises the production
+/// It exercises the production
 /// [`AnthropicProvider`] runtime end to end (OAuth/API-key resolution, the live
 /// `GET /v1/models` catalog, the Claude Code OAuth preflight, request shaping,
 /// SSE→`StreamEvent` translation, and tool-call round-trips). It records the
@@ -945,7 +790,6 @@ fn native_antigravity_wiring_contract() -> WiringContract {
         api_method: "https".to_string(),
         route_provider: "Antigravity".to_string(),
         expected_runtime: "antigravity",
-        expected_namespace: None,
         switch_prefix: "antigravity:".to_string(),
     }
 }
@@ -990,8 +834,7 @@ fn cheapest_antigravity_model(catalog_models: &[String]) -> Option<String> {
 /// Run the strict provider/model diagnostic for the **native Antigravity**
 /// provider.
 ///
-/// The native-runtime counterpart to [`run_provider_e2e`] for Antigravity:
-/// instead of driving an OpenAI-compatible HTTP shim, it exercises the
+/// For Antigravity it exercises the
 /// production [`AntigravityProvider`] runtime end to end (Google OAuth token
 /// load/refresh, project resolution, the live `fetchAvailableModels` catalog,
 /// request shaping, the per-model schema normalization, the Gemini->StreamEvent
@@ -1316,7 +1159,6 @@ impl NativeProviderKind {
                     api_method: "openai-oauth".to_string(),
                     route_provider: "OpenAI".to_string(),
                     expected_runtime: "openai",
-                    expected_namespace: None,
                     switch_prefix: "openai-oauth:".to_string(),
                 },
                 auth_source: "OpenAI ChatGPT OAuth / API key via auth.json",
@@ -1330,7 +1172,6 @@ impl NativeProviderKind {
                     api_method: "code-assist-oauth".to_string(),
                     route_provider: "Gemini".to_string(),
                     expected_runtime: "gemini",
-                    expected_namespace: None,
                     switch_prefix: "gemini:".to_string(),
                 },
                 auth_source: "Gemini Code Assist Google OAuth via gemini_oauth.json",
@@ -1745,15 +1586,7 @@ async fn run_generic_native_api_checks(
     );
 }
 
-/// The jcode-side wiring a given compat profile is expected to activate.
-///
-/// Most OpenAI-compatible profiles route through the generic
-/// `openai-compatible` runtime with a per-profile catalog namespace and an
-/// `openai-compatible:<id>` api_method. A few profile ids deliberately collide
-/// with native login providers (`anthropic-api`→Anthropic, `openai-api`→OpenAI)
-/// and jcode remaps them to their native runtimes. The doctor must assert the
-/// *native* wiring for those, not the generic compat contract, or the routing
-/// checkpoints fail even though the live API works.
+/// The jcode-side wiring a provider is expected to activate.
 struct WiringContract {
     /// The api_method string the live-catalog routes should carry.
     api_method: String,
@@ -1761,56 +1594,13 @@ struct WiringContract {
     route_provider: String,
     /// `expected_runtime` for the AuthChanged activation.
     expected_runtime: &'static str,
-    /// `expected_catalog_namespace` for the AuthChanged activation, if any.
-    expected_namespace: Option<String>,
     /// The `provider:` prefix a model-switch request must produce. An empty
     /// prefix means the runtime deliberately expects the bare model id.
     switch_prefix: String,
 }
 
-fn wiring_contract(profile: OpenAiCompatibleProfile) -> WiringContract {
-    match jcode_base::auth::lifecycle::normalized_auth_provider_id(Some(profile.id)) {
-        Some("claude-api") => WiringContract {
-            api_method: "claude-api".to_string(),
-            route_provider: "Anthropic".to_string(),
-            expected_runtime: "claude-api",
-            expected_namespace: None,
-            switch_prefix: "claude-api:".to_string(),
-        },
-        Some("openai-api") => WiringContract {
-            api_method: "openai-api".to_string(),
-            route_provider: "OpenAI".to_string(),
-            expected_runtime: "openai-api",
-            expected_namespace: None,
-            switch_prefix: "openai-api:".to_string(),
-        },
-        _ => WiringContract {
-            api_method: format!("openai-compatible:{}", profile.id),
-            route_provider: profile.display_name.to_string(),
-            expected_runtime: "openai-compatible",
-            expected_namespace: Some(profile.id.to_string()),
-            switch_prefix: format!("{}:", profile.id),
-        },
-    }
-}
-
-fn run_wiring_checks(
-    profile: OpenAiCompatibleProfile,
-    selected: &str,
-    catalog_models: &[String],
-    checks: &mut Vec<DoctorCheck>,
-) {
-    run_wiring_checks_for_contract(
-        profile.id,
-        &wiring_contract(profile),
-        selected,
-        catalog_models,
-        checks,
-    );
-}
-
-/// Shared wiring-checkpoint driver used by both the OpenAI-compatible doctor and
-/// the native Claude doctor. Builds the live-catalog routes a provider would
+/// Shared wiring-checkpoint driver used by the native doctors. Builds the
+/// live-catalog routes a provider would
 /// surface after auth, then exercises the production auth-activation +
 /// catalog-invariant + model-switch logic against them.
 fn run_wiring_checks_for_contract(
@@ -1838,10 +1628,6 @@ fn run_wiring_checks_for_contract(
         credential_source: None,
         auth_method: None,
         expected_runtime: Some(RuntimeProviderKey::new(contract.expected_runtime)),
-        expected_catalog_namespace: contract
-            .expected_namespace
-            .as_deref()
-            .map(CatalogNamespace::new),
     };
     let activation = activate_auth_change(&AuthActivationRequest::new(None, Some(auth)));
 
@@ -1977,81 +1763,6 @@ fn run_wiring_checks_for_contract(
     }
 }
 
-async fn run_full_api_checks(
-    profile: OpenAiCompatibleProfile,
-    api_key: &str,
-    selected: &str,
-    checks: &mut Vec<DoctorCheck>,
-    spend: &mut DoctorSpend,
-) {
-    // Non-streaming completion.
-    match run_live_openai_compatible_smoke(profile, api_key, selected).await {
-        Ok(stage) => {
-            spend.accumulate(stage.evidence.get("usage"), stage.evidence.get("cost"));
-            checks.push(DoctorCheck::passed(
-                checkpoints::NON_STREAMING_CHAT_COMPLETION,
-                label_for(checkpoints::NON_STREAMING_CHAT_COMPLETION),
-                "received expected completion".to_string(),
-            ));
-        }
-        Err(error) => checks.push(DoctorCheck::failed(
-            checkpoints::NON_STREAMING_CHAT_COMPLETION,
-            label_for(checkpoints::NON_STREAMING_CHAT_COMPLETION),
-            format_error_chain(&error),
-        )),
-    }
-
-    // Streaming completion.
-    match run_live_openai_compatible_stream_smoke(profile, api_key, selected).await {
-        Ok(stage) => {
-            spend.accumulate(stage.evidence.get("usage"), stage.evidence.get("cost"));
-            checks.push(DoctorCheck::passed(
-                checkpoints::STREAMING_CHAT_COMPLETION,
-                label_for(checkpoints::STREAMING_CHAT_COMPLETION),
-                "received expected streamed completion".to_string(),
-            ));
-        }
-        Err(error) => checks.push(DoctorCheck::failed(
-            checkpoints::STREAMING_CHAT_COMPLETION,
-            label_for(checkpoints::STREAMING_CHAT_COMPLETION),
-            format_error_chain(&error),
-        )),
-    }
-
-    // Tool call + derived execution/result/smoke checkpoints (one round-trip).
-    match run_live_openai_compatible_tool_smoke(profile, api_key, selected).await {
-        Ok(stage) => {
-            spend.accumulate(stage.evidence.get("usage"), stage.evidence.get("cost"));
-            for checkpoint in [
-                checkpoints::TOOL_CALL_PARSE,
-                checkpoints::TOOL_EXECUTION_LOOP,
-                checkpoints::TOOL_RESULT_FOLLOWUP,
-                checkpoints::REAL_JCODE_TOOL_SMOKE,
-            ] {
-                checks.push(DoctorCheck::passed(
-                    checkpoint,
-                    label_for(checkpoint),
-                    "tool call parsed and executed".to_string(),
-                ));
-            }
-        }
-        Err(error) => {
-            for checkpoint in [
-                checkpoints::TOOL_CALL_PARSE,
-                checkpoints::TOOL_EXECUTION_LOOP,
-                checkpoints::TOOL_RESULT_FOLLOWUP,
-                checkpoints::REAL_JCODE_TOOL_SMOKE,
-            ] {
-                checks.push(DoctorCheck::failed(
-                    checkpoint,
-                    label_for(checkpoint),
-                    format_error_chain(&error),
-                ));
-            }
-        }
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn finish_report(
     provider_id: String,
@@ -2093,19 +1804,6 @@ fn finish_report(
         tier_passed,
         strict_passed,
         spend,
-    }
-}
-
-/// Build the [`LiveVerificationAuth`] for an OpenAI-compatible doctor run from a
-/// resolved env-var key (or mark it offline when no key is present).
-fn compat_auth(api_key: Option<&str>, api_key_env: &str, env_file: &str) -> LiveVerificationAuth {
-    match api_key {
-        Some(key) if !key.trim().is_empty() => LiveVerificationAuth::from_secret(
-            format!("{api_key_env} via {env_file}"),
-            Some(api_key_env),
-            key,
-        ),
-        _ => LiveVerificationAuth::non_secret("provider-doctor (offline)", Some(api_key_env)),
     }
 }
 
@@ -2249,7 +1947,6 @@ mod tests {
         // Native providers with bespoke drivers are intentionally not generic.
         assert_eq!(NativeProviderKind::from_normalized("claude"), None);
         assert_eq!(NativeProviderKind::from_normalized("antigravity"), None);
-        assert_eq!(NativeProviderKind::from_normalized("openrouter"), None);
     }
 
     #[test]
@@ -2331,9 +2028,6 @@ mod tests {
         assert!(native_doctor_supports_provider("claude"));
         assert!(native_doctor_supports_provider("anthropic"));
         assert!(native_doctor_supports_provider("antigravity"));
-        // OpenAI-compatible profiles are driven by the generic doctor, not the
-        // native path.
-        assert!(!native_doctor_supports_provider("openrouter"));
         assert!(!native_doctor_supports_provider(
             "definitely-not-a-provider"
         ));
@@ -2367,7 +2061,6 @@ mod tests {
         assert_eq!(contract.api_method, "https");
         assert_eq!(contract.route_provider, "Antigravity");
         assert_eq!(contract.expected_runtime, "antigravity");
-        assert!(contract.expected_namespace.is_none());
         assert_eq!(contract.switch_prefix, "antigravity:");
     }
 

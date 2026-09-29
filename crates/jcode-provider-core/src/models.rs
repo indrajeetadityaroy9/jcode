@@ -122,7 +122,6 @@ pub fn provider_key_from_hint(provider_hint: Option<&str>) -> Option<&'static st
     match normalized.as_str() {
         "anthropic" | "claude" => Some("claude"),
         "openai" => Some("openai"),
-        "openrouter" => Some("openrouter"),
         "antigravity" => Some("antigravity"),
         "gemini" | "google gemini" => Some("gemini"),
         _ => None,
@@ -131,14 +130,14 @@ pub fn provider_key_from_hint(provider_hint: Option<&str>) -> Option<&'static st
 
 pub fn is_listable_model_name(model: &str) -> bool {
     let trimmed = model.trim();
-    !trimmed.is_empty() && !matches!(trimmed, "openrouter models")
+    !trimmed.is_empty()
 }
 
-fn model_id_for_capability_lookup(model: &str, provider: Option<&str>) -> (String, bool) {
+fn model_id_for_capability_lookup(model: &str) -> (String, bool) {
     let normalized = model.trim().to_ascii_lowercase();
     let (base, is_1m) = crate::model_id::split_long_context(&normalized);
 
-    let lookup = if matches!(provider, Some("openrouter")) || base.contains('/') {
+    let lookup = if base.contains('/') {
         crate::model_id::slash_base(base).to_string()
     } else {
         base.to_string()
@@ -159,14 +158,10 @@ pub fn provider_for_model_with_hint(
     }
 
     let model = model.trim();
-    if model.contains('@') {
-        Some("openrouter")
-    } else if ALL_CLAUDE_MODELS.contains(&model) {
+    if ALL_CLAUDE_MODELS.contains(&model) {
         Some("claude")
     } else if ALL_OPENAI_MODELS.contains(&model) {
         Some("openai")
-    } else if model.contains('/') {
-        Some("openrouter")
     } else if model.starts_with("claude-") {
         Some("claude")
     } else if model.starts_with("gpt-") {
@@ -200,11 +195,10 @@ fn base_is_known_claude_model(base: &str) -> bool {
 
 pub fn context_limit_for_model_with_provider_and_cache(
     model: &str,
-    provider_hint: Option<&str>,
+    _provider_hint: Option<&str>,
     cached_context_limit: impl Fn(&str) -> Option<usize>,
 ) -> Option<usize> {
-    let provider = provider_key_from_hint(provider_hint).or_else(|| provider_for_model(model));
-    let (model, is_1m) = model_id_for_capability_lookup(model, provider);
+    let (model, is_1m) = model_id_for_capability_lookup(model);
     let model = model.as_str();
 
     // Claude models: classify long-context behavior centrally. For generations
@@ -227,7 +221,7 @@ pub fn context_limit_for_model_with_provider_and_cache(
     }
 
     // Honor an explicitly configured/cached context limit before applying broad
-    // model-family fallbacks (e.g. custom openai-compatible providers may serve
+    // model-family fallbacks (e.g. custom providers may serve
     // GPT-named models with different context windows). See issue #541.
     if let Some(limit) = cached_context_limit(model) {
         return Some(limit);
@@ -263,7 +257,7 @@ pub fn context_limit_for_model_with_provider_and_cache(
         return Some(1_000_000);
     }
 
-    // Open-weight model families served by many OpenAI-compatible gateways
+    // Open-weight model families served by many third-party gateways
     // (Z.AI, Moonshot, MiniMax, Alibaba, etc.). Their `/v1/models` endpoints
     // frequently omit `context_length`, so without this classifier these models
     // fall back to the generic 200K default even when their real window is
@@ -735,7 +729,7 @@ mod tests {
     #[test]
     fn configured_context_window_overrides_gpt_family_fallback() {
         // Issue #541: a user-configured context_window for a GPT-named model
-        // under a custom openai-compatible provider must beat the broad
+        // under a custom provider must beat the broad
         // gpt-5* fallbacks.
         assert_eq!(
             context_limit_for_model_with_provider_and_cache("gpt-5.4", None, |model| {

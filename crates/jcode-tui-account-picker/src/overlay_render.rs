@@ -240,16 +240,7 @@ pub(super) fn provider_style(provider_id: &str) -> Style {
         "gemini" | "google" => Color::Rgb(129, 184, 255),
         "cursor" => Color::Rgb(131, 215, 255),
         "account-flow" => Color::Rgb(196, 170, 255),
-        "openrouter"
-        | "openai-compatible"
-        | "opencode"
-        | "opencode-go"
-        | "zai"
-        | "chutes"
-        | "cerebras"
-        | "alibaba-coding-plan"
-        | "jcode"
-        | "defaults" => Color::Rgb(189, 200, 255),
+        "jcode" | "defaults" => Color::Rgb(189, 200, 255),
         _ => Color::Rgb(180, 190, 220),
     };
     Style::default().fg(color).bold()

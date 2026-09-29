@@ -54,9 +54,8 @@ place. That machinery is deleted.
 
 With the deadlock gone, the suite ran to completion and exposed what the hang
 had been hiding: 3-6 failures per run with a *shifting* set
-(`test_model_picker_*`, `test_tui_cerebras_paste_key_lifecycle_*`,
-`render_system_message_uses_scheduled_task_card`, …). Each passed alone and
-passed serially.
+(`test_model_picker_*`, `render_system_message_uses_scheduled_task_card`, …).
+Each passed alone and passed serially.
 
 Two changes fixed it:
 

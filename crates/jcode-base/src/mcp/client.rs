@@ -420,7 +420,7 @@ mod tests {
         ] {
             assert!(is_sensitive_inherited_env_key(key), "must scrub {key}");
         }
-        for key in ["PATH", "HOME", "RUST_LOG", "JCODE_OPENROUTER_API_KEY_NAME"] {
+        for key in ["PATH", "HOME", "RUST_LOG", "JCODE_ANTHROPIC_API_KEY_NAME"] {
             assert!(!is_sensitive_inherited_env_key(key), "must preserve {key}");
         }
     }

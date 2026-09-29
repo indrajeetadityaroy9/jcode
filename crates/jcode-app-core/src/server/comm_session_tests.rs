@@ -406,35 +406,6 @@ fn prepare_visible_spawn_session_cleans_session_when_launch_errors() {
 }
 
 #[test]
-fn prepare_visible_spawn_session_persists_and_launches_provider_key_for_openrouter_model() {
-    let _guard = crate::storage::lock_test_env();
-    let temp_home = tempfile::TempDir::new().expect("temp home");
-    crate::env::set_var("JCODE_HOME", temp_home.path());
-
-    let worktree = tempfile::TempDir::new().expect("temp worktree");
-    let (session_id, launched) = prepare_visible_spawn_session(
-        Some(worktree.path().to_str().expect("utf8 worktree path")),
-        Some("openai/gpt-5.4@OpenAI"),
-        None,
-        None,
-        None,
-        None,
-        |_session_id, _cwd: &std::path::Path, provider_key| {
-            assert_eq!(provider_key, Some("openrouter"));
-            Ok(true)
-        },
-    )
-    .expect("visible spawn preparation should succeed");
-
-    assert!(launched);
-    let session = crate::session::Session::load(&session_id).expect("prepared session should save");
-    assert_eq!(session.model.as_deref(), Some("openai/gpt-5.4@OpenAI"));
-    assert_eq!(session.provider_key.as_deref(), Some("openrouter"));
-
-    crate::env::remove_var("JCODE_HOME");
-}
-
-#[test]
 fn prepare_visible_spawn_session_persists_requested_effort() {
     let _guard = crate::storage::lock_test_env();
     let temp_home = tempfile::TempDir::new().expect("temp home");
@@ -474,12 +445,12 @@ fn prepare_visible_spawn_session_prefers_parent_provider_key_over_model_guess() 
     let (session_id, launched) = prepare_visible_spawn_session(
         Some(worktree.path().to_str().expect("utf8 worktree path")),
         Some("gpt-5.4"),
-        Some("ollama"),
+        Some("claude-api"),
         None,
         None,
         None,
         |_session_id, _cwd: &std::path::Path, provider_key| {
-            assert_eq!(provider_key, Some("ollama"));
+            assert_eq!(provider_key, Some("claude-api"));
             Ok(true)
         },
     )
@@ -488,7 +459,7 @@ fn prepare_visible_spawn_session_prefers_parent_provider_key_over_model_guess() 
     assert!(launched);
     let session = crate::session::Session::load(&session_id).expect("prepared session should save");
     assert_eq!(session.model.as_deref(), Some("gpt-5.4"));
-    assert_eq!(session.provider_key.as_deref(), Some("ollama"));
+    assert_eq!(session.provider_key.as_deref(), Some("claude-api"));
 
     crate::env::remove_var("JCODE_HOME");
 }
@@ -509,41 +480,18 @@ fn coordinator_identity(
 fn resolve_swarm_spawn_model_prefers_configured_model_over_coordinator_model() {
     let selection = resolve_swarm_spawn_selection(
         None,
-        Some("openai/gpt-5.4@OpenAI".to_string()),
+        Some("gpt-5.5".to_string()),
         &coordinator_identity(
-            Some("nvidia/llama-3.3-nemotron-super-49b-v1"),
-            Some("nvidia"),
-            Some("openai-compatible:nvidia-nim"),
+            Some("claude-opus-4-6"),
+            Some("claude-api"),
+            Some("claude-api"),
         ),
     );
 
-    assert_eq!(selection.model.as_deref(), Some("openai/gpt-5.4@OpenAI"));
-    assert_eq!(selection.provider_key.as_deref(), Some("openrouter"));
+    assert_eq!(selection.model.as_deref(), Some("gpt-5.5"));
+    assert_eq!(selection.provider_key.as_deref(), Some("openai"));
     // A different configured model must not inherit the coordinator's route.
     assert_eq!(selection.route_api_method, None);
-}
-
-#[test]
-fn resolve_swarm_spawn_model_inherits_coordinator_when_unconfigured() {
-    let selection = resolve_swarm_spawn_selection(
-        None,
-        None,
-        &coordinator_identity(
-            Some("nvidia/llama-3.3-nemotron-super-49b-v1"),
-            Some("nvidia"),
-            Some("openai-compatible:nvidia-nim"),
-        ),
-    );
-
-    assert_eq!(
-        selection.model.as_deref(),
-        Some("nvidia/llama-3.3-nemotron-super-49b-v1")
-    );
-    assert_eq!(selection.provider_key.as_deref(), Some("nvidia"));
-    assert_eq!(
-        selection.route_api_method.as_deref(),
-        Some("openai-compatible:nvidia-nim")
-    );
 }
 
 #[test]
@@ -654,25 +602,25 @@ fn resolve_swarm_spawn_model_inherit_sentinel_uses_coordinator_model() {
             None,
             Some(sentinel.to_string()),
             &coordinator_identity(
-                Some("nvidia/llama-3.3-nemotron-super-49b-v1"),
-                Some("nvidia"),
-                Some("openai-compatible:nvidia-nim"),
+                Some("claude-opus-4-6"),
+                Some("claude-api"),
+                Some("claude-api"),
             ),
         );
 
         assert_eq!(
             selection.model.as_deref(),
-            Some("nvidia/llama-3.3-nemotron-super-49b-v1"),
+            Some("claude-opus-4-6"),
             "sentinel {sentinel:?} should inherit coordinator model",
         );
         assert_eq!(
             selection.provider_key.as_deref(),
-            Some("nvidia"),
+            Some("claude-api"),
             "sentinel {sentinel:?} should inherit coordinator provider key",
         );
         assert_eq!(
             selection.route_api_method.as_deref(),
-            Some("openai-compatible:nvidia-nim"),
+            Some("claude-api"),
             "sentinel {sentinel:?} should inherit coordinator auth route",
         );
     }

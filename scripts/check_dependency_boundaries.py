@@ -35,7 +35,6 @@ FORBIDDEN_INTERNAL_DEPS = {
     "jcode-provider-core",
     "jcode-provider-gemini",
     "jcode-provider-metadata",
-    "jcode-provider-openrouter",
     "jcode-protocol",
     "jcode-terminal-launch",
     "jcode-tui-core",

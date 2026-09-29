@@ -205,7 +205,6 @@ impl Agent {
         new_session.ensure_initial_session_context_message();
 
         self.session = new_session;
-        self.reconcile_explicit_provider_pin_route();
         self.reset_runtime_state_for_session_change();
         self.provider_session_id = None;
         self.seed_compaction_from_session();

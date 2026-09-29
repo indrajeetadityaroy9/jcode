@@ -997,7 +997,7 @@ impl Config {
 fn populate_context_limits_from_config_ref_seeds_global_cache() {
     use super::{NamedProviderConfig, NamedProviderModelConfig};
 
-    // Regression test for issue #366: a named OpenAI-compatible provider with a
+    // Regression test for issue #366: a named provider with a
     // per-model `context_window` must be honored by the global context-limit
     // resolution path, not just the provider instance's own context_window().
     let model_id = "issue366-custom-gateway-model";
@@ -1009,7 +1009,6 @@ fn populate_context_limits_from_config_ref_seeds_global_cache() {
             models: vec![NamedProviderModelConfig {
                 id: model_id.to_string(),
                 context_window: Some(1_000_000),
-                input: Vec::new(),
             }],
             ..Default::default()
         },
@@ -1043,12 +1042,10 @@ fn populate_context_limits_from_config_seeds_qualified_runtime_model_shapes() {
                 NamedProviderModelConfig {
                     id: "issue421-qwen-128k".to_string(),
                     context_window: Some(131_072),
-                    input: Vec::new(),
                 },
                 NamedProviderModelConfig {
                     id: "/opt/models/issue421-ornith-35b-q4.gguf".to_string(),
                     context_window: Some(131_072),
-                    input: Vec::new(),
                 },
             ],
             ..Default::default()

@@ -66,7 +66,6 @@ jcode-provider-env = { path = "../jcode-provider-env" }
 jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-provider-antigravity = { path = "../jcode-provider-antigravity" }
 jcode-provider-openai = { path = "../jcode-provider-openai" }
-jcode-provider-openrouter = { path = "../jcode-provider-openrouter" }
 jcode-provider-gemini = { path = "../jcode-provider-gemini" }
 # NOTE: this foundation layer intentionally does NOT depend on any `jcode-tui-*`
 # crate. The two pure-data/string symbols it used to reach for (`ResumeTarget`,
@@ -131,7 +130,3 @@ embeddings = ["dep:jcode-embedding"]
 [target.'cfg(target_os = "macos")'.dependencies]
 
 [dev-dependencies]
-# Dev-only cycle (cargo permits dev-dependencies on dependents): base's
-# MultiProvider routing tests exercise the real OpenRouter/OpenAI-compatible
-# runtime through the composition-root registry, exactly like the binary.
-jcode-provider-openrouter-runtime = { path = "../jcode-provider-openrouter-runtime" }

@@ -296,16 +296,6 @@ fn enqueue_provider_usage_tasks(tasks: &mut tokio::task::JoinSet<Option<Provider
     total += enqueue_openai_usage_tasks(tasks);
     total += enqueue_api_key_usage_tasks(tasks);
 
-    if openrouter_api_key().is_some() {
-        tasks.spawn(async {
-            fetch_openrouter_usage_report().await.map(|mut report| {
-                attach_activity(&mut report, "openrouter");
-                report
-            })
-        });
-        total += 1;
-    }
-
     if auth::antigravity::has_cached_auth() {
         tasks.spawn(async {
             fetch_antigravity_usage_report().await.map(|mut report| {
@@ -341,24 +331,9 @@ fn activity_source_has_dedicated_report(source_key: &str) -> bool {
         return true;
     }
     match source_key {
-        "openrouter" => openrouter_api_key().is_some(),
         "antigravity" => auth::antigravity::has_cached_auth(),
         "gemini" => auth::gemini::has_api_key(),
-        _ => {
-            // Direct OpenAI-compatible profiles are reported by the API-key
-            // module whenever their key is configured.
-            source_key
-                .strip_prefix("openai-compatible:")
-                .and_then(crate::provider_catalog::openai_compatible_profile_by_id)
-                .map(|profile| {
-                    crate::provider_catalog::load_api_key_from_env_or_config(
-                        profile.api_key_env,
-                        profile.env_file,
-                    )
-                    .is_some()
-                })
-                .unwrap_or(false)
-        }
+        _ => false,
     }
 }
 

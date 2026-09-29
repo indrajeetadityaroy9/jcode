@@ -17,9 +17,6 @@ const REMOTE_LOADING_HEADER_GRACE: Duration = Duration::from_secs(3);
 enum WidgetProviderKind {
     Anthropic,
     OpenAI,
-    OpenCode,
-    OpenRouter,
-    CostBasedApiKey,
     Gemini,
     Unknown,
 }
@@ -27,16 +24,6 @@ enum WidgetProviderKind {
 impl WidgetProviderKind {
     fn from_provider_key(raw: Option<&str>) -> Self {
         match raw.map(|provider| provider.trim().to_ascii_lowercase()) {
-            Some(provider) if provider == "openrouter" => Self::OpenRouter,
-            Some(provider) if matches!(provider.as_str(), "opencode" | "opencode-go") => {
-                Self::OpenCode
-            }
-            Some(provider)
-                if crate::provider_catalog::openai_compatible_profile_by_id(&provider)
-                    .is_some_and(|profile| profile.requires_api_key) =>
-            {
-                Self::CostBasedApiKey
-            }
             Some(provider) if provider == "gemini" => Self::Gemini,
             Some(provider) if provider == "openai" => Self::OpenAI,
             Some(provider) if matches!(provider.as_str(), "anthropic" | "claude") => {
@@ -315,22 +302,6 @@ impl App {
             // `widget_usage_info`'s `is_remote` handling, so report Unknown here
             // and let the local heuristics run only for local sessions.
             _ if route.is_remote => AuthMethod::Unknown,
-            WidgetProviderKind::OpenCode => crate::tui::info_widget::AuthMethod::OpenCodeApiKey,
-            WidgetProviderKind::OpenRouter => {
-                let runtime_provider = active_runtime_provider_key();
-                let transport_state =
-                    crate::provider::openrouter::OpenRouterTransportState::from_current_env(
-                        runtime_provider.as_deref(),
-                    );
-                if transport_state.is_real_openrouter() {
-                    crate::tui::info_widget::AuthMethod::OpenRouterApiKey
-                } else if transport_state.accrues_user_api_key_cost() {
-                    crate::tui::info_widget::AuthMethod::ApiKey
-                } else {
-                    crate::tui::info_widget::AuthMethod::Unknown
-                }
-            }
-            WidgetProviderKind::CostBasedApiKey => crate::tui::info_widget::AuthMethod::ApiKey,
             WidgetProviderKind::Gemini => {
                 // Per-frame: never block the render thread on a credential probe.
                 let auth_status = crate::auth::AuthStatus::check_fast_nonblocking();
@@ -474,25 +445,6 @@ impl App {
                 })
             }
             WidgetProviderKind::Gemini => None,
-            WidgetProviderKind::OpenRouter => {
-                if route.is_remote {
-                    return Some(cost_based_usage());
-                }
-
-                let runtime_provider = active_runtime_provider_key();
-                let transport_state =
-                    crate::provider::openrouter::OpenRouterTransportState::from_current_env(
-                        runtime_provider.as_deref(),
-                    );
-                if transport_state.accrues_user_api_key_cost() {
-                    Some(cost_based_usage())
-                } else {
-                    None
-                }
-            }
-            WidgetProviderKind::OpenCode | WidgetProviderKind::CostBasedApiKey => {
-                Some(cost_based_usage())
-            }
             WidgetProviderKind::Unknown => None,
         }
     }
@@ -644,10 +596,6 @@ impl crate::tui::TuiState for App {
                 .clone()
                 .unwrap_or_else(|| self.provider.model().to_string())
         }
-    }
-
-    fn upstream_provider(&self) -> Option<String> {
-        self.upstream_provider.clone()
     }
 
     fn connection_type(&self) -> Option<String> {
@@ -1562,7 +1510,6 @@ impl crate::tui::TuiState for App {
                 Some(self.provider.display_name())
             },
             auth_method,
-            upstream_provider: self.upstream_provider.clone(),
             connection_type: self.connection_type.clone(),
             diagrams,
             workspace_rows,

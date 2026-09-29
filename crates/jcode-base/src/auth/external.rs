@@ -157,7 +157,7 @@ pub fn source_provider_labels(source: ExternalAuthSource) -> Vec<&'static str> {
         labels.push("Antigravity");
     }
     if source_contains_supported_api_key(source).unwrap_or(false) {
-        labels.push("OpenRouter/API-key providers");
+        labels.push("API-key providers");
     }
     labels
 }
@@ -367,7 +367,7 @@ fn load_auth_map(source: ExternalAuthSource) -> Result<HashMap<String, Value>> {
 ///   "version": 1,
 ///   "profiles": {
 ///     "openai:default": { "type": "oauth", "provider": "openai", "access": ..., "refresh": ..., "expires": ... },
-///     "openrouter:default": { "type": "api_key", "provider": "openrouter", "key": "..." }
+///     "anthropic:default": { "type": "api_key", "provider": "anthropic", "key": "..." }
 ///   }
 /// }
 /// ```
@@ -577,34 +577,6 @@ fn provider_keys_for_env(env_key: &str) -> &'static [&'static str] {
         "ANTHROPIC_API_KEY" => &["anthropic", "claude"],
         "OPENAI_API_KEY" => &["openai", "openai-api"],
         "GEMINI_API_KEY" => &["google", "gemini"],
-        "MISTRAL_API_KEY" => &["mistral"],
-        "GROQ_API_KEY" => &["groq"],
-        "CEREBRAS_API_KEY" => &["cerebras"],
-        "XAI_API_KEY" => &["xai"],
-        "OPENROUTER_API_KEY" => &["openrouter"],
-        "AI_GATEWAY_API_KEY" => &["vercel-ai-gateway"],
-        "ZHIPU_API_KEY" | "ZAI_API_KEY" => &["zai"],
-        "OPENCODE_API_KEY" => &["opencode"],
-        "OPENCODE_GO_API_KEY" => &["opencode-go", "opencode"],
-        "HF_TOKEN" => &["huggingface"],
-        "KIMI_API_KEY" => &["kimi-coding", "kimi", "moonshot"],
-        "MINIMAX_API_KEY" => &["minimax"],
-        "MINIMAX_CN_API_KEY" => &["minimax-cn"],
-        "NEBIUS_API_KEY" => &["nebius"],
-        "SCALEWAY_API_KEY" => &["scaleway"],
-        "STACKIT_API_KEY" => &["stackit"],
-        "TOGETHER_API_KEY" => &["togetherai", "together-ai", "together"],
-        "DEEPINFRA_API_KEY" => &["deepinfra"],
-        "FIREWORKS_API_KEY" => &["fireworks"],
-        "CHUTES_API_KEY" => &["chutes"],
-        "BASETEN_API_KEY" => &["baseten"],
-        "CORTECS_API_KEY" => &["cortecs"],
-        "COMTEGRA_API_KEY" => &["comtegra", "cgc"],
-        "DEEPSEEK_API_KEY" => &["deepseek"],
-        "FIRMWARE_API_KEY" => &["firmware"],
-        "MOONSHOT_API_KEY" => &["moonshotai", "moonshot"],
-        "PERPLEXITY_API_KEY" => &["perplexity"],
-        "BAILIAN_CODING_PLAN_API_KEY" => &["alibaba-coding-plan", "bailian"],
         _ => &[],
     }
 }

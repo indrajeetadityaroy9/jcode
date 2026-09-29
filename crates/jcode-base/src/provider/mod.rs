@@ -4,7 +4,6 @@ pub mod activation;
 pub mod anthropic;
 pub mod antigravity;
 mod catalog_routes;
-pub mod catalog_scheduler;
 pub mod claude;
 mod dispatch;
 pub mod external;
@@ -15,9 +14,7 @@ pub mod models;
 mod multi_provider;
 pub mod openai;
 pub mod openai_request;
-pub mod openrouter;
 pub mod pricing;
-mod registry;
 mod route_builders;
 mod routing;
 mod selection;
@@ -36,14 +33,12 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 #[cfg(test)]
 use jcode_provider_core::FailoverDecision;
-use registry::ProviderRegistry;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
 pub use catalog_routes::{
-    append_simplified_anthropic_model_routes, remote_current_openai_compatible_route_for_model,
-    remote_model_routes_fallback, remote_model_routes_lightweight_fallback,
-    remote_openai_compatible_route_for_model, simplified_model_routes_for_picker,
+    append_simplified_anthropic_model_routes, remote_model_routes_fallback,
+    remote_model_routes_lightweight_fallback, simplified_model_routes_for_picker,
 };
 pub use jcode_provider_core::attempt_tracker;
 pub use jcode_provider_core::cli_provider_arg_for_session_key;
@@ -66,9 +61,7 @@ pub use jcode_provider_core::{
 pub use jcode_provider_core::{ProviderFailoverPrompt, parse_failover_prompt_message};
 pub use route_builders::{
     build_anthropic_oauth_route, build_openai_api_key_route, build_openai_oauth_route,
-    build_openrouter_auto_route, build_openrouter_endpoint_route,
-    build_openrouter_fallback_provider_route, is_listable_model_name,
-    listable_model_names_from_routes, openrouter_catalog_model_id,
+    is_listable_model_name, listable_model_names_from_routes,
 };
 pub(crate) use routing::{
     anthropic_api_key_route_availability, anthropic_oauth_route_availability,
@@ -79,7 +72,7 @@ pub(crate) use routing::{
 /// The memory sidecar ([`crate::sidecar::Sidecar`]) needs to make small,
 /// cheap model calls (rerank / relevance / extraction). It has dedicated fast
 /// paths for OpenAI (codex-spark) and Claude (haiku) OAuth, but jcode also runs
-/// on Antigravity, Gemini, and OpenRouter. For those
+/// on Antigravity and Gemini. For those
 /// providers there is no standalone sidecar HTTP client, so the sidecar falls
 /// back to *this* handle and dispatches through the already-working
 /// [`Provider::complete_simple`] path. `Server::new` registers the active
@@ -127,140 +120,8 @@ pub fn stores_reasoning_content_for_context(provider_name: &str) -> bool {
     }
     matches!(
         provider_name.to_ascii_lowercase().as_str(),
-        "openrouter" | "anthropic" | "openai"
+        "anthropic" | "openai"
     )
-}
-
-// Keep inactive direct profiles on the same 15-minute soft-refresh cadence as
-// the active OpenRouter/OpenAI-compatible runtime. We continue serving the
-// cached routes immediately while a background refresh updates the catalog.
-pub(crate) const OPENAI_COMPATIBLE_PROFILE_CATALOG_SOFT_REFRESH_SECS: u64 = 15 * 60;
-
-fn openai_compatible_profile_catalog_cache_is_stale(cached_at: u64, now: u64) -> bool {
-    now.saturating_sub(cached_at) >= OPENAI_COMPATIBLE_PROFILE_CATALOG_SOFT_REFRESH_SECS
-}
-
-pub(crate) fn cached_live_models_for_openai_compatible_profile(
-    resolved: &crate::provider_catalog::ResolvedOpenAiCompatibleProfile,
-) -> Option<(Vec<String>, bool)> {
-    let cache = jcode_provider_openrouter::load_disk_cache_entry_for_namespace(&resolved.id)?;
-    let cache_is_stale = jcode_provider_openrouter::current_unix_secs()
-        .map(|now| openai_compatible_profile_catalog_cache_is_stale(cache.cached_at, now))
-        .unwrap_or(false);
-    let source_api_base = cache
-        .source_api_base
-        .as_deref()
-        .and_then(crate::provider_catalog::normalize_api_base)?;
-    let expected_api_base = crate::provider_catalog::normalize_api_base(&resolved.api_base)?;
-    if source_api_base != expected_api_base {
-        return None;
-    }
-
-    let models = cache
-        .models
-        .into_iter()
-        .map(|model| model.id.trim().to_string())
-        .filter(|model| !model.is_empty())
-        .collect::<Vec<_>>();
-    if models.is_empty() {
-        None
-    } else {
-        Some((models, cache_is_stale))
-    }
-}
-
-fn direct_openai_compatible_profile_routes(
-    profile: crate::provider_catalog::OpenAiCompatibleProfile,
-) -> Vec<ModelRoute> {
-    let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-    let static_models = crate::provider_catalog::openai_compatible_profile_static_models(profile);
-    // Pure read: the catalog scheduler owns refresh cadence, so rendering
-    // routes cannot fan out HTTP requests.
-    let (mut models, from_live_catalog) = if let Some((models, _cache_is_stale)) =
-        cached_live_models_for_openai_compatible_profile(&resolved)
-    {
-        (models, true)
-    } else {
-        let mut models = static_models;
-        if models.is_empty()
-            && let Some(default_model) = resolved.default_model.as_ref()
-            && !default_model.trim().is_empty()
-        {
-            models.push(default_model.trim().to_string());
-        }
-        (models, false)
-    };
-
-    let provider = resolved.display_name.clone();
-    let api_method = format!("openai-compatible:{}", resolved.id);
-    let detail = if from_live_catalog {
-        resolved.api_base.clone()
-    } else if resolved.api_base.trim().is_empty() {
-        "fallback: static provider model list".to_string()
-    } else {
-        format!(
-            "{}; fallback: static provider model list",
-            resolved.api_base
-        )
-    };
-
-    let mut routes = Vec::new();
-    for model in models.drain(..) {
-        if !is_listable_model_name(&model)
-            || !crate::provider_catalog::openai_compatible_profile_model_supports_chat(
-                &resolved.id,
-                &model,
-            )
-            || routes.iter().any(|route: &ModelRoute| route.model == model)
-        {
-            continue;
-        }
-
-        routes.push(ModelRoute {
-            model,
-            provider: provider.clone(),
-            api_method: api_method.clone(),
-            available: true,
-            detail: detail.clone(),
-            cheapness: None,
-        });
-    }
-
-    routes
-}
-
-fn standard_openrouter_profile_configured() -> bool {
-    crate::provider_catalog::load_env_value_from_env_or_config(
-        "OPENROUTER_API_KEY",
-        "openrouter.env",
-    )
-    .is_some()
-}
-
-fn configured_standard_openrouter_profile_routes() -> Vec<ModelRoute> {
-    let Some(cache) = jcode_provider_openrouter::load_disk_cache_entry_for_namespace("openrouter")
-    else {
-        return Vec::new();
-    };
-
-    let source_matches_openrouter = cache
-        .source_api_base
-        .as_deref()
-        .and_then(crate::provider_catalog::normalize_api_base)
-        .map(|base| base.contains("openrouter.ai"))
-        .unwrap_or(false);
-    if !source_matches_openrouter {
-        return Vec::new();
-    }
-
-    let available = standard_openrouter_profile_configured();
-    cache
-        .models
-        .into_iter()
-        .map(|model| model.id.trim().to_string())
-        .filter(|model| is_listable_model_name(model))
-        .map(|model| build_openrouter_auto_route(&model, available, String::new()))
-        .collect()
 }
 
 pub fn set_model_with_auth_refresh(provider: &dyn Provider, model: &str) -> Result<()> {
@@ -275,9 +136,8 @@ pub fn set_model_with_auth_refresh(provider: &dyn Provider, model: &str) -> Resu
             );
             // Use the preserve-current-provider variant: this is a retry for an
             // already-open session, so refreshing auth from disk must NOT swap a
-            // user-defined named OpenAI-compatible profile slot for a generic
-            // OpenRouter runtime (which would lose `profile_id` and re-introduce
-            // the `<profile>:<model>` prefix on the wire). See #408.
+            // user-defined named provider profile runtime for the provider's
+            // default runtime. See #408.
             provider.on_auth_changed_preserve_current_provider();
             provider.set_model(model).map_err(|second_err| {
                 anyhow::anyhow!(
@@ -337,16 +197,6 @@ pub struct MultiProvider {
     /// the concrete runtime lives downstream in `jcode-provider-gemini-runtime`
     /// and is instantiated through `external::instantiate_external_provider`.
     gemini: RwLock<Option<Arc<dyn Provider>>>,
-    /// OpenRouter API provider
-    openrouter: RwLock<Option<Arc<dyn Provider>>>,
-    /// Direct OpenAI-compatible runtimes keyed by profile id.
-    ///
-    /// These use the same wire protocol implementation as OpenRouter, but must
-    /// not occupy the real OpenRouter slot. Keeping them separate prevents a
-    /// compatible endpoint selection from corrupting later OpenRouter model
-    /// switches, catalog display, or auth refresh handling.
-    openai_compatible_profiles: RwLock<HashMap<String, Arc<dyn Provider>>>,
-    active_openai_compatible_profile: RwLock<Option<String>>,
     active: RwLock<ActiveProvider>,
     /// Use Claude CLI instead of direct API (legacy mode)
     use_claude_cli: bool,
@@ -451,33 +301,18 @@ impl MultiProvider {
     /// catalog. Two `MultiProvider` instances with equal keys (given equal
     /// auth/catalog generations) produce equivalent catalogs, so shared-server
     /// forks can reuse one build. The current model matters because the active
-    /// OpenRouter model gets priority endpoint-refresh scheduling and detail
-    /// annotations in the catalog; the configured-provider bitmap matters
-    /// because each configured runtime contributes its own route family.
+    /// model gets detail annotations in the catalog; the configured-provider
+    /// bitmap matters because each configured runtime contributes its own
+    /// route family.
     fn routes_memo_key(&self) -> String {
         let active = self.active_provider();
         let credential_mode = self.credential_mode();
-        let profile = self
-            .active_openai_compatible_profile
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
-            .unwrap_or_default();
-        let mut compat_profiles: Vec<String> = self
-            .openai_compatible_profiles
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .keys()
-            .cloned()
-            .collect();
-        compat_profiles.sort();
         let configured = [
             ("cl", self.claude_provider().is_some()),
             ("an", self.anthropic_provider().is_some()),
             ("oa", self.openai_provider().is_some()),
             ("ag", self.antigravity_provider().is_some()),
             ("ge", self.gemini_provider().is_some()),
-            ("or", self.openrouter_provider().is_some()),
         ]
         .iter()
         .filter(|(_, present)| *present)
@@ -485,17 +320,15 @@ impl MultiProvider {
         .collect::<Vec<_>>()
         .join(",");
         format!(
-            "{}|{}|{}|{:?}|{}|{}|{}|{}",
+            "{}|{}|{}|{:?}|{}|{}",
             // Scope by home so sandboxes (tests, JCODE_HOME switches) never
             // share catalogs that were built from different credential files.
             std::env::var("JCODE_HOME").unwrap_or_default(),
             Self::provider_key(active),
             self.model(),
             credential_mode,
-            profile,
             self.use_claude_cli,
             configured,
-            compat_profiles.join(","),
         )
     }
 
@@ -510,9 +343,6 @@ impl MultiProvider {
         // Backstop only: invalidation is event-driven via auth/catalog
         // generations, so a completed refresh shows up on the next render.
         const ROUTES_MEMO_TTL: std::time::Duration = std::time::Duration::from_secs(60);
-
-        // Rendering no longer schedules catalog I/O; the sweeper does.
-        catalog_scheduler::ensure_started();
 
         let auth_generation = pricing::auth_pricing_generation();
         let catalog_gen = catalog_generation();
@@ -572,7 +402,7 @@ impl MultiProvider {
             *memo = Some(entry.clone());
         }
         if let Ok(mut shared) = GLOBAL_ROUTES_MEMO.lock() {
-            // Tiny keyspace (active provider + model + profile); prune stale
+            // Tiny keyspace (active provider + model); prune stale
             // entries opportunistically so it cannot grow unbounded.
             shared.retain(|_, existing| fresh(existing));
             shared.insert(shared_key, entry.clone());
@@ -773,9 +603,8 @@ impl MultiProvider {
     }
 
     /// Ledger source key for the credential `provider` will use right now.
-    /// Mirrors `active_resolved_credential` for the dual-auth providers and
-    /// the runtime profile resolution for the OpenRouter slot, but resolves
-    /// against the *passed* provider so failover candidates attribute
+    /// Mirrors `active_resolved_credential` for the dual-auth providers, but
+    /// resolves against the *passed* provider so failover candidates attribute
     /// correctly even before `set_active_provider` runs.
     fn activity_source_key(&self, provider: ActiveProvider) -> String {
         match provider {
@@ -817,108 +646,16 @@ impl MultiProvider {
                     format!("openai:oauth:{}", label)
                 }
             }
-            ActiveProvider::OpenRouter => {
-                // The OpenRouter slot multiplexes the public aggregator, the
-                // jcode subscription, and direct OpenAI-compatible profiles.
-                let label = self
-                    .active_openrouter_execution_provider()
-                    .map(|execution| execution.runtime_display_name())
-                    .unwrap_or_else(|| "OpenRouter".to_string());
-                let runtime = std::env::var("JCODE_RUNTIME_PROVIDER").ok();
-                crate::provider_activity::source_key_for_provider_label(&label, runtime.as_deref())
-            }
             other => Self::provider_key(other).to_string(),
         }
     }
 
-    fn openai_compatible_model_prefix(
-        model: &str,
-    ) -> Option<(crate::provider_catalog::OpenAiCompatibleProfile, &str)> {
-        let (prefix, rest) = model.split_once(':')?;
-        if explicit_model_provider_prefix(model).is_some() {
-            return None;
-        }
-        let rest = rest.trim();
-        if rest.is_empty() {
-            return None;
-        }
-
-        let profile = crate::provider_catalog::openai_compatible_profile_by_id(prefix)?;
-        Some((profile, rest))
-    }
-
-    /// Find the configured OpenAI-compatible profile that serves a bare model
-    /// id, using the live route catalog as the source of truth.
-    ///
-    /// Route specs from the picker carry a `<profile>:<model>` prefix, but
-    /// hand-typed `/model <id>` and saved sessions can carry the bare id. The
-    /// active profile wins when several profiles serve the same id, so a
-    /// re-select of the current model never silently hops endpoints.
-    fn openai_compatible_profile_owning_model(
-        &self,
-        model: &str,
-    ) -> Option<crate::provider_catalog::OpenAiCompatibleProfile> {
-        let model = model.trim();
-        if model.is_empty() {
-            return None;
-        }
-
-        let active_profile_id = ProviderRegistry::new(self).active_compatible_profile_id();
-        let mut fallback: Option<String> = None;
-        for route in self.fresh_routes_memo_entry().routes {
-            if !route.available || route.model != model {
-                continue;
-            }
-            let Some(profile_id) = route
-                .api_method
-                .strip_prefix("openai-compatible:")
-                .map(str::trim)
-                .filter(|profile_id| !profile_id.is_empty())
-            else {
-                continue;
-            };
-            if active_profile_id.as_deref() == Some(profile_id) {
-                fallback = Some(profile_id.to_string());
-                break;
-            }
-            if fallback.is_none() {
-                fallback = Some(profile_id.to_string());
-            }
-        }
-
-        crate::provider_catalog::openai_compatible_profile_by_id(&fallback?)
-    }
-
-    /// Return the active direct OpenAI-compatible runtime when its own catalog
-    /// serves `model`. Bare model switches must stay on that runtime rather than
-    /// rebinding the shared slot to native OpenRouter.
-    fn active_openai_compatible_profile_serving_model(
-        &self,
-        model: &str,
-    ) -> Option<Arc<dyn Provider>> {
-        if self.active_provider() != ActiveProvider::OpenRouter {
-            return None;
-        }
-        let provider = self.active_openrouter_execution_provider()?;
-        if provider.supports_provider_routing_features() {
-            return None;
-        }
-        let (_, api_method, _) = provider.direct_openai_compatible_route_parts()?;
-        self.fresh_routes_memo_entry()
-            .routes
-            .iter()
-            .any(|route| route.available && route.model == model && route.api_method == api_method)
-            .then_some(provider)
-    }
-
     /// Parse a `<name>:<model>` spec whose prefix is a user-defined named
     /// provider profile from config (`[providers.<name>]`). Built-in provider
-    /// prefixes and catalog profile ids take precedence and never reach here.
+    /// prefixes take precedence and never reach here.
     fn named_provider_profile_model_prefix(model: &str) -> Option<(String, String)> {
         let (prefix, rest) = model.split_once(':')?;
-        if explicit_model_provider_prefix(model).is_some()
-            || Self::openai_compatible_model_prefix(model).is_some()
-        {
+        if explicit_model_provider_prefix(model).is_some() {
             return None;
         }
         let prefix = prefix.trim();
@@ -939,59 +676,21 @@ impl MultiProvider {
         if model.is_empty() {
             anyhow::bail!("Model cannot be empty");
         }
-        let config = crate::config::config()
-            .providers
-            .get(profile_name)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("Unknown provider profile '{}'", profile_name))?;
-
-        if matches!(
-            config.provider_type,
-            crate::config::NamedProviderType::AnthropicCompatible
-        ) {
-            crate::provider_catalog::apply_named_provider_profile_env(profile_name)?;
-            let provider =
-                external::instantiate_expected_external_provider(external::ANTHROPIC_RUNTIME)
-                    .ok_or_else(|| anyhow::anyhow!("Anthropic runtime is not registered"))?;
-            crate::provider_catalog::clear_anthropic_profile_env();
-            provider.set_model(model)?;
-            *self
-                .anthropic
-                .write()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(provider);
-            self.clear_active_openai_compatible_profile();
-            self.set_active_provider(ActiveProvider::Claude);
-            return Ok(());
+        if !crate::config::config().providers.contains_key(profile_name) {
+            anyhow::bail!("Unknown provider profile '{}'", profile_name);
         }
 
-        let expected_api_method = format!("openai-compatible:{}", profile_name);
-        let registry = ProviderRegistry::new(self);
-        let provider = {
-            let existing = registry
-                .compatible_profile(profile_name)
-                .filter(|provider| {
-                    provider
-                        .direct_openai_compatible_route_parts()
-                        .map(|(_provider, api_method, _detail)| api_method == expected_api_method)
-                        .unwrap_or(false)
-                });
-            if let Some(provider) = existing {
-                provider
-            } else {
-                let provider = external::instantiate_openrouter_runtime(
-                    external::OpenRouterRuntimeSpec::NamedProfile {
-                        name: profile_name.to_string(),
-                        config,
-                    },
-                )?;
-                registry
-                    .install_compatible_profile(profile_name.to_string(), Arc::clone(&provider));
-                provider
-            }
-        };
+        crate::provider_catalog::apply_named_provider_profile_env(profile_name)?;
+        let provider =
+            external::instantiate_expected_external_provider(external::ANTHROPIC_RUNTIME)
+                .ok_or_else(|| anyhow::anyhow!("Anthropic runtime is not registered"))?;
+        crate::provider_catalog::clear_anthropic_profile_env();
         provider.set_model(model)?;
-        registry.set_active_compatible_profile(profile_name.to_string());
-        self.set_active_provider(ActiveProvider::OpenRouter);
+        *self
+            .anthropic
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(provider);
+        self.set_active_provider(ActiveProvider::Claude);
         Ok(())
     }
 
@@ -1111,142 +810,10 @@ impl MultiProvider {
                 self.set_active_provider(ActiveProvider::Gemini);
                 Ok(())
             }
-            ActiveProvider::OpenRouter => {
-                if let Some(active_profile) =
-                    self.active_openai_compatible_profile_serving_model(model)
-                {
-                    active_profile.set_model(model)?;
-                    self.set_active_provider(ActiveProvider::OpenRouter);
-                    return Ok(());
-                }
-
-                // Decide whether the slot must be rebound to the real
-                // OpenRouter API-key runtime. Rebinding repairs a slot left
-                // flavored as a *known catalog profile* runtime by startup
-                // profile env (e.g. a Cerebras login applied globally, then
-                // the slot was built as Cerebras), so an OpenRouter-targeted
-                // switch reaches the real aggregator again. But a *custom*
-                // OpenAI-compatible endpoint (generic profile or named config
-                // profile) owns the slot
-                // legitimately: its model IDs are provider-local and must not
-                // be re-routed through OpenRouter (or fail outright because no
-                // OPENROUTER_API_KEY is configured).
-                let needs_rebind = match self.openrouter_provider().as_deref() {
-                    None => true,
-                    Some(provider) => {
-                        !provider.supports_provider_routing_features()
-                            && provider
-                                .direct_openai_compatible_route_parts()
-                                .and_then(|(_provider, api_method, _detail)| {
-                                    api_method
-                                    .strip_prefix("openai-compatible:")
-                                    .map(str::trim)
-                                    .and_then(
-                                        crate::provider_catalog::openai_compatible_profile_by_id,
-                                    )
-                                })
-                                .map(|profile| {
-                                    profile.id != crate::provider_catalog::OPENAI_COMPAT_PROFILE.id
-                                })
-                                .unwrap_or(false)
-                    }
-                };
-                let (openrouter, install_openrouter) = if needs_rebind {
-                    let openrouter = external::instantiate_openrouter_runtime(
-                        external::OpenRouterRuntimeSpec::OpenRouterApiKey,
-                    )?;
-                    (openrouter, true)
-                } else {
-                    let Some(openrouter) = self.openrouter_provider() else {
-                        anyhow::bail!(
-                            "OpenRouter/OpenAI-compatible credentials not available. Set the configured API key or run `jcode login --provider openrouter` first."
-                        );
-                    };
-                    (openrouter, false)
-                };
-                openrouter.set_model(model)?;
-                if install_openrouter {
-                    *self
-                        .openrouter
-                        .write()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(openrouter);
-                }
-                self.clear_active_openai_compatible_profile();
-                self.set_active_provider(ActiveProvider::OpenRouter);
-                Ok(())
-            }
         }
     }
 
-    fn set_model_on_openai_compatible_profile(
-        &self,
-        profile: crate::provider_catalog::OpenAiCompatibleProfile,
-        model: &str,
-    ) -> Result<()> {
-        let model = model.trim();
-        if model.is_empty() {
-            anyhow::bail!("Model cannot be empty");
-        }
-        let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-        if !crate::provider_catalog::openai_compatible_profile_is_configured(profile) {
-            anyhow::bail!(
-                "{} credentials not available. Run `jcode login --provider {}` first.",
-                resolved.display_name,
-                resolved.id,
-            );
-        }
-
-        let profile_id = resolved.id.clone();
-        let registry = ProviderRegistry::new(self);
-        let provider = {
-            let existing = registry.compatible_profile(&profile_id).filter(|provider| {
-                provider
-                    .direct_openai_compatible_route_parts()
-                    .and_then(|(_provider, api_method, _detail)| {
-                        api_method
-                            .strip_prefix("openai-compatible:")
-                            .map(|profile| profile.trim().to_string())
-                    })
-                    .as_deref()
-                    == Some(profile_id.as_str())
-            });
-            if let Some(provider) = existing {
-                provider
-            } else {
-                let provider = external::instantiate_openrouter_runtime(
-                    external::OpenRouterRuntimeSpec::CompatibleProfile(profile),
-                )?;
-                registry.install_compatible_profile(profile_id.clone(), Arc::clone(&provider));
-                provider
-            }
-        };
-        provider.set_model(model)?;
-        registry.set_active_compatible_profile(profile_id);
-        self.set_active_provider(ActiveProvider::OpenRouter);
-        Ok(())
-    }
-
-    fn should_replace_openrouter_after_auth_change(
-        existing: &dyn Provider,
-        candidate: &dyn Provider,
-    ) -> bool {
-        if existing.supports_provider_routing_features()
-            != candidate.supports_provider_routing_features()
-        {
-            return false;
-        }
-
-        let existing_direct = existing
-            .direct_openai_compatible_route_parts()
-            .map(|(_provider, api_method, _detail)| api_method);
-        let candidate_direct = candidate
-            .direct_openai_compatible_route_parts()
-            .map(|(_provider, api_method, _detail)| api_method);
-
-        existing_direct == candidate_direct
-    }
-
-    fn handle_auth_changed(&self, preserve_existing_openrouter_profile: bool) {
+    fn handle_auth_changed(&self) {
         crate::logging::auth_event("auth_changed_received", "multi-provider", &[]);
         // Credentials feed route availability/pricing, so every memoized
         // catalog in the process is stale the moment auth changes.
@@ -1296,60 +863,6 @@ impl MultiProvider {
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(openai);
         }
 
-        let current_openrouter_model = self.openrouter_provider().map(|existing| {
-            let model = existing.model();
-            existing
-                .explicit_provider_pin_for_current_model()
-                .map(|pin| format!("{model}@{pin}"))
-                .unwrap_or(model)
-        });
-        if openrouter::has_credentials() {
-            match external::instantiate_openrouter_runtime(external::OpenRouterRuntimeSpec::Default)
-            {
-                Ok(provider) => {
-                    let should_install = if preserve_existing_openrouter_profile {
-                        self.openrouter_provider()
-                            .as_deref()
-                            .map(|existing| {
-                                Self::should_replace_openrouter_after_auth_change(
-                                    existing,
-                                    provider.as_ref(),
-                                )
-                            })
-                            .unwrap_or(true)
-                    } else {
-                        true
-                    };
-                    if should_install {
-                        if let Some(model) = current_openrouter_model.as_deref()
-                            && let Err(error) = provider.set_model(model)
-                        {
-                            crate::logging::warn(&format!(
-                                "Failed to preserve OpenRouter model routing after auth change: {error}"
-                            ));
-                        }
-                        crate::logging::info(
-                            "Hot-initialized OpenRouter/OpenAI-compatible provider after auth change",
-                        );
-                        *self
-                            .openrouter
-                            .write()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(provider);
-                    } else {
-                        crate::logging::info(
-                            "Preserved existing OpenRouter/OpenAI-compatible provider after unrelated auth change",
-                        );
-                    }
-                }
-                Err(e) => {
-                    crate::logging::info(&format!(
-                        "Failed to hot-initialize OpenRouter/OpenAI-compatible provider after auth change: {}",
-                        e
-                    ));
-                }
-            }
-        }
-
         let already_has_antigravity = self.antigravity_provider().is_some();
         if !already_has_antigravity
             && crate::auth::antigravity::load_tokens().is_ok()
@@ -1365,7 +878,7 @@ impl MultiProvider {
 
         let already_has_gemini = self.gemini_provider().is_some();
         if !already_has_gemini
-            && crate::auth::gemini::load_tokens().is_ok()
+            && (crate::auth::gemini::load_tokens().is_ok() || crate::auth::gemini::has_api_key())
             && let Some(gemini) =
                 external::instantiate_expected_external_provider(external::GEMINI_RUNTIME)
         {
@@ -1391,9 +904,6 @@ impl MultiProvider {
         if let Some(gemini) = self.gemini_provider() {
             self.spawn_post_auth_model_refresh(gemini, "Gemini");
         }
-        if let Some(openrouter) = self.openrouter_provider() {
-            self.spawn_post_auth_model_refresh(openrouter, "OpenRouter");
-        }
         crate::logging::auth_event("auth_changed_completed", "multi-provider", &[]);
     }
 
@@ -1414,43 +924,24 @@ impl MultiProvider {
         // through the canonical prefix-aware path. Handing the raw spec to a
         // single provider would make it reject the id and silently keep its
         // fallback default model.
-        if explicit_model_provider_prefix(model).is_some()
-            || Self::openai_compatible_model_prefix(model).is_some()
-        {
+        if explicit_model_provider_prefix(model).is_some() {
             return self.set_model(model);
         }
 
         // A configured default_provider is a routing decision, not just a
         // startup hint. Treat default_model as provider-local when the config
         // names a concrete provider/profile so global model-name heuristics
-        // cannot undo that decision. This is especially important for
-        // OpenAI-compatible gateways whose model IDs often look like built-in
-        // OpenAI, Anthropic, or OpenRouter models.
+        // cannot undo that decision.
         if let Some(pref) = default_provider.and_then(|pref| {
             let trimmed = pref.trim();
             (!trimmed.is_empty()).then_some(trimmed)
         }) && let Some(selection) =
             Self::resolve_config_provider_selection(pref, crate::config::config())
         {
-            // A known OpenAI-compatible catalog profile (deepseek, zai, ...)
-            // must be handled profile-locally. Its `active_provider()` maps to
-            // the shared OpenRouter slot, but routing through the generic
-            // OpenRouter path would trigger the OpenRouter rebind logic, which
-            // replaces the profile runtime with a plain OpenRouter API-key
-            // runtime and fails when OPENROUTER_API_KEY is not configured --
-            // silently dropping the configured default (issue #448).
-            if let selection::ConfigProviderSelection::OpenAiCompatibleProfile(profile_id) =
-                &selection
-                && let Some(profile) =
-                    crate::provider_catalog::openai_compatible_profile_by_id(profile_id)
-            {
-                return self.set_model_on_openai_compatible_profile(profile, model);
-            }
-
-            // Same reasoning for user-defined named provider profiles from
-            // config: bind the named profile runtime directly instead of the
-            // generic OpenRouter slot path.
-            if let selection::ConfigProviderSelection::NamedProfile(profile_name, _) = &selection {
+            // User-defined named provider profiles from config bind the named
+            // profile runtime directly instead of the provider's default
+            // runtime.
+            if let selection::ConfigProviderSelection::NamedProfile(profile_name) = &selection {
                 return self.set_model_on_named_provider_profile(profile_name, model);
             }
 
@@ -1529,24 +1020,6 @@ impl MultiProvider {
             }
             ActiveProvider::Antigravity => "antigravity",
             ActiveProvider::Gemini => "gemini",
-            ActiveProvider::OpenRouter => {
-                if let Some(openrouter) = self.active_openrouter_execution_provider()
-                    && let Some((_provider, api_method, _detail)) =
-                        openrouter.direct_openai_compatible_route_parts()
-                    && let Some(profile_id) = api_method
-                        .strip_prefix("openai-compatible:")
-                        .map(str::trim)
-                        .filter(|profile_id| !profile_id.is_empty())
-                {
-                    return format!("{profile_id}:{current_model}");
-                }
-                if let Some(openrouter) = self.openrouter_provider()
-                    && let Some(provider_pin) = openrouter.explicit_provider_pin_for_current_model()
-                {
-                    return format!("openrouter:{current_model}@{provider_pin}");
-                }
-                "openrouter"
-            }
         };
         format!("{prefix}:{current_model}")
     }
@@ -1603,21 +1076,7 @@ impl Provider for MultiProvider {
             ActiveProvider::OpenAI => "OpenAI",
             ActiveProvider::Antigravity => "Antigravity",
             ActiveProvider::Gemini => "Gemini",
-            ActiveProvider::OpenRouter => "OpenRouter",
         }
-    }
-
-    fn display_name(&self) -> String {
-        // The OpenRouter slot multiplexes the public aggregator and every
-        // direct OpenAI-compatible profile (NVIDIA NIM, DeepSeek, ...). Ask the
-        // active execution runtime for its own label so the UI reflects the
-        // profile selected at runtime rather than the fixed "OpenRouter" name.
-        if matches!(self.active_provider(), ActiveProvider::OpenRouter)
-            && let Some(execution) = self.active_openrouter_execution_provider()
-        {
-            return execution.runtime_display_name();
-        }
-        self.name().to_string()
     }
 
     fn model(&self) -> String {
@@ -1644,18 +1103,7 @@ impl Provider for MultiProvider {
                 .gemini_provider()
                 .map(|o| o.model())
                 .unwrap_or_else(|| "gemini-2.5-pro".to_string()),
-            ActiveProvider::OpenRouter => self
-                .active_openrouter_execution_provider()
-                .map(|o| o.model())
-                .unwrap_or_else(|| "anthropic/claude-sonnet-4".to_string()),
         }
-    }
-
-    fn explicit_provider_pin_for_current_model(&self) -> Option<String> {
-        matches!(self.active_provider(), ActiveProvider::OpenRouter)
-            .then(|| self.active_openrouter_execution_provider())
-            .flatten()
-            .and_then(|provider| provider.explicit_provider_pin_for_current_model())
     }
 
     fn active_resolved_credential(&self) -> Option<jcode_provider_core::ResolvedCredential> {
@@ -1775,10 +1223,6 @@ impl Provider for MultiProvider {
                 .gemini_provider()
                 .map(|provider| provider.supports_image_input())
                 .unwrap_or(false),
-            ActiveProvider::OpenRouter => self
-                .active_openrouter_execution_provider()
-                .map(|provider| provider.supports_image_input())
-                .unwrap_or(false),
         }
     }
 
@@ -1792,11 +1236,6 @@ impl Provider for MultiProvider {
         let requested_model = model.trim();
         if requested_model.is_empty() {
             anyhow::bail!("Model cannot be empty");
-        }
-
-        if let Some((profile, target_model)) = Self::openai_compatible_model_prefix(requested_model)
-        {
-            return self.set_model_on_openai_compatible_profile(profile, target_model);
         }
 
         // User-defined named provider profiles from config (`[providers.<name>]`).
@@ -1854,19 +1293,6 @@ impl Provider for MultiProvider {
             return self.set_model_on_provider(target, target_model);
         }
 
-        // A custom OpenAI-compatible endpoint owns opaque, provider-local model
-        // IDs. Keep unprefixed names on that active endpoint, even when they
-        // resemble a globally known model family. Picker and slash-command
-        // route specs carry explicit prefixes, so the branch above can switch
-        // to any configured provider at any time.
-        if self.active_provider() == ActiveProvider::OpenRouter
-            && self
-                .active_openrouter_execution_provider()
-                .is_some_and(|provider| !provider.supports_provider_routing_features())
-        {
-            return self.set_model_on_provider(ActiveProvider::OpenRouter, requested_model);
-        }
-
         // Normalize dotted model versions (dots -> hyphens) to canonical form.
         // e.g. "claude-opus-4.6" -> "claude-opus-4-6" so Anthropic accepts it.
         let model = if let Some(canonical) = normalize_dotted_model_version(requested_model) {
@@ -1875,29 +1301,12 @@ impl Provider for MultiProvider {
             requested_model
         };
 
-        if let Some((base_model, provider_pin)) = model.rsplit_once('@')
-            && !provider_pin.trim().is_empty()
-            && let Some(openrouter_model) = openrouter_catalog_model_id(base_model)
-        {
-            return self.set_model_on_provider(
-                ActiveProvider::OpenRouter,
-                &format!("{}@{}", openrouter_model, provider_pin),
-            );
-        }
-
         // Detect which provider an unprefixed model belongs to.
         let target_provider = provider_for_model(model);
         if let Some(target_provider) = target_provider
             && let Some(target) = provider_from_model_key(target_provider)
         {
             self.set_model_on_provider(target, model)
-        } else if let Some(profile) = self.openai_compatible_profile_owning_model(model) {
-            // Bare ids from an OpenAI-compatible catalog (`celeris-1`,
-            // `mimo-v2.5`, ...) match none of the built-in model-name
-            // heuristics. Without this, `/model <bare-id>` fell through to
-            // whichever provider happened to be active and failed with a
-            // misleading "not supported by <active provider>" error.
-            self.set_model_on_openai_compatible_profile(profile, model)
         } else {
             // Unknown model - try current provider.
             self.set_model_on_provider(self.active_provider(), model)
@@ -1945,48 +1354,11 @@ impl Provider for MultiProvider {
                 .gemini_provider()
                 .map(|gemini| gemini.available_models_for_switching())
                 .unwrap_or_default(),
-            ActiveProvider::OpenRouter => self
-                .active_openrouter_execution_provider()
-                .map(|openrouter| openrouter.available_models_for_switching())
-                .unwrap_or_default(),
         }
     }
 
     fn available_models_display(&self) -> Vec<String> {
         self.fresh_routes_memo_entry().listable_models
-    }
-
-    fn available_providers_for_model(&self, model: &str) -> Vec<String> {
-        if let Some(model) = openrouter_catalog_model_id(model)
-            && let Some(openrouter) = self.openrouter_provider()
-        {
-            return openrouter.available_providers_for_model(&model);
-        }
-        Vec::new()
-    }
-
-    fn provider_details_for_model(&self, model: &str) -> Vec<(String, String)> {
-        if let Some(model) = openrouter_catalog_model_id(model)
-            && let Some(openrouter) = self.openrouter_provider()
-        {
-            return openrouter.provider_details_for_model(&model);
-        }
-        Vec::new()
-    }
-
-    fn preferred_provider(&self) -> Option<String> {
-        if let Some(openrouter) = self.openrouter_provider()
-            && matches!(
-                *self
-                    .active
-                    .read()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()),
-                ActiveProvider::OpenRouter
-            )
-        {
-            return openrouter.preferred_provider();
-        }
-        None
     }
 
     fn model_routes(&self) -> Vec<ModelRoute> {
@@ -1997,18 +1369,10 @@ impl Provider for MultiProvider {
         let anthropic = self.anthropic_provider();
         let claude = self.claude_provider();
         let openai = self.openai_provider();
-        let openrouter = self.openrouter_provider();
         let antigravity = self.antigravity_provider();
         let gemini = self.gemini_provider();
 
-        let (
-            anthropic_result,
-            claude_result,
-            openai_result,
-            openrouter_result,
-            antigravity_result,
-            gemini_result,
-        ) = tokio::join!(
+        let (anthropic_result, claude_result, openai_result, antigravity_result, gemini_result) = tokio::join!(
             async {
                 match anthropic {
                     Some(provider) => provider.prefetch_models().await,
@@ -2023,12 +1387,6 @@ impl Provider for MultiProvider {
             },
             async {
                 match openai {
-                    Some(provider) => provider.prefetch_models().await,
-                    None => Ok(()),
-                }
-            },
-            async {
-                match openrouter {
                     Some(provider) => provider.prefetch_models().await,
                     None => Ok(()),
                 }
@@ -2054,7 +1412,6 @@ impl Provider for MultiProvider {
             ("anthropic", anthropic_result),
             ("claude", claude_result),
             ("openai", openai_result),
-            ("openrouter", openrouter_result),
             ("antigravity", antigravity_result),
             ("gemini", gemini_result),
         ] {
@@ -2063,7 +1420,6 @@ impl Provider for MultiProvider {
                     (active_provider, provider_name),
                     (ActiveProvider::Claude, "anthropic" | "claude")
                         | (ActiveProvider::OpenAI, "openai")
-                        | (ActiveProvider::OpenRouter, "openrouter")
                         | (ActiveProvider::Antigravity, "antigravity")
                         | (ActiveProvider::Gemini, "gemini")
                 );
@@ -2092,11 +1448,7 @@ impl Provider for MultiProvider {
     }
 
     fn on_auth_changed(&self) {
-        self.handle_auth_changed(false);
-    }
-
-    fn on_auth_changed_preserve_current_provider(&self) {
-        self.handle_auth_changed(true);
+        self.handle_auth_changed();
     }
 
     fn auth_model_refresh_pending(&self) -> bool {
@@ -2132,7 +1484,6 @@ impl Provider for MultiProvider {
                 .unwrap_or(false),
             ActiveProvider::Antigravity => false,
             ActiveProvider::Gemini => false,
-            ActiveProvider::OpenRouter => false, // jcode executes tools
         }
     }
 
@@ -2142,9 +1493,6 @@ impl Provider for MultiProvider {
                 .anthropic_provider()
                 .and_then(|provider| provider.reasoning_effort()),
             ActiveProvider::OpenAI => self.openai_provider().and_then(|o| o.reasoning_effort()),
-            ActiveProvider::OpenRouter => self
-                .active_openrouter_execution_provider()
-                .and_then(|o| o.reasoning_effort()),
             _ => None,
         }
     }
@@ -2159,12 +1507,8 @@ impl Provider for MultiProvider {
                 .openai_provider()
                 .ok_or_else(|| anyhow::anyhow!("OpenAI provider not available"))?
                 .set_reasoning_effort(effort),
-            ActiveProvider::OpenRouter => self
-                .active_openrouter_execution_provider()
-                .ok_or_else(|| anyhow::anyhow!("OpenAI-compatible provider not available"))?
-                .set_reasoning_effort(effort),
             _ => Err(anyhow::anyhow!(
-                "Reasoning effort is only supported for OpenAI, Anthropic, and compatible reasoning models"
+                "Reasoning effort is only supported for OpenAI and Anthropic models"
             )),
         }
     }
@@ -2177,10 +1521,6 @@ impl Provider for MultiProvider {
                 .unwrap_or_default(),
             ActiveProvider::OpenAI => self
                 .openai_provider()
-                .map(|o| o.available_efforts())
-                .unwrap_or_default(),
-            ActiveProvider::OpenRouter => self
-                .active_openrouter_execution_provider()
                 .map(|o| o.available_efforts())
                 .unwrap_or_default(),
             _ => vec![],
@@ -2265,10 +1605,6 @@ impl Provider for MultiProvider {
                 .gemini_provider()
                 .map(|o| o.supports_compaction())
                 .unwrap_or(false),
-            ActiveProvider::OpenRouter => self
-                .active_openrouter_execution_provider()
-                .map(|o| o.supports_compaction())
-                .unwrap_or(false),
         }
     }
 
@@ -2293,10 +1629,6 @@ impl Provider for MultiProvider {
                 .unwrap_or(false),
             ActiveProvider::Gemini => self
                 .gemini_provider()
-                .map(|o| o.uses_jcode_compaction())
-                .unwrap_or(false),
-            ActiveProvider::OpenRouter => self
-                .active_openrouter_execution_provider()
                 .map(|o| o.uses_jcode_compaction())
                 .unwrap_or(false),
         }
@@ -2360,20 +1692,6 @@ impl Provider for MultiProvider {
                     Err(anyhow::anyhow!("Gemini provider unavailable"))
                 }
             }
-            ActiveProvider::OpenRouter => {
-                let provider = self.active_openrouter_execution_provider();
-                if let Some(openrouter) = provider {
-                    openrouter
-                        .native_compact(
-                            messages,
-                            existing_summary_text,
-                            existing_openai_encrypted_content,
-                        )
-                        .await
-                } else {
-                    Err(anyhow::anyhow!("OpenRouter provider unavailable"))
-                }
-            }
         }
     }
 
@@ -2409,10 +1727,6 @@ impl Provider for MultiProvider {
                 .gemini_provider()
                 .map(|o| o.context_window())
                 .unwrap_or(DEFAULT_CONTEXT_LIMIT),
-            ActiveProvider::OpenRouter => self
-                .active_openrouter_execution_provider()
-                .map(|o| o.context_window())
-                .unwrap_or(DEFAULT_CONTEXT_LIMIT),
         }
     }
 
@@ -2446,16 +1760,6 @@ impl Provider for MultiProvider {
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone();
-        let openrouter = if self
-            .openrouter
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .is_some()
-        {
-            external::instantiate_openrouter_runtime(external::OpenRouterRuntimeSpec::Default).ok()
-        } else {
-            None
-        };
 
         let provider = Self {
             claude: RwLock::new(claude),
@@ -2463,9 +1767,6 @@ impl Provider for MultiProvider {
             openai: RwLock::new(openai),
             antigravity: RwLock::new(antigravity_provider),
             gemini: RwLock::new(gemini_provider),
-            openrouter: RwLock::new(openrouter),
-            openai_compatible_profiles: RwLock::new(HashMap::new()),
-            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(active),
             use_claude_cli: self.use_claude_cli,
             startup_notices: RwLock::new(Vec::new()),
@@ -2521,7 +1822,6 @@ impl Provider for MultiProvider {
             ActiveProvider::OpenAI => None,
             ActiveProvider::Antigravity => None,
             ActiveProvider::Gemini => None,
-            ActiveProvider::OpenRouter => None,
         }
     }
 
@@ -2568,7 +1868,6 @@ pub fn cache_ttl_for_provider_model(provider: &str, model: Option<&str>) -> Opti
                 Some(300)
             }
         }
-        "openrouter" => Some(300),
         "gemini" => Some(300),
         "antigravity" => None,
         _ => None,

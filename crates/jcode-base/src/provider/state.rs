@@ -150,19 +150,19 @@ mod tests {
     #[test]
     fn provider_state_resolves_default_provider_through_canonical_selection() {
         let mut cfg = Config::default();
-        cfg.provider.default_provider = Some("kimi".to_string());
-        cfg.provider.default_model = Some("moonshot-v1-8k".to_string());
+        cfg.provider.default_provider = Some("gemini".to_string());
+        cfg.provider.default_model = Some("gemini-2.5-pro".to_string());
         let state = ProviderState::from_parts(&cfg);
 
-        assert_eq!(state.default_provider_key(), Some("kimi"));
-        assert_eq!(state.default_model(), Some("moonshot-v1-8k"));
+        assert_eq!(state.default_provider_key(), Some("gemini"));
+        assert_eq!(state.default_model(), Some("gemini-2.5-pro"));
         assert_eq!(
             state.preferred_active_provider(),
-            Some(ActiveProvider::OpenRouter)
+            Some(ActiveProvider::Gemini)
         );
         assert_eq!(
             state.preferred_provider_is_configured(ProviderAvailability {
-                openrouter: true,
+                gemini: true,
                 ..ProviderAvailability::default()
             }),
             Some(true)

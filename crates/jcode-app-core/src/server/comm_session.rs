@@ -176,8 +176,6 @@ fn provider_key_for_spawn_model(
     if let Some((prefix, _rest)) = model.split_once(':') {
         let prefix = prefix.trim();
         if crate::provider::provider_from_model_key(prefix).is_some()
-            || crate::provider_catalog::resolve_openai_compatible_profile_selection(prefix)
-                .is_some()
             || crate::config::config().providers.contains_key(prefix)
         {
             return Some(prefix.to_string());
@@ -266,7 +264,7 @@ async fn resolve_coordinator_spawn_identity(
 /// GPT-5.5 on the OpenAI API key route regardless of the coordinator's model.
 ///
 /// Returns `None` for models without such a prefix, or for prefixes that carry
-/// no API-vs-OAuth decision (bare provider aliases, OpenRouter, ...).
+/// no API-vs-OAuth decision (bare provider aliases, ...).
 /// Those keep their prefixed model and route correctly via the existing
 /// session-restore path.
 fn explicit_route_for_configured_model(model: &str) -> Option<SwarmSpawnSelection> {

@@ -175,11 +175,9 @@ impl App {
             .count();
 
         let provider = <Self as TuiState>::provider_name(self);
-        let upstream_provider = self.upstream_provider();
         let cache_ttl = self.cache_ttl_status();
         let cache_problem = detect_kv_cache_problem(
             &provider,
-            upstream_provider,
             user_turn_count,
             self.streaming.streaming_input_tokens,
             self.streaming.streaming_cache_read_tokens,
@@ -217,7 +215,7 @@ impl App {
                 "CACHE_MISS: {} on turn {} | \
                  cache_creation={} cache_read={} | \
                  input={} output={} affected={:?} | \
-                 session={} provider={} upstream={:?} model={} | \
+                 session={} provider={} model={} | \
                  msgs: user={} assistant={} tool={} other={}",
                 problem.log_reason(),
                 user_turn_count,
@@ -228,7 +226,6 @@ impl App {
                 problem.affected_tokens,
                 session_id,
                 provider,
-                upstream_provider,
                 model,
                 user_msgs,
                 assistant_msgs,
@@ -336,11 +333,6 @@ impl App {
 
     pub fn provider_model(&self) -> String {
         self.provider.model()
-    }
-
-    /// Get the upstream provider (e.g., which provider OpenRouter routed to)
-    pub fn upstream_provider(&self) -> Option<&str> {
-        self.upstream_provider.as_deref()
     }
 
     pub fn mcp_servers(&self) -> Vec<(String, usize)> {

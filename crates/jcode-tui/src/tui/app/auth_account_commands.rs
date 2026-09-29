@@ -148,8 +148,7 @@ fn parse_account_command(trimmed: &str) -> Option<Result<AccountCommand, String>
         "default-provider" => {
             if remainder.is_empty() {
                 return Some(Err(
-                    "Usage: /account default-provider <claude|openai|gemini|openrouter|auto>"
-                        .to_string(),
+                    "Usage: /account default-provider <claude|openai|gemini|auto>".to_string(),
                 ));
             }
             return Some(Ok(AccountCommand::SetDefaultProvider(
@@ -239,39 +238,6 @@ fn parse_account_command(trimmed: &str) -> Option<Result<AccountCommand, String>
                     ));
                 }
                 AccountCommand::SetOpenAiEffort(normalize_clearish_value(value))
-            }
-            "api-base" if provider.id == "openai-compatible" => {
-                if value.is_empty() {
-                    return Some(Err(
-                        "Usage: /account openai-compatible api-base <url|clear>".to_string(),
-                    ));
-                }
-                AccountCommand::SetOpenAiCompatApiBase(normalize_clearish_value(value))
-            }
-            "api-key-name" if provider.id == "openai-compatible" => {
-                if value.is_empty() {
-                    return Some(Err(
-                        "Usage: /account openai-compatible api-key-name <ENV_VAR|clear>"
-                            .to_string(),
-                    ));
-                }
-                AccountCommand::SetOpenAiCompatApiKeyName(normalize_clearish_value(value))
-            }
-            "env-file" if provider.id == "openai-compatible" => {
-                if value.is_empty() {
-                    return Some(Err(
-                        "Usage: /account openai-compatible env-file <file.env|clear>".to_string(),
-                    ));
-                }
-                AccountCommand::SetOpenAiCompatEnvFile(normalize_clearish_value(value))
-            }
-            "default-model" if provider.id == "openai-compatible" => {
-                if value.is_empty() {
-                    return Some(Err(
-                        "Usage: /account openai-compatible default-model <model|clear>".to_string(),
-                    ));
-                }
-                AccountCommand::SetOpenAiCompatDefaultModel(normalize_clearish_value(value))
             }
             other => {
                 if matches!(provider.id, "claude" | "openai") {
@@ -388,18 +354,6 @@ pub(crate) fn execute_account_command_local(app: &mut App, command: AccountComma
         }
         AccountCommand::SetOpenAiEffort(value) => {
             save_openai_effort_setting_local(app, value.as_deref())
-        }
-        AccountCommand::SetOpenAiCompatApiBase(value) => {
-            save_openai_compat_setting(app, OpenAiCompatSetting::ApiBase, value.as_deref())
-        }
-        AccountCommand::SetOpenAiCompatApiKeyName(value) => {
-            save_openai_compat_setting(app, OpenAiCompatSetting::ApiKeyName, value.as_deref())
-        }
-        AccountCommand::SetOpenAiCompatEnvFile(value) => {
-            save_openai_compat_setting(app, OpenAiCompatSetting::EnvFile, value.as_deref())
-        }
-        AccountCommand::SetOpenAiCompatDefaultModel(value) => {
-            save_openai_compat_setting(app, OpenAiCompatSetting::DefaultModel, value.as_deref())
         }
     }
 }
@@ -589,7 +543,7 @@ fn save_default_provider_setting(app: &mut App, provider: Option<&str>) {
     let provider = match normalized.as_deref() {
         None => None,
         Some("auto") => None,
-        Some("claude" | "openai" | "gemini" | "openrouter") => normalized,
+        Some("claude" | "openai" | "gemini") => normalized,
         // Accept the dual-auth credential spellings too (`anthropic-api`,
         // `claude-api`, `openai-api`, `claude-oauth`, ...). These are the same
         // values the model picker's "set default" path writes, and startup now
@@ -599,7 +553,7 @@ fn save_default_provider_setting(app: &mut App, provider: Option<&str>) {
         Some(other) if jcode_provider_core::AuthRoute::parse(other).is_some() => normalized,
         Some(other) => {
             app.push_display_message(DisplayMessage::error(format!(
-                "Unsupported default provider {}. Use claude, openai, anthropic-api, openai-api, gemini, openrouter, or auto.",
+                "Unsupported default provider {}. Use claude, openai, anthropic-api, openai-api, gemini, or auto.",
                 other
             )));
             return;
@@ -694,115 +648,6 @@ fn save_openai_effort_setting_local(app: &mut App, value: Option<&str>) {
     }
 }
 
-#[derive(Clone, Copy)]
-enum OpenAiCompatSetting {
-    ApiBase,
-    ApiKeyName,
-    EnvFile,
-    DefaultModel,
-}
-
-fn save_openai_compat_setting(app: &mut App, setting: OpenAiCompatSetting, value: Option<&str>) {
-    let old = crate::provider_catalog::resolve_openai_compatible_profile(
-        crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-    );
-    let current_key =
-        crate::provider_catalog::load_api_key_from_env_or_config(&old.api_key_env, &old.env_file);
-    let (env_key, normalized_value) = match setting {
-        OpenAiCompatSetting::ApiBase => {
-            let normalized = match value {
-                Some(value) => match crate::provider_catalog::normalize_api_base(value) {
-                    Some(value) => Some(value),
-                    None => {
-                        app.push_display_message(DisplayMessage::error(
-                            "OpenAI-compatible API base must be https://... or http://localhost."
-                                .to_string(),
-                        ));
-                        return;
-                    }
-                },
-                None => None,
-            };
-            ("JCODE_OPENAI_COMPAT_API_BASE", normalized)
-        }
-        OpenAiCompatSetting::ApiKeyName => {
-            if let Some(value) = value
-                && !crate::provider_catalog::is_safe_env_key_name(value)
-            {
-                app.push_display_message(DisplayMessage::error(
-                    "API key variable must be uppercase letters, digits, and underscores only."
-                        .to_string(),
-                ));
-                return;
-            }
-            (
-                "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-                value.map(ToString::to_string),
-            )
-        }
-        OpenAiCompatSetting::EnvFile => {
-            if let Some(value) = value
-                && !crate::provider_catalog::is_safe_env_file_name(value)
-            {
-                app.push_display_message(DisplayMessage::error(
-                    "Env file must be a simple file name like groq.env.".to_string(),
-                ));
-                return;
-            }
-            (
-                "JCODE_OPENAI_COMPAT_ENV_FILE",
-                value.map(ToString::to_string),
-            )
-        }
-        OpenAiCompatSetting::DefaultModel => (
-            "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
-            value.map(ToString::to_string),
-        ),
-    };
-
-    if let Err(err) = crate::provider_catalog::save_env_value_to_env_file(
-        env_key,
-        crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
-        normalized_value.as_deref(),
-    ) {
-        app.push_display_message(DisplayMessage::error(format!(
-            "Failed to save OpenAI-compatible setting: {}",
-            err
-        )));
-        return;
-    }
-
-    let new = crate::provider_catalog::resolve_openai_compatible_profile(
-        crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-    );
-    if let Some(key) = current_key
-        && (old.api_key_env != new.api_key_env || old.env_file != new.env_file)
-        && crate::provider_catalog::save_env_value_to_env_file(
-            &new.api_key_env,
-            &new.env_file,
-            Some(&key),
-        )
-        .is_err()
-    {
-        crate::logging::warn("Failed to migrate OpenAI-compatible API key to new source");
-    }
-    crate::auth::AuthStatus::invalidate_cache();
-    let label = match setting {
-        OpenAiCompatSetting::ApiBase => format!("API base → {}", new.api_base),
-        OpenAiCompatSetting::ApiKeyName => format!("API key variable → {}", new.api_key_env),
-        OpenAiCompatSetting::EnvFile => format!("Env file → {}", new.env_file),
-        OpenAiCompatSetting::DefaultModel => format!(
-            "Default model hint → {}",
-            new.default_model.as_deref().unwrap_or("(unset)")
-        ),
-    };
-    app.set_status_notice(label.clone());
-    app.push_display_message(DisplayMessage::system(format!(
-        "Saved OpenAI-compatible setting: {}.",
-        label
-    )));
-}
-
 fn render_provider_settings_markdown(app: &App, provider_id: &str) -> String {
     let status = crate::auth::AuthStatus::check();
     let cfg = crate::config::Config::load();
@@ -871,27 +716,6 @@ fn render_provider_settings_markdown(app: &App, provider_id: &str) -> String {
                     .to_string(),
             );
         }
-        "openai-compatible" => {
-            let compat = crate::provider_catalog::resolve_openai_compatible_profile(
-                crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-            );
-            lines.push("Settings".to_string());
-            lines.push("Configure custom OpenAI-compatible endpoints in this order: base URL first, then API key variable/key.".to_string());
-            lines.push(format!("  - Step 1, API base URL: {}", compat.api_base));
-            lines.push(format!(
-                "  - Step 2, API key variable: {}",
-                compat.api_key_env
-            ));
-            lines.push(format!("  - Env file: {}", compat.env_file));
-            lines.push(format!(
-                "  - Default model hint: {}",
-                compat.default_model.as_deref().unwrap_or("(unset)")
-            ));
-            lines.push("  - /account openai-compatible api-base <url|clear>".to_string());
-            lines.push("  - /account openai-compatible api-key-name <ENV_VAR|clear>".to_string());
-            lines.push("  - /account openai-compatible env-file <file.env|clear>".to_string());
-            lines.push("  - /account openai-compatible default-model <model|clear>".to_string());
-        }
         _ => {
             lines.push("No provider-specific settings are exposed here yet. Use /login to configure credentials.".to_string());
         }
@@ -911,9 +735,7 @@ fn render_provider_settings_markdown(app: &App, provider_id: &str) -> String {
                 .as_deref()
                 .unwrap_or("(provider default)")
         ));
-        lines.push(
-            "  - /account default-provider <claude|openai|gemini|openrouter|auto>".to_string(),
-        );
+        lines.push("  - /account default-provider <claude|openai|gemini|auto>".to_string());
         lines.push("  - /account default-model <model|clear>".to_string());
     }
 

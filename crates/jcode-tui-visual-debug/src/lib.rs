@@ -152,7 +152,6 @@ pub struct InfoWidgetSummary {
     pub usage_provider: Option<String>,
     pub tokens_per_second: Option<f32>,
     pub auth_method: Option<String>,
-    pub upstream_provider: Option<String>,
 }
 
 /// Info widget capture (summary + placements)

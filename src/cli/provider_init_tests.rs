@@ -5,7 +5,7 @@ use super::*;
 use crate::external_auth::{
     parse_external_auth_review_selection, pending_external_auth_review_candidates,
 };
-use crate::provider_catalog::{self, resolve_login_selection, resolve_openai_compatible_profile};
+use crate::provider_catalog::{self, resolve_login_selection};
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 use tempfile::TempDir;
@@ -31,32 +31,6 @@ fn test_provider_choice_arg_values() {
     );
     assert_eq!(ProviderChoice::Openai.as_arg_value(), "openai");
     assert_eq!(ProviderChoice::OpenaiApi.as_arg_value(), "openai-api");
-    assert_eq!(ProviderChoice::Openrouter.as_arg_value(), "openrouter");
-    assert_eq!(ProviderChoice::Opencode.as_arg_value(), "opencode");
-    assert_eq!(ProviderChoice::OpencodeGo.as_arg_value(), "opencode-go");
-    assert_eq!(ProviderChoice::Zai.as_arg_value(), "zai");
-    assert_eq!(ProviderChoice::Groq.as_arg_value(), "groq");
-    assert_eq!(ProviderChoice::Mistral.as_arg_value(), "mistral");
-    assert_eq!(ProviderChoice::Perplexity.as_arg_value(), "perplexity");
-    assert_eq!(ProviderChoice::TogetherAi.as_arg_value(), "togetherai");
-    assert_eq!(ProviderChoice::Deepinfra.as_arg_value(), "deepinfra");
-    assert_eq!(ProviderChoice::Fireworks.as_arg_value(), "fireworks");
-    assert_eq!(ProviderChoice::Minimax.as_arg_value(), "minimax");
-    assert_eq!(ProviderChoice::XiaomiMimo.as_arg_value(), "xiaomi-mimo");
-    assert_eq!(ProviderChoice::MetaMuse.as_arg_value(), "meta-muse");
-    assert_eq!(ProviderChoice::Celeris.as_arg_value(), "celeris");
-    assert_eq!(ProviderChoice::Lmstudio.as_arg_value(), "lmstudio");
-    assert_eq!(ProviderChoice::Ollama.as_arg_value(), "ollama");
-    assert_eq!(ProviderChoice::Chutes.as_arg_value(), "chutes");
-    assert_eq!(ProviderChoice::Cerebras.as_arg_value(), "cerebras");
-    assert_eq!(
-        ProviderChoice::AlibabaCodingPlan.as_arg_value(),
-        "alibaba-coding-plan"
-    );
-    assert_eq!(
-        ProviderChoice::OpenaiCompatible.as_arg_value(),
-        "openai-compatible"
-    );
     assert_eq!(ProviderChoice::Gemini.as_arg_value(), "gemini");
     assert_eq!(ProviderChoice::Antigravity.as_arg_value(), "antigravity");
     assert_eq!(ProviderChoice::Auto.as_arg_value(), "auto");
@@ -146,10 +120,6 @@ fn test_server_bootstrap_login_selection_preserves_order() {
     );
     assert_eq!(
         resolve_login_selection("4", &providers).map(|provider| provider.id),
-        Some("openrouter")
-    );
-    assert_eq!(
-        resolve_login_selection("5", &providers).map(|provider| provider.id),
         Some("gemini")
     );
 }
@@ -165,98 +135,6 @@ fn test_auto_init_login_selection_preserves_order() {
         resolve_login_selection("2", &providers).map(|provider| provider.id),
         Some("anthropic-api")
     );
-    assert_eq!(
-        resolve_login_selection("10", &providers).map(|provider| provider.id),
-        Some("alibaba-coding-plan")
-    );
-    assert_eq!(
-        resolve_login_selection("11", &providers).map(|provider| provider.id),
-        Some("gemini")
-    );
-    assert_eq!(
-        resolve_login_selection("12", &providers).map(|provider| provider.id),
-        Some("antigravity")
-    );
-}
-
-#[test]
-fn test_openai_compatible_profile_overrides() {
-    let _guard = lock_env();
-    let keys = [
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
-    ];
-    let saved: Vec<(String, Option<String>)> = keys
-        .iter()
-        .map(|k| (k.to_string(), std::env::var(k).ok()))
-        .collect();
-
-    crate::env::set_var(
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "https://api.groq.com/openai/v1/",
-    );
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "GROQ_API_KEY");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "groq.env");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL", "openai/gpt-oss-120b");
-
-    let resolved = resolve_openai_compatible_profile(provider_catalog::OPENAI_COMPAT_PROFILE);
-    assert_eq!(resolved.api_base, "https://api.groq.com/openai/v1");
-    assert_eq!(resolved.api_key_env, "GROQ_API_KEY");
-    assert_eq!(resolved.env_file, "groq.env");
-    assert_eq!(
-        resolved.default_model.as_deref(),
-        Some("openai/gpt-oss-120b")
-    );
-
-    for (key, value) in saved {
-        if let Some(value) = value {
-            crate::env::set_var(&key, value);
-        } else {
-            crate::env::remove_var(&key);
-        }
-    }
-}
-
-#[test]
-fn test_openai_compatible_profile_rejects_invalid_overrides() {
-    let _guard = lock_env();
-    let keys = [
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-    ];
-    let saved: Vec<(String, Option<String>)> = keys
-        .iter()
-        .map(|k| (k.to_string(), std::env::var(k).ok()))
-        .collect();
-
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", "http://example.com/v1");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "bad-key-name");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "../bad.env");
-
-    let resolved = resolve_openai_compatible_profile(provider_catalog::OPENAI_COMPAT_PROFILE);
-    assert_eq!(
-        resolved.api_base,
-        provider_catalog::OPENAI_COMPAT_PROFILE.api_base
-    );
-    assert_eq!(
-        resolved.api_key_env,
-        provider_catalog::OPENAI_COMPAT_PROFILE.api_key_env
-    );
-    assert_eq!(
-        resolved.env_file,
-        provider_catalog::OPENAI_COMPAT_PROFILE.env_file
-    );
-
-    for (key, value) in saved {
-        if let Some(value) = value {
-            crate::env::set_var(&key, value);
-        } else {
-            crate::env::remove_var(&key);
-        }
-    }
 }
 
 #[test]
@@ -334,32 +212,12 @@ fn login_provider_menu_shows_autodetected_auth_and_skip() {
 #[test]
 fn choice_for_login_provider_round_trips_core_targets() {
     assert_eq!(
-        choice_for_login_provider(provider_catalog::OPENROUTER_LOGIN_PROVIDER),
-        Some(ProviderChoice::Openrouter)
-    );
-    assert_eq!(
         choice_for_login_provider(provider_catalog::ANTHROPIC_API_LOGIN_PROVIDER),
         Some(ProviderChoice::AnthropicApi)
     );
     assert_eq!(
         choice_for_login_provider(provider_catalog::AUTO_IMPORT_LOGIN_PROVIDER),
         None
-    );
-}
-
-#[test]
-fn choice_for_login_provider_round_trips_openai_compatible_profiles() {
-    assert_eq!(
-        choice_for_login_provider(provider_catalog::OPENCODE_LOGIN_PROVIDER),
-        Some(ProviderChoice::Opencode)
-    );
-    assert_eq!(
-        choice_for_login_provider(provider_catalog::LMSTUDIO_LOGIN_PROVIDER),
-        Some(ProviderChoice::Lmstudio)
-    );
-    assert_eq!(
-        choice_for_login_provider(provider_catalog::OPENAI_COMPAT_LOGIN_PROVIDER),
-        Some(ProviderChoice::OpenaiCompatible)
     );
 }
 
@@ -437,349 +295,6 @@ fn auth_integration_registry_matches_cli_choice_runtime_wiring() {
     }
 }
 
-#[test]
-fn resolved_profile_default_model_uses_openai_compatible_override() {
-    let _guard = lock_env();
-    let _env_guard = crate::storage::lock_test_env();
-    let saved: Vec<(String, Option<String>)> = [
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
-    ]
-    .iter()
-    .map(|k| (k.to_string(), std::env::var(k).ok()))
-    .collect();
-
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", "http://localhost:11434/v1");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL", "llama3.2");
-
-    assert_eq!(
-        resolved_profile_default_model(provider_catalog::OPENAI_COMPAT_PROFILE).as_deref(),
-        Some("llama3.2")
-    );
-
-    for (key, value) in saved {
-        if let Some(value) = value {
-            crate::env::set_var(&key, value);
-        } else {
-            crate::env::remove_var(&key);
-        }
-    }
-}
-
-#[test]
-fn apply_login_provider_profile_env_keeps_an_explicit_named_profile() {
-    // Regression for #712: `auth-test --provider-profile <name>` cleared
-    // JCODE_NAMED_PROVIDER_PROFILE before probing, so the probe evaluated the
-    // built-in generic openai-compatible slot and false-negatived every custom
-    // named profile.
-    let _guard = lock_env();
-    let _env_guard = crate::storage::lock_test_env();
-    let saved: Vec<(String, Option<String>)> = [
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
-    ]
-    .iter()
-    .map(|k| (k.to_string(), std::env::var(k).ok()))
-    .collect();
-    for (key, _) in &saved {
-        crate::env::remove_var(key);
-    }
-
-    crate::env::set_var("JCODE_NAMED_PROVIDER_PROFILE", "company-gateway");
-    crate::env::set_var("JCODE_OPENROUTER_API_BASE", "https://gw.example.com/v1");
-    crate::env::set_var("JCODE_OPENROUTER_API_KEY_NAME", "COMPANY_GATEWAY_KEY");
-
-    apply_login_provider_profile_env(provider_catalog::OPENCODE_GO_LOGIN_PROVIDER);
-
-    assert_eq!(
-        std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
-            .ok()
-            .as_deref(),
-        Some("company-gateway"),
-        "explicit named profile must survive the auth-test probe setup"
-    );
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_BASE").ok().as_deref(),
-        Some("https://gw.example.com/v1"),
-        "named profile runtime env must not be replaced by a builtin profile"
-    );
-
-    for (key, value) in saved {
-        match value {
-            Some(value) => crate::env::set_var(&key, value),
-            None => crate::env::remove_var(&key),
-        }
-    }
-}
-
-#[test]
-fn apply_login_provider_profile_env_preserves_compatible_profile_for_auto_spawn() {
-    let _guard = lock_env();
-    let _env_guard = crate::storage::lock_test_env();
-    let saved: Vec<(String, Option<String>)> = [
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_OPENROUTER_STATIC_MODELS",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
-        "JCODE_NAMED_PROVIDER_PROFILE",
-    ]
-    .iter()
-    .map(|k| (k.to_string(), std::env::var(k).ok()))
-    .collect();
-
-    for (key, _) in &saved {
-        crate::env::remove_var(key);
-    }
-
-    apply_login_provider_profile_env(provider_catalog::OPENCODE_GO_LOGIN_PROVIDER);
-
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_BASE").ok().as_deref(),
-        Some("https://opencode.ai/zen/go/v1")
-    );
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_KEY_NAME")
-            .ok()
-            .as_deref(),
-        Some("OPENCODE_GO_API_KEY")
-    );
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_ENV_FILE").ok().as_deref(),
-        Some("opencode-go.env")
-    );
-    assert_eq!(
-        std::env::var("JCODE_PROVIDER_PROFILE_ACTIVE")
-            .ok()
-            .as_deref(),
-        Some("1")
-    );
-
-    // Mirrors the daemon child process starting with `--provider auto`: with the
-    // active marker present, auto init must not erase the selected profile env.
-    provider_catalog::apply_openai_compatible_profile_env(None);
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_KEY_NAME")
-            .ok()
-            .as_deref(),
-        Some("OPENCODE_GO_API_KEY")
-    );
-
-    // A later explicit compatible-provider selection in the same process must
-    // still replace the active profile instead of being blocked by the marker.
-    apply_login_provider_profile_env(provider_catalog::OPENCODE_LOGIN_PROVIDER);
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_KEY_NAME")
-            .ok()
-            .as_deref(),
-        Some("OPENCODE_API_KEY")
-    );
-    assert_eq!(
-        std::env::var("JCODE_PROVIDER_PROFILE_ACTIVE")
-            .ok()
-            .as_deref(),
-        Some("1")
-    );
-
-    for (key, value) in saved {
-        if let Some(value) = value {
-            crate::env::set_var(&key, value);
-        } else {
-            crate::env::remove_var(&key);
-        }
-    }
-}
-
-#[tokio::test]
-#[expect(
-    clippy::await_holding_lock,
-    reason = "test env locks intentionally stay held across provider init to isolate process-global runtime env"
-)]
-async fn init_provider_for_ollama_reapplies_local_compat_runtime_env_over_stale_remote_env() {
-    let _guard = lock_env();
-    let _env_guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().expect("temp dir");
-    let saved: Vec<(String, Option<String>)> = [
-        "JCODE_HOME",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_RUNTIME_PROVIDER",
-        "JCODE_INITIAL_PROVIDER_EXPLICIT",
-        "JCODE_ACTIVE_PROVIDER",
-    ]
-    .iter()
-    .map(|k| (k.to_string(), std::env::var(k).ok()))
-    .collect();
-
-    crate::env::set_var("JCODE_HOME", dir.path());
-    // Simulate a stale OpenAI-compatible runtime left behind by a previously
-    // selected remote provider: `--provider ollama` must overwrite every one of
-    // these, not inherit them.
-    crate::env::set_var("JCODE_OPENROUTER_API_BASE", "https://stale.example/v1");
-    crate::env::set_var("JCODE_OPENROUTER_API_KEY_NAME", "STALE_API_KEY");
-    crate::env::set_var("JCODE_OPENROUTER_ENV_FILE", "stale.env");
-    crate::env::set_var("JCODE_OPENROUTER_CACHE_NAMESPACE", "stale");
-    crate::env::set_var("JCODE_OPENROUTER_PROVIDER_FEATURES", "0");
-    crate::env::set_var("JCODE_OPENROUTER_TRANSPORT_STATE", "stale");
-
-    let provider = init_provider_for_validation(&ProviderChoice::Ollama, Some("llama3.2"))
-        .await
-        .expect("init ollama provider");
-
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_BASE").ok().as_deref(),
-        Some("http://localhost:11434/v1")
-    );
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_KEY_NAME")
-            .ok()
-            .as_deref(),
-        Some("OLLAMA_API_KEY")
-    );
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_ENV_FILE").ok().as_deref(),
-        Some("ollama.env")
-    );
-    assert_eq!(
-        std::env::var("JCODE_OPENROUTER_ALLOW_NO_AUTH")
-            .ok()
-            .as_deref(),
-        Some("1")
-    );
-    assert_eq!(
-        std::env::var("JCODE_INITIAL_PROVIDER_EXPLICIT")
-            .ok()
-            .as_deref(),
-        Some("1")
-    );
-    assert_eq!(
-        std::env::var("JCODE_ACTIVE_PROVIDER").ok().as_deref(),
-        Some("openrouter")
-    );
-    assert_eq!(
-        std::env::var("JCODE_RUNTIME_PROVIDER").ok().as_deref(),
-        Some("openai-compatible")
-    );
-    assert_eq!(provider.name(), "openrouter");
-    assert_eq!(provider.model(), "llama3.2");
-
-    for (key, value) in saved {
-        if let Some(value) = value {
-            crate::env::set_var(&key, value);
-        } else {
-            crate::env::remove_var(&key);
-        }
-    }
-}
-
-#[tokio::test]
-#[expect(
-    clippy::await_holding_lock,
-    reason = "test env locks intentionally stay held across provider init to isolate process-global runtime env"
-)]
-async fn auto_provider_uses_config_default_named_no_auth_provider() {
-    let _guard = lock_env();
-    let _env_guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().expect("temp dir");
-    let saved: Vec<(String, Option<String>)> = [
-        "JCODE_HOME",
-        "JCODE_NON_INTERACTIVE",
-        "ANTHROPIC_API_KEY",
-        "OPENAI_API_KEY",
-        "OPENROUTER_API_KEY",
-        "GEMINI_API_KEY",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
-        "JCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_RUNTIME_PROVIDER",
-        "JCODE_ACTIVE_PROVIDER",
-        "JCODE_INITIAL_PROVIDER_EXPLICIT",
-    ]
-    .iter()
-    .map(|k| (k.to_string(), std::env::var(k).ok()))
-    .collect();
-
-    crate::env::set_var("JCODE_HOME", dir.path());
-    crate::env::set_var("JCODE_NON_INTERACTIVE", "1");
-    for key in [
-        "ANTHROPIC_API_KEY",
-        "OPENAI_API_KEY",
-        "OPENROUTER_API_KEY",
-        "GEMINI_API_KEY",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
-        "JCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_RUNTIME_PROVIDER",
-        "JCODE_ACTIVE_PROVIDER",
-        "JCODE_INITIAL_PROVIDER_EXPLICIT",
-    ] {
-        crate::env::remove_var(key);
-    }
-    std::fs::write(
-        dir.path().join("config.toml"),
-        r#"
-[provider]
-default_provider = "ollama-local"
-default_model = "llama3.1:8b"
-
-[providers.ollama-local]
-type = "openai-compatible"
-base_url = "http://localhost:11434/v1"
-auth = "none"
-default_model = "llama3.1:8b"
-requires_api_key = false
-
-[[providers.ollama-local.models]]
-id = "llama3.1:8b"
-"#,
-    )
-    .expect("write config");
-    crate::config::invalidate_config_cache();
-
-    let provider = init_provider_for_validation(&ProviderChoice::Auto, None)
-        .await
-        .expect("auto provider should honor config default_provider named profile");
-
-    assert_eq!(provider.model(), "llama3.1:8b");
-    assert!(provider.model_routes().iter().any(|route| {
-        route.provider == "ollama-local" && route.model == "llama3.1:8b" && route.available
-    }));
-
-    for (key, value) in saved {
-        if let Some(value) = value {
-            crate::env::set_var(&key, value);
-        } else {
-            crate::env::remove_var(&key);
-        }
-    }
-    crate::config::invalidate_config_cache();
-}
-
 #[tokio::test]
 #[expect(
     clippy::await_holding_lock,
@@ -795,7 +310,6 @@ async fn auto_provider_noninteractive_skips_untrusted_external_auth_instead_of_b
         "JCODE_DEFERRED_AUTH_BOOTSTRAP",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
-        "OPENROUTER_API_KEY",
         "GEMINI_API_KEY",
         "JCODE_RUNTIME_PROVIDER",
         "JCODE_ACTIVE_PROVIDER",
@@ -811,7 +325,6 @@ async fn auto_provider_noninteractive_skips_untrusted_external_auth_instead_of_b
         "JCODE_DEFERRED_AUTH_BOOTSTRAP",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
-        "OPENROUTER_API_KEY",
         "GEMINI_API_KEY",
         "JCODE_ACTIVE_PROVIDER",
         "JCODE_INITIAL_PROVIDER_EXPLICIT",

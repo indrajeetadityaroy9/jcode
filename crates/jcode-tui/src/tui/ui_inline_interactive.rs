@@ -41,17 +41,6 @@ fn api_method_display(raw: &str) -> String {
     crate::provider::ModelRouteApiMethod::parse(raw).display_label()
 }
 
-fn route_provider_display(provider: &str, api_method: &str) -> String {
-    if crate::provider::ModelRouteApiMethod::parse(api_method).is_openrouter()
-        && provider != "auto"
-        && !provider.contains("OpenRouter")
-    {
-        format!("OpenRouter/{}", provider)
-    } else {
-        provider.to_string()
-    }
-}
-
 fn picker_entry_display_name(entry: &crate::tui::PickerEntry) -> String {
     let base = picker_entry_pretty_name(entry);
     let default_marker = if entry.is_default { " default" } else { "" };
@@ -65,18 +54,6 @@ fn picker_entry_display_name(entry: &crate::tui::PickerEntry) -> String {
         format!(" ♥{}", default_marker)
     } else if entry.recommended {
         format!(" ★{}", default_marker)
-    } else if entry.old && !entry.is_current {
-        if let Some(ref date) = entry.created_date {
-            format!(" {}{}", date, default_marker)
-        } else {
-            format!(" old{}", default_marker)
-        }
-    } else if let Some(ref date) = entry.created_date {
-        if !entry.is_current {
-            format!(" {}{}", date, default_marker)
-        } else {
-            default_marker.to_string()
-        }
     } else {
         default_marker.to_string()
     };
@@ -90,7 +67,7 @@ fn picker_entry_display_name(entry: &crate::tui::PickerEntry) -> String {
 /// (`claude-opus-4-8`, `gpt-5.5 (high)`), which reads worse than the pretty
 /// names every other surface uses (header, status line, info widgets). We
 /// prettify only the well-known families so unfamiliar or namespaced ids
-/// (OpenRouter `vendor/model`, local profiles) keep their exact spelling and
+/// (`vendor/model` ids, local profiles) keep their exact spelling and
 /// stay copy-pasteable. Effort suffixes such as ` (high)` are preserved.
 fn picker_entry_pretty_name(entry: &crate::tui::PickerEntry) -> String {
     if !matches!(
@@ -289,7 +266,7 @@ fn picker_render_width(picker: &crate::tui::InlineInteractiveState, max_width: u
         let entry = &picker.entries[fi];
         max_model_len = max_model_len.max(display_width(picker_entry_display_name(entry).as_str()));
         if let Some(route) = entry.active_option() {
-            let provider_label = route_provider_display(&route.provider, &route.api_method);
+            let provider_label = route.provider.clone();
             let provider_label = if entry.option_count() > 1 {
                 format!("{} ({})", provider_label, entry.option_count())
             } else {
@@ -660,8 +637,6 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
             Style::default().fg(rgb(255, 160, 210)).bold()
         } else if entry.recommended {
             Style::default().fg(rgb(255, 220, 120))
-        } else if entry.old {
-            Style::default().fg(rgb(120, 120, 130))
         } else {
             Style::default().fg(rgb(200, 200, 220))
         };
@@ -791,7 +766,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
 
         let route_count = entry.option_count();
         let provider_raw = route
-            .map(|r| route_provider_display(&r.provider, &r.api_method))
+            .map(|r| r.provider.clone())
             .unwrap_or_else(|| "-".to_string());
         let provider_label = if col == 0 && route_count > 1 {
             format!("{} ({})", provider_raw, route_count)
@@ -914,8 +889,6 @@ mod tests {
                 recommended: true,
                 recommendation_rank: 0,
                 usage_score: 0,
-                old: false,
-                created_date: None,
                 effort: None,
             }],
         }
@@ -942,8 +915,6 @@ mod tests {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score: 0,
-            old: false,
-            created_date: None,
             effort: None,
         }];
 
@@ -970,8 +941,6 @@ mod tests {
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
-                old: false,
-                created_date: None,
                 effort: None,
             });
         }
@@ -1012,8 +981,6 @@ mod tests {
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
-                old: false,
-                created_date: None,
                 effort: None,
             }],
         }
@@ -1125,7 +1092,6 @@ mod tests {
     fn model_picker_method_display_uses_user_friendly_labels() {
         assert_eq!(api_method_display("openai-oauth"), "oauth");
         assert_eq!(api_method_display("openai-api-key"), "api key");
-        assert_eq!(api_method_display("openai-compatible:comtegra"), "api key");
     }
 
     #[test]

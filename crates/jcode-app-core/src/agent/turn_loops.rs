@@ -534,13 +534,6 @@ impl Agent {
                             break;
                         }
                     }
-                    StreamEvent::UpstreamProvider { provider } => {
-                        // Log upstream provider for local trace output
-                        if trace {
-                            eprintln!("[trace] upstream_provider={}", provider);
-                        }
-                        self.last_upstream_provider = Some(provider);
-                    }
                     StreamEvent::OpenAIReasoning {
                         id,
                         summary,
@@ -746,7 +739,7 @@ impl Agent {
             let visible_text_is_empty = text_content.trim().is_empty();
 
             // Add assistant message to history. Avoid persisting whitespace-only text as a
-            // successful visible answer: some OpenRouter/Kimi tool continuations can finish
+            // successful visible answer: some tool continuations can finish
             // cleanly with only spaces despite non-zero output tokens. Persisting that makes the
             // UI look like the agent stopped after tools with no explanation.
             let mut content_blocks = Vec::new();

@@ -139,11 +139,7 @@ pub(super) fn is_auto_poke_connectivity_error(error: &str) -> bool {
 
     let lower = error.to_ascii_lowercase();
 
-    let connectivity_markers = [
-        "failed to send openai-compatible chat request",
-        "could not resolve host",
-        "couldn't resolve host",
-    ];
+    let connectivity_markers = ["could not resolve host", "couldn't resolve host"];
 
     connectivity_markers
         .iter()
@@ -315,7 +311,6 @@ pub(super) fn activate_auto_poke_local(app: &mut App) {
             app.streaming.streaming_cache_read_tokens = None;
             app.streaming.streaming_cache_creation_tokens = None;
             app.kv_cache.current_api_usage_recorded = false;
-            app.upstream_provider = None;
             app.status_detail = None;
             app.streaming.streaming_tps_start = None;
             app.streaming.streaming_tps_elapsed = std::time::Duration::ZERO;

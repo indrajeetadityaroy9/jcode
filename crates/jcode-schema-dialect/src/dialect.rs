@@ -11,7 +11,7 @@
 //! | Issue | Provider | Construct |
 //! |-------|----------|-----------|
 //! | #446  | LM Studio | object schema without `properties` |
-//! | #495  | OpenRouter | top-level `anyOf` |
+//! | #495  | Anthropic | top-level `anyOf` |
 //! | #543  | OpenAI | `format: "uri"` |
 //! | #655  | Gemini | `required` naming an undeclared property |
 //! | #687  | OpenAI | `uniqueItems` |
@@ -38,7 +38,7 @@ use serde_json::{Map, Value};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DialectTransforms {
     /// Collapse `anyOf`/`oneOf`/`allOf` at the schema root into one object
-    /// whose properties union every branch (Anthropic, OpenRouter: #495).
+    /// whose properties union every branch (Anthropic: #495).
     pub flatten_top_level_combiners: bool,
     /// Collapse every combiner anywhere to its first branch (the Antigravity
     /// Gemini->Anthropic bridge, which rejects them at any depth).

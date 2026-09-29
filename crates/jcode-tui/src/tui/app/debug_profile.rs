@@ -343,11 +343,6 @@ impl App {
                 .map(|value| value.capacity())
                 .unwrap_or(0)
             + self
-                .upstream_provider
-                .as_ref()
-                .map(|value| value.capacity())
-                .unwrap_or(0)
-            + self
                 .connection_type
                 .as_ref()
                 .map(|value| value.capacity())

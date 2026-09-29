@@ -291,7 +291,7 @@ pub enum UsageProvider {
     Anthropic,
     /// OpenAI/Codex OAuth (shows subscription usage)
     OpenAI,
-    /// OpenRouter/API-key providers (shows token costs)
+    /// API-key providers (shows token costs)
     CostBased,
 }
 
@@ -311,8 +311,6 @@ impl UsageProvider {
 pub enum AuthMethod {
     #[default]
     Unknown,
-    /// Generic API key auth for API-backed providers without a provider-specific auth widget variant
-    ApiKey,
     /// Anthropic OAuth (Claude Code CLI style)
     AnthropicOAuth,
     /// Anthropic API key
@@ -321,10 +319,6 @@ pub enum AuthMethod {
     OpenAIOAuth,
     /// OpenAI API key
     OpenAIApiKey,
-    /// OpenRouter API key
-    OpenRouterApiKey,
-    /// OpenCode API key
-    OpenCodeApiKey,
     /// Google Gemini OAuth
     GeminiOAuth,
 }
@@ -350,7 +344,7 @@ pub struct UsageInfo {
     pub spark: Option<f32>,
     /// Codex Spark reset timestamp (RFC3339), if known
     pub spark_resets_at: Option<String>,
-    /// Total cost in USD - for API-key providers (OpenRouter, direct API key)
+    /// Total cost in USD - for API-key providers
     pub total_cost: f32,
     /// Input tokens used - for cost calculation
     pub input_tokens: u64,
@@ -507,12 +501,10 @@ pub struct InfoWidgetData {
     pub usage_display_used: bool,
     /// Streaming output tokens per second (approximate)
     pub tokens_per_second: Option<f32>,
-    /// Active provider name (openrouter/openai/anthropic/...)
+    /// Active provider name (openai/anthropic/gemini/...)
     pub provider_name: Option<String>,
     /// Authentication method used to access the model
     pub auth_method: AuthMethod,
-    /// Upstream provider (e.g., which OpenRouter provider served the request: fireworks, etc.)
-    pub upstream_provider: Option<String>,
     /// Active connection type (websocket/https/etc.)
     pub connection_type: Option<String>,
     /// Mermaid diagrams to display

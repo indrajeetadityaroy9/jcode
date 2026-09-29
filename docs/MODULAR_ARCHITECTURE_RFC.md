@@ -4,10 +4,10 @@ Status: **Partly realized — read the target sections as unbuilt.** The layered
 target this RFC names (`jcode-server`, `jcode-agent`, `jcode-session`,
 `jcode-provider`, `jcode-cli`) does **not** exist in the workspace. What landed
 instead is a four-crate vertical spine — `jcode` (cli + bin) -> `jcode-tui` ->
-`jcode-app-core` -> `jcode-base` — plus 67 leaf crates
-(`Cargo.toml:9-81`). Of the ten dependency rules below, exactly one slice is
+`jcode-app-core` -> `jcode-base` — plus 66 leaf crates
+(`Cargo.toml:9-80`). Of the ten dependency rules below, exactly one slice is
 machine-enforced: `*-types` crates may not depend on the runtime/UI crates in
-`FORBIDDEN_INTERNAL_DEPS` (`scripts/check_dependency_boundaries.py:28-46`), gated
+`FORBIDDEN_INTERNAL_DEPS` (`scripts/check_dependency_boundaries.py:28-45`), gated
 at `scripts/check_guardrails.sh:84`. Everything else here is advisory.
 
 This RFC describes a modular target architecture for jcode. It was written while
@@ -51,7 +51,7 @@ of leaf crates**:
   `crates/jcode-tui/src/lib.rs:23`, `src/lib.rs:22`), so old `crate::<module>`
   paths still resolve and the real dependency direction stays invisible at import
   sites.
-- 72 further crates hang off that spine — data contracts, provider support and
+- 66 further crates hang off that spine — data contracts, provider support and
   runtime leaves, TUI leaves — and mostly compile in parallel below `jcode-base`.
 
 So the monolith moved rather than dissolved: the compile bottleneck is now three
@@ -112,7 +112,7 @@ description that this RFC opened with no longer applies:
 
 ### Workspace inventory
 
-70 crates plus the root package, from `[workspace] members` (`Cargo.toml:9-81`).
+69 crates plus the root package, from `[workspace] members` (`Cargo.toml:9-80`).
 
 **Root package**
 
@@ -199,7 +199,7 @@ These 13 are exactly the crates the boundary guard polices: it selects on the
   Unix-only dependency (`Cargo.toml:229-230`)
 - `jcode-sdk` — Rust SDK: connect, drive sessions, stream events
 
-**Auth and provider support (9)**
+**Auth and provider support (8)**
 
 - `jcode-provider-core` — shared provider contract (`Provider`/`EventStream`),
   model ids, pricing, failover, retry-after, selection
@@ -209,20 +209,19 @@ These 13 are exactly the crates the boundary guard polices: it selects on the
 - `jcode-schema-dialect` — per-provider JSON Schema dialect conformance and quirk
   registry
 - `jcode-provider-anthropic`, `jcode-provider-antigravity`,
-  `jcode-provider-gemini`, `jcode-provider-openai`,
-  `jcode-provider-openrouter` — per-provider request/stream translation and
-  schema/catalog helpers
+  `jcode-provider-gemini`, `jcode-provider-openai` — per-provider
+  request/stream translation and schema/catalog helpers
 
-**Provider runtimes and diagnostics (7)**
+**Provider runtimes and diagnostics (6)**
 
 Deliberately downstream of `jcode-base` so provider edits do not rebuild the
-spine (`Cargo.toml:173-184`):
+spine (`Cargo.toml:172-182`):
 
 - `jcode-provider-anthropic-runtime`, `jcode-provider-antigravity-runtime`,
   `jcode-provider-claude-cli-runtime`, `jcode-provider-gemini-runtime`,
-  `jcode-provider-openai-runtime`, `jcode-provider-openrouter-runtime`
+  `jcode-provider-openai-runtime`
 - `jcode-provider-doctor` — `jcode provider-doctor` end-to-end and live probes
-  layered over those six runtimes
+  layered over those five runtimes
 
 **TUI leaf crates (13)**
 
@@ -247,6 +246,8 @@ spine (`Cargo.toml:173-184`):
 Crates this fork removed, with the subsystems they served: `jcode-desktop` /
 `jcode-desktop2` and `jcode-math` (desktop GUI), `jcode-provider-bedrock` (AWS
 Bedrock), `jcode-provider-grok-build-runtime` (Grok/xAI),
+`jcode-provider-openrouter` / `jcode-provider-openrouter-runtime` (OpenRouter
+and every OpenAI-compatible endpoint),
 `jcode-provider-copilot` / `jcode-provider-copilot-runtime` (GitHub Copilot),
 `jcode-provider-cursor-runtime` (Cursor as a model provider; Cursor *editor*
 session import is unaffected and still lives in `jcode-import-core`),
@@ -274,7 +275,7 @@ contract-separated:
   (`crates/jcode-tui/src/tui/`)
 
 The shared `Provider` trait lives in `jcode-provider-core`, and the concrete
-provider runtimes live in the six `*-runtime` leaves; what remains in
+provider runtimes live in the five `*-runtime` leaves; what remains in
 `crates/jcode-base/src/provider/` is composition, routing, catalogs, and
 compatibility shims (e.g. `crates/jcode-base/src/provider/openai.rs:1-12`
 documents itself as one).
@@ -319,7 +320,7 @@ flowchart TD
   AppCore --> Base["jcode-base\nprovider + auth + config + session + message + memory"]
 
   Root --> Doctor[jcode-provider-doctor]
-  Root --> PRun[8 provider runtime crates]
+  Root --> PRun[5 provider runtime crates]
   Root --> Bridge[jcode-harness-api-server]
   PRun --> Base
   Doctor --> Base
@@ -384,7 +385,7 @@ The compile-performance plan is correct that crate boundaries matter most. The s
 
 Status: **not built.** No crate named `jcode-server`, `jcode-agent`,
 `jcode-session`, `jcode-provider`, or `jcode-cli` exists in `[workspace] members`
-(`Cargo.toml:9-81`). Read this section as the intended direction. The graph below
+(`Cargo.toml:9-80`). Read this section as the intended direction. The graph below
 is the target, not the current graph — for the current graph see
 [Current architecture in one picture](#current-architecture-in-one-picture).
 
@@ -431,7 +432,6 @@ flowchart TD
     PDF[jcode-pdf]
     PMeta[jcode-provider-metadata]
     PCore[jcode-provider-core]
-    POR[jcode-provider-openrouter]
     PGem[jcode-provider-gemini]
     Schema[jcode-schema-dialect]
     TW[jcode-tui-workspace]
@@ -562,8 +562,8 @@ Existing examples:
 - `jcode-embedding` (feature-gated, `Cargo.toml:220`)
 - `jcode-pdf` (feature-gated, `Cargo.toml:222`)
 - `jcode-tui-mermaid`
-- the six `jcode-provider-*-runtime` crates, plus provider support crates such
-  as `jcode-provider-openrouter` and `jcode-provider-gemini`
+- the five `jcode-provider-*-runtime` crates, plus provider support crates such
+  as `jcode-provider-gemini`
 
 Target direction:
 
@@ -621,7 +621,7 @@ The forbidden direction is just as important:
 - provider crates must not depend on TUI or server crates
 - TUI crates must not depend on concrete server internals when protocol/client contracts are sufficient
 - leaf adapter crates must not become backdoors into the root crate
-- workspace peers should not need the root `jcode` package at all; today none do, but six provider runtimes plus `jcode-provider-doctor` depend on `jcode-base`, which is the spine, not a contract layer
+- workspace peers should not need the root `jcode` package at all; today none do, but five provider runtimes plus `jcode-provider-doctor` depend on `jcode-base`, which is the spine, not a contract layer
 
 ### Split readiness checklist
 
@@ -646,7 +646,7 @@ Avoid these tempting but harmful structures:
 - **One crate per source directory.** This creates noisy APIs and dependency cycles without compile wins.
 - **Moving high-churn traits too early.** A poorly stabilized trait crate can become worse than the monolith.
 - **Moving UI-adjacent state into core.** This contaminates lower layers with `ratatui`/terminal concepts.
-- **Provider leaf crates depending on the spine.** The six `*-runtime` crates already depend on `jcode-base` (`Cargo.toml:173-184`); that keeps them off the spine's *rebuild* path but does not make them contract-only leaves.
+- **Provider leaf crates depending on the spine.** The five `*-runtime` crates already depend on `jcode-base` (`Cargo.toml:172-182`); that keeps them off the spine's *rebuild* path but does not make them contract-only leaves.
 - **Splitting by dependency weight only.** Heavy leaf isolation is good, but ownership and API stability matter too.
 
 ### Highest-ROI next crate seams from the current tree
@@ -769,7 +769,7 @@ Should not contain:
 
 Notes:
 
-- Existing crates `jcode-provider-core`, `jcode-provider-metadata`, `jcode-schema-dialect`, `jcode-provider-openrouter`, and `jcode-provider-gemini` remain useful under this layer, and the six `jcode-provider-*-runtime` crates already hold the concrete streaming implementations.
+- Existing crates `jcode-provider-core`, `jcode-provider-metadata`, `jcode-schema-dialect`, and `jcode-provider-gemini` remain useful under this layer, and the five `jcode-provider-*-runtime` crates already hold the concrete streaming implementations.
 - The `Provider` trait already lives in `jcode-provider-core`. What remains in `crates/jcode-base/src/provider/` is composition, routing, catalogs, and per-provider shims; the migration step is moving that composition out from under the spine.
 
 ### `jcode-agent`
@@ -866,14 +866,13 @@ A higher layer may depend on a lower layer. A lower layer may not depend on a hi
 - leaf adapters must not pull UI or server concerns downward
 
 Enforced only for the 13 `jcode-*-types` crates.
-`FORBIDDEN_INTERNAL_DEPS` (`scripts/check_dependency_boundaries.py:28-46`) has 17
+`FORBIDDEN_INTERNAL_DEPS` (`scripts/check_dependency_boundaries.py:28-45`) has 16
 entries and blocks direct dependencies from any `jcode-*-types` crate onto
 `jcode`, `jcode-agent-runtime`, `jcode-core`, `jcode-embedding`, `jcode-pdf`,
-`jcode-plan`, `jcode-protocol`, `jcode-terminal-launch`, four provider crates
-(`jcode-provider-core`, `jcode-provider-gemini`, `jcode-provider-metadata`,
-`jcode-provider-openrouter`), and five TUI crates (`jcode-tui-core`,
-`jcode-tui-markdown`, `jcode-tui-mermaid`, `jcode-tui-render`,
-`jcode-tui-workspace`). Only `jcode-message-types` is allowed
+`jcode-plan`, `jcode-protocol`, `jcode-terminal-launch`, three provider crates
+(`jcode-provider-core`, `jcode-provider-gemini`, `jcode-provider-metadata`), and
+five TUI crates (`jcode-tui-core`, `jcode-tui-markdown`, `jcode-tui-mermaid`,
+`jcode-tui-render`, `jcode-tui-workspace`). Only `jcode-message-types` is allowed
 (`ALLOWED_INTERNAL_TYPE_DEPS`, `:21-23`). The gate runs from
 `scripts/check_guardrails.sh:84`.
 
@@ -896,10 +895,10 @@ crates.
 - provider leaf crates may depend on `jcode-provider-core`,
   `jcode-schema-dialect`, `jcode-message-types`, and small support crates
 - they must not depend on TUI crates or on server orchestration
-- currently violated in spirit by design: the six `jcode-provider-*-runtime`
+- currently violated in spirit by design: the five `jcode-provider-*-runtime`
   crates depend on `jcode-base`, which contains auth, config, and session. That
   was a deliberate trade to get the runtimes off the spine's rebuild path
-  (`Cargo.toml:173-184`), and it is the main thing a real `jcode-provider`
+  (`Cargo.toml:172-182`), and it is the main thing a real `jcode-provider`
   contract layer would fix.
 
 ### Rule 5: Async/network-heavy dependencies do not belong in `jcode-core`
@@ -996,7 +995,7 @@ Focus areas, with current state:
 - TUI state/reducer separation: still open; `crates/jcode-tui/src/tui/app/` holds
   three of the six largest tracked files.
 - provider state isolation: partly done — the concrete runtimes moved to the
-  six `jcode-provider-*-runtime` leaves, while composition/routing stayed in
+  five `jcode-provider-*-runtime` leaves, while composition/routing stayed in
   `crates/jcode-base/src/provider/`.
 
 Exit criteria:
@@ -1102,7 +1101,7 @@ Scored against the workspace as of 2026-09-05:
 | the root package is primarily a composition shell | **met** — `src/` holds only `main.rs`, `lib.rs`, `cli/`, `bin/` |
 | shared cross-cutting types live in a lower-level crate rather than the root crate | **met** — `jcode-protocol` + 13 `jcode-*-types` crates |
 | server, agent, provider, and TUI have clear ownership boundaries | **not met** — all four still live inside the three spine crates, mutually reachable via the glob ladder |
-| provider support crates no longer need root-crate-only types | **met for the root crate**, but the six `*-runtime` crates depend on `jcode-base` (`Cargo.toml:173-184`) |
+| provider support crates no longer need root-crate-only types | **met for the root crate**, but the five `*-runtime` crates depend on `jcode-base` (`Cargo.toml:172-182`) |
 | TUI depends on protocol/service contracts rather than runtime internals | **not met** — `crates/jcode-tui/src/lib.rs:23` re-exports all of `jcode-app-core` |
 | common edits avoid recompiling unrelated heavy subsystems whenever possible | **partly** — provider/doctor edits are isolated; any `jcode-base` edit still rebuilds the spine |
 | architecture docs match the actual crate graph | **met as of this revision** |

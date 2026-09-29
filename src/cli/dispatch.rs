@@ -10,7 +10,7 @@ use super::args::{
     RestartCommand, ServerCommand, SessionCommand, TranscriptModeArg,
 };
 use crate::{
-    agent, auth, build, provider, provider_catalog, server, session, setup_hints, startup_profile,
+    agent, auth, build, provider_catalog, server, session, setup_hints, startup_profile,
 };
 
 use super::{acp, commands, debug, login, output, provider_init, terminal, tui_launch};
@@ -37,7 +37,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         provider_catalog::apply_named_provider_profile_env(profile_name)?;
         crate::env::set_var("JCODE_PROVIDER_PROFILE_NAME", profile_name);
         crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
-        args.provider = ProviderChoice::OpenaiCompatible;
     }
 
     if let Some(tool_profile) = args.tool_profile.as_deref() {
@@ -191,9 +190,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             auth_code,
             json,
             no_validate,
-            api_base,
-            api_key,
-            api_key_env,
         }) => {
             login::run_login(
                 &login_provider.unwrap_or(args.provider),
@@ -205,10 +201,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                     auth_code,
                     json,
                     no_validate,
-                    openai_compatible_api_base: api_base,
-                    openai_compatible_api_key: api_key,
-                    openai_compatible_api_key_env: api_key_env,
-                    openai_compatible_default_model: args.model.clone(),
                 },
             )
             .await?;
@@ -253,43 +245,6 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             ProviderCommand::Current { json } => {
                 commands::run_provider_current_command(&args.provider, args.model.as_deref(), json)
                     .await?;
-            }
-            ProviderCommand::Add {
-                name,
-                base_url,
-                model,
-                context_window,
-                api_key_env,
-                api_key,
-                api_key_stdin,
-                no_api_key,
-                auth,
-                auth_header,
-                env_file,
-                set_default,
-                overwrite,
-                provider_routing,
-                model_catalog,
-                json,
-            } => {
-                commands::run_provider_add_command(commands::ProviderAddOptions {
-                    name,
-                    base_url,
-                    model,
-                    context_window,
-                    api_key_env,
-                    api_key,
-                    api_key_stdin,
-                    no_api_key,
-                    auth,
-                    auth_header,
-                    env_file,
-                    set_default,
-                    overwrite,
-                    provider_routing,
-                    model_catalog,
-                    json,
-                })?;
             }
         },
         Some(Command::Memory(subcmd)) => {
@@ -401,30 +356,19 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             prompt,
             json,
             output,
-            context_audit,
         }) => {
-            if context_audit {
-                commands::run_auth_test_context_audit_command(
-                    &args.provider,
-                    all_configured,
-                    json,
-                    output.as_deref(),
-                )
-                .await?;
-            } else {
-                commands::run_auth_test_command(
-                    &args.provider,
-                    args.model.as_deref(),
-                    login,
-                    all_configured,
-                    no_smoke,
-                    no_tool_smoke,
-                    prompt.as_deref(),
-                    json,
-                    output.as_deref(),
-                )
-                .await?;
-            }
+            commands::run_auth_test_command(
+                &args.provider,
+                args.model.as_deref(),
+                login,
+                all_configured,
+                no_smoke,
+                no_tool_smoke,
+                prompt.as_deref(),
+                json,
+                output.as_deref(),
+            )
+            .await?;
         }
         Some(Command::Restart { action }) => match action {
             RestartCommand::Save { auto_restore } => {
@@ -916,7 +860,6 @@ pub(crate) async fn maybe_prompt_server_bootstrap_login(
         "No credentials found. Let's log in!\n\nChoose a provider:",
     )?;
     login::run_login_provider(provider, None, login::LoginOptions::default()).await?;
-    provider_init::apply_login_provider_profile_env(provider);
     output::stderr_blank_line();
 
     Ok(())
@@ -940,11 +883,10 @@ async fn detect_bootstrap_credentials() -> BootstrapCredentialState {
     );
     let has_claude = has_claude.unwrap_or(false);
     let has_openai = has_openai.unwrap_or(false);
-    let has_openrouter = provider::openrouter::has_credentials();
     let has_api_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
 
     BootstrapCredentialState {
-        has_any: has_claude || has_openai || has_openrouter || has_api_key,
+        has_any: has_claude || has_openai || has_api_key,
     }
 }
 

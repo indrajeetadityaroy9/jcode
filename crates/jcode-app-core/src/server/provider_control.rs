@@ -268,20 +268,19 @@ fn spawn_deferred_auth_refreshes(agents: Vec<Arc<Mutex<Agent>>>) {
 
 async fn apply_auth_runtime_model_to_agent(
     activation: &AuthActivationResult,
-    model: Option<&str>,
+    model: &str,
     agent: &Arc<Mutex<Agent>>,
-    unless_user_selected_after: Option<u64>,
+    unless_user_selected_after: u64,
 ) {
-    let Some(model) = model.map(str::trim).filter(|model| !model.is_empty()) else {
+    let model = model.trim();
+    if model.is_empty() {
         return;
-    };
+    }
 
     let provider = activation.provider_id.as_deref().unwrap_or("auth");
     let result = {
         let mut agent_guard = agent.lock().await;
-        if unless_user_selected_after
-            .is_some_and(|generation| agent_guard.user_selected_provider_model_after(generation))
-        {
+        if agent_guard.user_selected_provider_model_after(unless_user_selected_after) {
             crate::logging::auth_event(
                 "auth_changed_auto_model_skipped_after_manual_switch",
                 provider,
@@ -916,19 +915,6 @@ pub(super) async fn handle_notify_auth_changed(
             provider.on_auth_changed_preserve_current_provider();
         }
 
-        // Auth refresh is global so every live session learns about newly
-        // configured credentials, but the automatic post-login model switch is
-        // session-local. A user logging Groq/Cerebras into one workspace should
-        // not silently move unrelated sessions off their chosen provider/model.
-        if auth_refresh_is_current(&session_id, auth_refresh_generation) {
-            apply_auth_runtime_model_to_agent(
-                &activation,
-                activation.activated_model.as_deref(),
-                &agent_clone,
-                None,
-            )
-            .await;
-        }
         let auth_selection_generation = {
             let agent_guard = agent_clone.lock().await;
             agent_guard.provider_model_selection_generation()
@@ -1026,9 +1012,9 @@ pub(super) async fn handle_notify_auth_changed(
             {
                 apply_auth_runtime_model_to_agent(
                     &activation,
-                    Some(&model_to_select),
+                    &model_to_select,
                     &agent_clone,
-                    Some(auth_selection_generation),
+                    auth_selection_generation,
                 )
                 .await;
             }

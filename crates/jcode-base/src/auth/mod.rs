@@ -185,7 +185,6 @@ fn log_auth_status_snapshot(event: &str, status: &AuthStatus) {
         &[
             ("claude", auth_state_label(status.anthropic.state)),
             ("openai", auth_state_label(status.openai)),
-            ("openrouter", auth_state_label(status.openrouter)),
             ("antigravity", auth_state_label(status.antigravity)),
             ("gemini", auth_state_label(status.gemini)),
         ],
@@ -353,7 +352,6 @@ impl AuthStatus {
     pub fn has_any_available(&self) -> bool {
         self.anthropic.state == AuthState::Available
             || self.openai == AuthState::Available
-            || self.openrouter == AuthState::Available
             || self.antigravity == AuthState::Available
             || self.gemini == AuthState::Available
     }
@@ -380,7 +378,6 @@ impl AuthStatus {
                 ("openai", self.openai.label().to_string()),
                 ("openai_oauth", self.openai_has_oauth.to_string()),
                 ("openai_api", self.openai_has_api_key.to_string()),
-                ("openrouter", self.openrouter.label().to_string()),
                 ("antigravity", self.antigravity.label().to_string()),
                 ("gemini", self.gemini.label().to_string()),
             ],
@@ -405,7 +402,6 @@ impl AuthStatus {
             }
             LoginProviderAuthStateKey::Anthropic => self.anthropic.state,
             LoginProviderAuthStateKey::OpenAi => self.openai,
-            LoginProviderAuthStateKey::OpenRouterLike => self.openrouter,
             LoginProviderAuthStateKey::Antigravity => self.antigravity,
             LoginProviderAuthStateKey::Gemini => self.gemini,
         }
@@ -415,13 +411,6 @@ impl AuthStatus {
         match provider.target {
             crate::provider_catalog::LoginProviderTarget::AutoImport => {
                 if Self::has_any_untrusted_external_auth() {
-                    AuthState::Available
-                } else {
-                    AuthState::NotConfigured
-                }
-            }
-            crate::provider_catalog::LoginProviderTarget::OpenRouter => {
-                if api_key_available("OPENROUTER_API_KEY", "openrouter.env") {
                     AuthState::Available
                 } else {
                     AuthState::NotConfigured
@@ -457,8 +446,9 @@ impl AuthStatus {
             // Same split for OpenAI: `openai` is the ChatGPT/Codex OAuth login,
             // `openai-api` (handled above) is the API-key login.
             crate::provider_catalog::LoginProviderTarget::OpenAi => self.openai_oauth_state,
-            crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
-                if crate::provider_catalog::openai_compatible_profile_is_configured(profile) {
+            // The `gemini-api` login provider is the Developer API key path.
+            crate::provider_catalog::LoginProviderTarget::GeminiApiKey => {
+                if gemini::has_api_key() {
                     AuthState::Available
                 } else {
                     AuthState::NotConfigured
@@ -477,13 +467,6 @@ impl AuthStatus {
                     "No importable external logins found".to_string()
                 }
             }
-            crate::provider_catalog::LoginProviderTarget::OpenRouter => {
-                if self.state_for_provider(provider) == AuthState::Available {
-                    "API key (`OPENROUTER_API_KEY`)".to_string()
-                } else {
-                    "not configured".to_string()
-                }
-            }
             crate::provider_catalog::LoginProviderTarget::OpenAiApiKey => {
                 if self.state_for_provider(provider) == AuthState::Available {
                     "API key (`OPENAI_API_KEY`)".to_string()
@@ -498,24 +481,9 @@ impl AuthStatus {
                     "not configured".to_string()
                 }
             }
-            crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
-                let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
+            crate::provider_catalog::LoginProviderTarget::GeminiApiKey => {
                 if self.state_for_provider(provider) == AuthState::Available {
-                    if resolved.requires_api_key {
-                        format!("API key (`{}`)", resolved.api_key_env)
-                    } else if crate::provider_catalog::load_api_key_from_env_or_config(
-                        &resolved.api_key_env,
-                        &resolved.env_file,
-                    )
-                    .is_some()
-                    {
-                        format!(
-                            "local endpoint (`{}`) + optional API key (`{}`)",
-                            resolved.api_base, resolved.api_key_env
-                        )
-                    } else {
-                        format!("local endpoint (`{}`)", resolved.api_base)
-                    }
+                    "API key (`GEMINI_API_KEY`)".to_string()
                 } else {
                     "not configured".to_string()
                 }
@@ -608,24 +576,6 @@ impl AuthStatus {
                 AuthRefreshSupport::ExternalManaged,
                 AuthValidationMethod::TrustedImportScan,
             ),
-            crate::provider_catalog::LoginProviderTarget::OpenRouter => {
-                let (source, detail) = summarize_sources(vec![
-                    env_source("OPENROUTER_API_KEY"),
-                    config_source(
-                        "OPENROUTER_API_KEY",
-                        "openrouter.env",
-                        "~/.config/jcode/openrouter.env",
-                    ),
-                    external_api_key_source("OPENROUTER_API_KEY"),
-                ]);
-                (
-                    source,
-                    detail,
-                    AuthExpiryConfidence::NotApplicable,
-                    AuthRefreshSupport::NotApplicable,
-                    AuthValidationMethod::PresenceCheck,
-                )
-            }
             crate::provider_catalog::LoginProviderTarget::OpenAiApiKey => {
                 let (source, detail) = summarize_sources(vec![
                     env_source("OPENAI_API_KEY"),
@@ -663,31 +613,13 @@ impl AuthStatus {
                     AuthValidationMethod::PresenceCheck,
                 )
             }
-            crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
-                // Prefer the active named config profile's credential location
-                // (set via `--provider-profile`) over the built-in profile env
-                // so the reported source matches what runtime actually uses (#402).
-                let (source, detail) = if let Some((key_env, env_file)) =
-                    crate::provider_catalog::active_named_provider_profile_credential_source()
-                {
-                    summarize_sources(vec![
-                        env_source(&key_env),
-                        config_source(&key_env, &env_file, format!("~/.config/jcode/{}", env_file)),
-                        external_api_key_source(&key_env),
-                    ])
-                } else {
-                    let resolved =
-                        crate::provider_catalog::resolve_openai_compatible_profile(profile);
-                    summarize_sources(vec![
-                        env_source(&resolved.api_key_env),
-                        config_source(
-                            &resolved.api_key_env,
-                            &resolved.env_file,
-                            format!("~/.config/jcode/{}", resolved.env_file),
-                        ),
-                        external_api_key_source(&resolved.api_key_env),
-                    ])
-                };
+            crate::provider_catalog::LoginProviderTarget::GeminiApiKey => {
+                let (source, detail) = summarize_sources(vec![
+                    env_source("GEMINI_API_KEY"),
+                    env_source("GOOGLE_API_KEY"),
+                    config_source("GEMINI_API_KEY", "gemini.env", "~/.config/jcode/gemini.env"),
+                    external_api_key_source("GEMINI_API_KEY"),
+                ]);
                 (
                     source,
                     detail,
@@ -771,9 +703,6 @@ fn build_auth_status_uncached(mode: AuthProbeMode) -> (AuthStatus, Vec<(&'static
 
     record_auth_probe_step(&mut timings, "anthropic", || {
         probe_anthropic_status(&mut status)
-    });
-    record_auth_probe_step(&mut timings, "openrouter", || {
-        probe_openrouter_status(&mut status)
     });
     record_auth_probe_step(&mut timings, "openai", || probe_openai_status(&mut status));
     record_auth_probe_step(&mut timings, "antigravity", || {
@@ -875,12 +804,6 @@ fn probe_anthropic_status(status: &mut AuthStatus) {
     }
 
     status.anthropic = anthropic;
-}
-
-fn probe_openrouter_status(status: &mut AuthStatus) {
-    if crate::provider::openrouter::has_openrouter_credentials() {
-        status.openrouter = AuthState::Available;
-    }
 }
 
 fn probe_openai_status(status: &mut AuthStatus) {
@@ -1003,7 +926,7 @@ fn assessment_for_key(
                 AuthValidationMethod::TimestampCheck,
             )
         }
-        LoginProviderAuthStateKey::OpenRouterLike | LoginProviderAuthStateKey::ExternalImport => (
+        LoginProviderAuthStateKey::ExternalImport => (
             AuthCredentialSource::None,
             "not configured".to_string(),
             AuthExpiryConfidence::Unknown,

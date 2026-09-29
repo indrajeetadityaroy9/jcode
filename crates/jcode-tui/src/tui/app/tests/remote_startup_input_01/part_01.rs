@@ -1035,8 +1035,8 @@ fn test_remote_model_switch_failure_restores_deferred_prompt() {
     app.handle_server_event(
         crate::protocol::ServerEvent::ModelChanged {
             id: 8,
-            model: "Qwen/Qwen3-32B-TEE".to_string(),
-            provider_name: Some("Chutes".to_string()),
+            model: "gemini-3-pro".to_string(),
+            provider_name: Some("Gemini".to_string()),
             error: Some("model switch failed".to_string()),
         },
         &mut remote,
@@ -1058,8 +1058,8 @@ fn test_model_picker_remote_falls_back_to_current_model_when_catalog_empty() {
     with_temp_jcode_home(|| {
         let mut app = create_test_app();
         app.is_remote = true;
-        app.remote_provider_name = Some("openrouter".to_string());
-        app.remote_provider_model = Some("anthropic/claude-sonnet-4".to_string());
+        app.remote_provider_name = Some("gemini".to_string());
+        app.remote_provider_model = Some("vendor/model-x".to_string());
         app.remote_available_entries.clear();
         app.remote_model_options.clear();
 
@@ -1071,9 +1071,9 @@ fn test_model_picker_remote_falls_back_to_current_model_when_catalog_empty() {
             .expect("model picker should open with current-model fallback");
 
         assert_eq!(picker.entries.len(), 1);
-        assert_eq!(picker.entries[0].name, "anthropic/claude-sonnet-4");
+        assert_eq!(picker.entries[0].name, "vendor/model-x");
         assert_eq!(picker.entries[0].options.len(), 1);
-        assert_eq!(picker.entries[0].options[0].provider, "openrouter");
+        assert_eq!(picker.entries[0].options[0].provider, "gemini");
         assert_eq!(picker.entries[0].options[0].api_method, "current");
         assert!(picker.entries[0].options[0].available);
     });

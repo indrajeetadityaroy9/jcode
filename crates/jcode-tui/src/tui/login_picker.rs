@@ -622,16 +622,7 @@ fn provider_style(provider_id: &str) -> Style {
         "claude" => Color::Rgb(229, 187, 111),
         "openai" => Color::Rgb(111, 214, 181),
         "gemini" | "google" => Color::Rgb(129, 184, 255),
-        "openrouter"
-        | "openai-compatible"
-        | "opencode"
-        | "opencode-go"
-        | "zai"
-        | "chutes"
-        | "cerebras"
-        | "alibaba-coding-plan"
-        | "antigravity"
-        | "jcode" => Color::Rgb(189, 200, 255),
+        "antigravity" | "jcode" => Color::Rgb(189, 200, 255),
         _ => Color::Rgb(180, 190, 220),
     };
     Style::default().fg(color).bold()
@@ -643,7 +634,6 @@ fn auth_kind_color(kind: &str) -> Color {
         "API key" => Color::Rgb(182, 154, 255),
         "device code" => Color::Rgb(111, 214, 181),
         "CLI" => Color::Rgb(131, 215, 255),
-        "API key / CLI" => Color::Rgb(229, 187, 111),
         "local endpoint" => Color::Rgb(111, 214, 181),
         _ => Color::Rgb(180, 190, 220),
     }

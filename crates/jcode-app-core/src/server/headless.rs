@@ -107,8 +107,8 @@ pub(super) async fn create_headless_session(
 
     if let Some(model) = model_override {
         // Build a model-switch request that preserves the coordinator's auth
-        // route (e.g. claude-api vs claude-oauth, or an openai-compatible
-        // profile) so the spawned headless agent reconstructs the exact
+        // route (e.g. claude-api vs claude-oauth) so the spawned headless
+        // agent reconstructs the exact
         // provider/auth the coordinator was using instead of a config default.
         let model_request = crate::provider::MultiProvider::model_switch_request_for_session_route(
             &model,

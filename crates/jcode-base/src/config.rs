@@ -437,7 +437,7 @@ pub struct Config {
     ///
     /// Example:
     /// [providers.my-gateway]
-    /// type = "openai-compatible"
+    /// type = "anthropic-compatible"
     /// base_url = "https://llm.example.com/v1"
     /// api_key_env = "MY_GATEWAY_API_KEY"
     pub providers: BTreeMap<String, NamedProviderConfig>,

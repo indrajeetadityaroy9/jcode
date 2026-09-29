@@ -2,12 +2,12 @@
 
 use std::io::IsTerminal;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 
 use crate::live_tests::LiveVerificationStageStatus;
 use jcode_provider_doctor::{
     DoctorReport, DoctorTier, NativeProviderKind, native_doctor_supports_provider,
-    run_antigravity_native_e2e, run_claude_native_e2e, run_generic_native_e2e, run_provider_e2e,
+    run_antigravity_native_e2e, run_claude_native_e2e, run_generic_native_e2e,
 };
 
 pub async fn run_provider_doctor_command(
@@ -20,59 +20,22 @@ pub async fn run_provider_doctor_command(
         .parse()
         .map_err(|message: String| anyhow!("{message}"))?;
 
-    // Native-runtime providers cannot be driven by the OpenAI-compatible doctor;
-    // route them to their native drivers, which exercise the production runtime.
     // Claude and Antigravity keep bespoke drivers (unusual credential/catalog
     // stories); everything else flows through the generic native driver.
-    if native_doctor_supports_provider(provider) {
-        let normalized = crate::auth::lifecycle::normalized_auth_provider_id(Some(provider));
-        let report = match normalized {
-            Some("claude") => run_claude_native_e2e(provider, model, tier).await?,
-            Some("antigravity") => run_antigravity_native_e2e(provider, model, tier).await?,
-            Some(other) => {
-                let kind = NativeProviderKind::from_normalized(other)
-                    .ok_or_else(|| anyhow!("`{provider}` has no native provider-doctor driver"))?;
-                run_generic_native_e2e(kind, model, tier).await?
-            }
-            None => anyhow::bail!("`{provider}` has no native provider-doctor driver"),
-        };
-        emit_report(&report, emit_json);
-        return if report.tier_passed {
-            Ok(())
-        } else {
-            anyhow::bail!("provider-doctor: one or more checks failed for {provider}")
-        };
+    if !native_doctor_supports_provider(provider) {
+        anyhow::bail!("`{provider}` has no native provider-doctor driver");
     }
-
-    let profile =
-        crate::provider_catalog::openai_compatible_profile_by_id(provider).with_context(|| {
-            format!(
-                "`{provider}` is not a known OpenAI-compatible provider. \
-                 Run `jcode provider-test-coverage` to see provider ids, or check your spelling."
-            )
-        })?;
-    let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-
-    // Resolve the API key when the tier needs one.
-    let api_key = if tier.requires_api_key() {
-        let key = crate::provider_catalog::load_api_key_from_env_or_config(
-            &resolved.api_key_env,
-            &resolved.env_file,
-        )
-        .with_context(|| {
-            format!(
-                "no API key found for `{provider}` (looked in env `{}` and `{}`). \
-                 Run `jcode login --provider {provider}`, or use `--tier offline` to check wiring only.",
-                resolved.api_key_env, resolved.env_file
-            )
-        })?;
-        Some(key)
-    } else {
-        None
+    let normalized = crate::auth::lifecycle::normalized_auth_provider_id(Some(provider));
+    let report = match normalized {
+        Some("claude") => run_claude_native_e2e(provider, model, tier).await?,
+        Some("antigravity") => run_antigravity_native_e2e(provider, model, tier).await?,
+        Some(other) => {
+            let kind = NativeProviderKind::from_normalized(other)
+                .ok_or_else(|| anyhow!("`{provider}` has no native provider-doctor driver"))?;
+            run_generic_native_e2e(kind, model, tier).await?
+        }
+        None => anyhow::bail!("`{provider}` has no native provider-doctor driver"),
     };
-
-    let report = run_provider_e2e(profile, api_key.as_deref(), model, tier).await?;
-
     emit_report(&report, emit_json);
 
     // Non-zero exit when the chosen tier did not fully pass, so scripts/CI can gate on it.

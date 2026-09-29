@@ -107,20 +107,6 @@ impl RuntimeProviderKey {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(transparent)]
-pub struct CatalogNamespace(pub String);
-
-impl CatalogNamespace {
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
-
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthCredentialSource {
     ApiKeyFile,
@@ -153,8 +139,6 @@ pub struct AuthChanged {
     pub auth_method: Option<AuthMethod>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_runtime: Option<RuntimeProviderKey>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expected_catalog_namespace: Option<CatalogNamespace>,
 }
 
 impl AuthChanged {
@@ -164,7 +148,6 @@ impl AuthChanged {
             credential_source: None,
             auth_method: None,
             expected_runtime: None,
-            expected_catalog_namespace: None,
         }
     }
 }

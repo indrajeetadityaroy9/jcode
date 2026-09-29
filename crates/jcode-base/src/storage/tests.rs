@@ -9,8 +9,8 @@ fn harden_secret_file_permissions_sets_owner_only_modes() {
     let secret_dir = dir.path().join("jcode");
     std::fs::create_dir_all(&secret_dir).expect("create secret dir");
 
-    let secret_file = secret_dir.join("openrouter.env");
-    std::fs::write(&secret_file, "OPENROUTER_API_KEY=sk-or-v1-test\n").expect("write secret file");
+    let secret_file = secret_dir.join("anthropic.env");
+    std::fs::write(&secret_file, "ANTHROPIC_API_KEY=sk-ant-api03-test\n").expect("write secret file");
 
     std::fs::set_permissions(&secret_dir, std::fs::Permissions::from_mode(0o755))
         .expect("set initial dir perms");

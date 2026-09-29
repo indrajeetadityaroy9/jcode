@@ -44,8 +44,6 @@ fn model_picker_entry() -> crate::tui::PickerEntry {
         recommended: true,
         recommendation_rank: 0,
         usage_score: 0,
-        old: false,
-        created_date: None,
         effort: None,
     }
 }

@@ -54,9 +54,9 @@ fn test_refresh_model_list_command_shows_summary_and_status_notice() {
         models_added: 3,
         models_removed: 0,
         models_added_names: vec![
-            "cerebras-fast".to_string(),
-            "cerebras-large".to_string(),
-            "cerebras-reasoning".to_string(),
+            "gemini-fast".to_string(),
+            "gemini-large".to_string(),
+            "gemini-reasoning".to_string(),
         ],
         models_removed_names: Vec::new(),
         route_count_before: 20,
@@ -100,9 +100,9 @@ fn test_refresh_model_list_command_shows_summary_and_status_notice() {
     assert!(last.content.contains("Models: 12 → 15  (+3 / -0)"));
     assert!(last.content.contains("Routes: 20 → 29  (+9 / -0 / ~2)"));
     assert!(last.content.contains("Added models:"));
-    assert!(last.content.contains("cerebras-fast"));
-    assert!(last.content.contains("cerebras-large"));
-    assert!(last.content.contains("cerebras-reasoning"));
+    assert!(last.content.contains("gemini-fast"));
+    assert!(last.content.contains("gemini-large"));
+    assert!(last.content.contains("gemini-reasoning"));
     assert!(app.display_messages.iter().any(|message| {
         message.role == "background_task"
             && message
@@ -148,7 +148,7 @@ fn test_remote_available_models_updated_after_refresh_shows_summary_and_updates_
                 },
                 crate::provider::ModelRoute {
                     model: "new-model".to_string(),
-                    provider: "OpenRouter".to_string(),
+                    provider: "Gemini".to_string(),
                     api_method: "chat".to_string(),
                     available: true,
                     detail: String::new(),
@@ -314,43 +314,6 @@ fn test_remote_catalog_activity_notification_upserts_progress_card() {
     assert!(
         status.contains("Waiting on provider APIs (2s elapsed)"),
         "status should summarize latest catalog progress, got: {status}"
-    );
-}
-
-#[test]
-fn test_model_picker_remote_comtegra_model_uses_comtegra_route() {
-    let prev_key = std::env::var("COMTEGRA_API_KEY").ok();
-    crate::env::set_var("COMTEGRA_API_KEY", "test-key");
-
-    let mut app = create_test_app();
-    app.is_remote = true;
-    app.remote_available_entries = vec!["glm-51-nvfp4".to_string()];
-
-    app.open_model_picker();
-
-    match prev_key {
-        Some(value) => crate::env::set_var("COMTEGRA_API_KEY", value),
-        None => crate::env::remove_var("COMTEGRA_API_KEY"),
-    }
-
-    let picker = app
-        .inline_interactive_state
-        .as_ref()
-        .expect("model picker should be open");
-    let glm_entry = picker
-        .entries
-        .iter()
-        .find(|m| m.name == "glm-51-nvfp4")
-        .expect("glm-51-nvfp4 should be in picker");
-
-    assert!(
-        glm_entry.options.iter().any(|r| {
-            r.provider == "Comtegra GPU Cloud"
-                && r.api_method == "openai-compatible:comtegra"
-                && r.available
-        }),
-        "glm route should be Comtegra/api key, got: {:?}",
-        glm_entry.options
     );
 }
 

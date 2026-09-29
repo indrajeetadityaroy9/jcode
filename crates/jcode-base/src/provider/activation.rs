@@ -4,16 +4,14 @@ use jcode_provider_core::{ActiveProvider, provider_key};
 /// Stable product/runtime identity selected by login or provider initialization.
 ///
 /// This intentionally differs from the lower-level [`ActiveProvider`] execution slot.
-/// For example a direct OpenAI-compatible endpoint currently reuses the OpenRouter
-/// HTTP transport, but its runtime identity is still OpenAI-compatible.
+/// For example the Anthropic API key and Claude OAuth share the Claude slot, but
+/// they are distinct runtime identities.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuntimeProviderId {
     Claude,
     ClaudeApiKey,
     OpenAi,
     OpenAiApiKey,
-    OpenRouter,
-    OpenAiCompatible,
     Gemini,
     Antigravity,
     AutoImport,
@@ -26,8 +24,6 @@ impl RuntimeProviderId {
             Self::ClaudeApiKey => "claude-api",
             Self::OpenAi => "openai",
             Self::OpenAiApiKey => "openai-api",
-            Self::OpenRouter => "openrouter",
-            Self::OpenAiCompatible => "openai-compatible",
             Self::Gemini => "gemini",
             Self::Antigravity => "antigravity",
             Self::AutoImport => "auto-import",
@@ -40,8 +36,6 @@ impl RuntimeProviderId {
             Self::ClaudeApiKey => "Anthropic API",
             Self::OpenAi => "OpenAI",
             Self::OpenAiApiKey => "OpenAI API",
-            Self::OpenRouter => "OpenRouter",
-            Self::OpenAiCompatible => "OpenAI-compatible",
             Self::Gemini => "Gemini",
             Self::Antigravity => "Antigravity",
             Self::AutoImport => "Auto Import",
@@ -115,33 +109,8 @@ impl ProviderActivation {
         Self::new(runtime_id, RuntimeSelection::Unlocked { active_hint })
     }
 
-    pub fn openai_compatible(model: Option<String>) -> Self {
-        let activation = Self::initial(
-            RuntimeProviderId::OpenAiCompatible,
-            ActiveProvider::OpenRouter,
-        );
-        if let Some(model) = model.filter(|value| !value.trim().is_empty()) {
-            activation.with_model_hint("JCODE_OPENROUTER_MODEL", model)
-        } else {
-            activation
-        }
-    }
-
     pub fn apply_env(&self) -> Result<()> {
         crate::env::set_var("JCODE_RUNTIME_PROVIDER", self.runtime_id.key());
-        match self.runtime_id {
-            RuntimeProviderId::OpenRouter => {
-                crate::env::set_var("JCODE_OPENROUTER_TRANSPORT_STATE", "openrouter-api-key")
-            }
-            RuntimeProviderId::OpenAiCompatible => {
-                if std::env::var_os("JCODE_OPENROUTER_TRANSPORT_STATE").is_none() {
-                    crate::env::set_var("JCODE_OPENROUTER_TRANSPORT_STATE", "direct-api-key");
-                }
-            }
-            _ => {
-                crate::env::remove_var("JCODE_OPENROUTER_TRANSPORT_STATE");
-            }
-        }
 
         let mut active_key_for_log = "";
         match self.selection {
@@ -205,8 +174,4 @@ pub fn clear_initial_runtime_provider() {
         "runtime",
         &[("selection", "auto")],
     );
-}
-
-pub fn apply_openai_compatible_runtime(default_model: Option<String>) -> Result<()> {
-    ProviderActivation::openai_compatible(default_model).apply_env()
 }

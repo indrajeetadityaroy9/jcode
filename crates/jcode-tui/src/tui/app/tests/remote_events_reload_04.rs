@@ -285,7 +285,7 @@ fn test_remote_fatal_model_endpoint_error_fails_fast_without_retry_budget() {
     app.handle_server_event(
         crate::protocol::ServerEvent::Error {
             id: 21,
-            message: "OpenAI-compatible chat request failed\n  endpoint: https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions\n  model: volcengine:ark-code-latest\n  auth: ARK_API_KEY\n  status: 404 Not Found\n  response: {\"error\":{\"code\":\"UnsupportedModel\",\"message\":\"The requested model does not support the coding plan feature.\"}}".to_string(),
+            message: "chat request failed: 404 model_not_found: The model `gpt-foo` does not exist".to_string(),
             retry_after_secs: None,
         },
         &mut remote,
@@ -340,7 +340,7 @@ fn test_remote_connectivity_error_waits_for_network_without_retry_budget() {
     app.handle_server_event(
         crate::protocol::ServerEvent::Error {
             id: 15,
-            message: "Failed to send OpenAI-compatible chat request\n  endpoint: https://api.groq.com/openai/v1/chat/completions\n  model: llama-3.1-8b-instant\n  auth: GROQ_API_KEY\nHint: check network connectivity, DNS/TLS, and that the base URL includes the API version (usually /v1).: error sending request for url (https://api.groq.com/openai/v1/chat/completions): client error (Connect): dns error: failed to lookup address information: Name or service not known".to_string(),
+            message: "error sending request for url (https://api.openai.com/v1/responses): client error (Connect): dns error: failed to lookup address information: Name or service not known".to_string(),
             retry_after_secs: None,
         },
         &mut remote,
@@ -718,8 +718,8 @@ fn test_provider_guardrail_event_offers_opus_reroute_with_resend_payload() {
     );
 }
 
-/// The reroute offer must prefer native Anthropic auth over aggregator routes
-/// that also expose claude-opus-4-8.
+/// The reroute offer must prefer native Anthropic auth over other routes that
+/// also expose claude-opus-4-8.
 #[test]
 fn test_guardrail_reroute_prefers_native_anthropic_route() {
     let mut app = create_test_app();
@@ -734,8 +734,8 @@ fn test_guardrail_reroute_prefers_native_anthropic_route() {
         openai_oauth_route("gpt-5.5"),
         crate::provider::ModelRoute {
             model: "claude-opus-4-8".to_string(),
-            provider: "OpenRouter".to_string(),
-            api_method: "openrouter".to_string(),
+            provider: "Gemini".to_string(),
+            api_method: "gemini".to_string(),
             available: true,
             detail: String::new(),
             cheapness: None,
@@ -1154,25 +1154,6 @@ fn test_remote_effort_identity_falls_back_to_session_model_before_history() {
 }
 
 #[test]
-fn test_openai_compatible_login_preserves_profile_for_runtime_activation() {
-    let mut app = create_test_app();
-
-    app.start_login_provider(crate::provider_catalog::ZAI_LOGIN_PROVIDER);
-
-    match app.pending_login {
-        Some(crate::tui::app::PendingLogin::ApiKeyProfile {
-            provider,
-            openai_compatible_profile: Some(profile),
-            ..
-        }) => {
-            assert_eq!(provider, "Z.AI");
-            assert_eq!(profile.id, crate::provider_catalog::ZAI_PROFILE.id);
-        }
-        ref other => panic!("unexpected pending login state: {other:?}"),
-    }
-}
-
-#[test]
 fn test_tui_login_providers_have_real_tui_handlers() {
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
     let _guard = runtime.enter();
@@ -1247,28 +1228,6 @@ fn test_info_widget_remote_model_falls_back_to_model_provider_detection() {
         data.usage_info.is_none(),
         "provider/model detection alone must not guess subscription billing"
     );
-}
-
-#[test]
-fn test_info_widget_remote_opencode_shows_cost_based_usage() {
-    let mut app = create_test_app();
-    app.is_remote = true;
-    app.remote_provider_name = Some("opencode".to_string());
-    app.remote_provider_model = Some("qwen3-coder".to_string());
-    app.token_accounting.total_input_tokens = 12_000;
-    app.token_accounting.total_output_tokens = 3_400;
-
-    let data = crate::tui::TuiState::info_widget_data(&app);
-
-    assert_eq!(data.provider_name.as_deref(), Some("opencode"));
-    let usage = data.usage_info.as_ref().expect("opencode usage info");
-    assert_eq!(
-        usage.provider,
-        crate::tui::info_widget::UsageProvider::CostBased
-    );
-    assert!(usage.available);
-    assert_eq!(usage.input_tokens, 12_000);
-    assert_eq!(usage.output_tokens, 3_400);
 }
 
 #[test]
@@ -1396,11 +1355,6 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
     let _guard = crate::storage::lock_test_env();
     let tracked_env = [
         "JCODE_RUNTIME_PROVIDER",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
         "JCODE_NAMED_PROVIDER_PROFILE",
         "JCODE_PROVIDER_PROFILE_ACTIVE",
         "JCODE_PROVIDER_PROFILE_NAME",
@@ -1426,29 +1380,10 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
             "gpt-5.4",
             crate::tui::info_widget::AuthMethod::OpenAIApiKey,
         ),
-        (
-            "openrouter",
-            "openrouter",
-            "anthropic/claude-sonnet-4",
-            crate::tui::info_widget::AuthMethod::OpenRouterApiKey,
-        ),
-        (
-            "openai-compatible",
-            "openrouter",
-            "direct-compatible-model",
-            crate::tui::info_widget::AuthMethod::ApiKey,
-        ),
-        (
-            "openai-compatible",
-            "cerebras",
-            "gpt-oss-120b",
-            crate::tui::info_widget::AuthMethod::ApiKey,
-        ),
     ];
 
     for (runtime_provider, provider_name, model, expected_auth) in cases {
         crate::env::set_var("JCODE_RUNTIME_PROVIDER", runtime_provider);
-        crate::env::remove_var("JCODE_OPENROUTER_ALLOW_NO_AUTH");
         crate::auth::AuthStatus::invalidate_cache();
 
         let mut app = create_named_provider_test_app(provider_name, model);
@@ -1477,24 +1412,6 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
         assert_eq!(usage.output_tokens, 3_400);
         assert!(usage.total_cost > 0.0);
     }
-
-    crate::env::set_var("JCODE_RUNTIME_PROVIDER", "openai-compatible");
-    crate::env::set_var("JCODE_OPENROUTER_ALLOW_NO_AUTH", "1");
-    let mut app = create_named_provider_test_app("openrouter", "local-model");
-    app.streaming.streaming_input_tokens = 1_000;
-    app.streaming.streaming_output_tokens = 1_000;
-    app.token_accounting.total_input_tokens = 12_000;
-    app.token_accounting.total_output_tokens = 3_400;
-    app.update_cost_impl();
-    assert_eq!(app.cost.total_cost, 0.0);
-
-    let data = crate::tui::TuiState::info_widget_data(&app);
-    assert_eq!(
-        data.auth_method,
-        crate::tui::info_widget::AuthMethod::Unknown
-    );
-    assert!(data.usage_info.is_none());
-
     for (key, value) in saved_env {
         if let Some(value) = value {
             crate::env::set_var(key, value);

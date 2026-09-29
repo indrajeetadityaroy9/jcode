@@ -132,7 +132,6 @@ pub(super) async fn send_request_with_timeout(
             | "connection_type"
             | "connection_phase"
             | "status_detail"
-            | "upstream_provider"
             | "reloading"
             | "reload_progress"
             | "available_models_updated"

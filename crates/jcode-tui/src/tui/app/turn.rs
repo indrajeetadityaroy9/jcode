@@ -745,7 +745,7 @@ impl App {
                                         self.resume_streaming_tps();
                                         // Reflect active reasoning in the status line even when the
                                         // provider streams reasoning deltas without an explicit
-                                        // ThinkingStart (e.g. OpenRouter) or when the
+                                        // ThinkingStart or when the
                                         // reasoning text itself is hidden by config.
                                         let thinking_start =
                                             *self.thinking_start.get_or_insert_with(Instant::now);
@@ -829,10 +829,6 @@ impl App {
                                         );
                                         self.append_streaming_text(&compact_msg);
                                         self.context_warning_shown = false;
-                                    }
-                                    StreamEvent::UpstreamProvider { provider } => {
-                                        // Store the upstream provider (e.g., Fireworks, Together)
-                                        self.upstream_provider = Some(provider);
                                     }
                                     StreamEvent::ToolResult { tool_use_id, content, is_error } => {
                                         // SDK already executed this tool

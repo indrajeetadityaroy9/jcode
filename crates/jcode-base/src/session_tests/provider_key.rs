@@ -1,43 +1,25 @@
 use super::*;
 
-/// Set all three runtime env vars this derivation reads, so a test never
-/// depends on what an earlier activation left behind in the process.
+/// Set both runtime env vars this derivation reads, so a test never depends on
+/// what an earlier activation left behind in the process.
 fn runtime_env(
     runtime: Option<&'static str>,
-    namespace: Option<&'static str>,
     active: Option<&'static str>,
-) -> (EnvVarGuard, EnvVarGuard, EnvVarGuard) {
+) -> (EnvVarGuard, EnvVarGuard) {
     let guard = |key: &'static str, value: Option<&'static str>| match value {
         Some(value) => EnvVarGuard::set(key, value),
         None => EnvVarGuard::remove(key),
     };
     (
         guard("JCODE_RUNTIME_PROVIDER", runtime),
-        guard("JCODE_OPENROUTER_CACHE_NAMESPACE", namespace),
         guard("JCODE_ACTIVE_PROVIDER", active),
     )
-}
-
-/// The defect: an autodetected `gemini-api` OpenAI-compatible profile writes a
-/// process-global cache namespace, and every later session - Claude ones
-/// included - was stamped with it. That pair is unusable: resume and swarm
-/// spawn both rebuild a route from it and reach Google's endpoint for an
-/// Anthropic model.
-#[test]
-fn derive_session_provider_key_ignores_a_namespace_from_another_provider() {
-    let _lock = lock_env();
-    let _env = runtime_env(None, Some("gemini-api"), None);
-
-    assert_eq!(
-        derive_session_provider_key("Claude").as_deref(),
-        Some("claude")
-    );
 }
 
 #[test]
 fn derive_session_provider_key_ignores_an_active_provider_from_another_provider() {
     let _lock = lock_env();
-    let _env = runtime_env(None, None, Some("openai"));
+    let _env = runtime_env(None, Some("openai"));
 
     assert_eq!(
         derive_session_provider_key("Claude").as_deref(),
@@ -51,7 +33,7 @@ fn derive_session_provider_key_ignores_an_active_provider_from_another_provider(
 #[test]
 fn derive_session_provider_key_keeps_the_anthropic_api_key_route() {
     let _lock = lock_env();
-    let _env = runtime_env(Some("claude-api"), None, None);
+    let _env = runtime_env(Some("claude-api"), None);
 
     assert_eq!(
         derive_session_provider_key("Claude").as_deref(),
@@ -64,7 +46,7 @@ fn derive_session_provider_key_keeps_the_anthropic_api_key_route() {
 #[test]
 fn derive_session_provider_key_keeps_an_unclassifiable_runtime_value() {
     let _lock = lock_env();
-    let _env = runtime_env(Some("custom-gateway"), None, None);
+    let _env = runtime_env(Some("custom-gateway"), None);
 
     assert_eq!(
         derive_session_provider_key("OpenAI").as_deref(),
@@ -77,7 +59,7 @@ fn derive_session_provider_key_keeps_an_unclassifiable_runtime_value() {
 #[test]
 fn derive_session_provider_key_honours_the_env_for_an_unknown_provider_name() {
     let _lock = lock_env();
-    let _env = runtime_env(Some("gemini-api"), None, None);
+    let _env = runtime_env(Some("gemini-api"), None);
 
     assert_eq!(
         derive_session_provider_key("snapshot-provider").as_deref(),

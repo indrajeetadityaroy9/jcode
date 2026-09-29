@@ -5,16 +5,15 @@
 //! new models or changes prices. models.dev publishes a free, no-auth JSON
 //! catalog (`https://models.dev/api.json`) with per-model `input`/`output`/
 //! `cache_read`/`cache_write` USD prices per million tokens across 140+
-//! providers, including every OpenAI-compatible profile jcode ships.
+//! providers.
 //!
-//! This module mirrors the OpenRouter catalog pattern:
+//! This module follows the usual catalog-cache pattern:
 //!   - a 24h disk cache under `~/.jcode/cache/models_dev_pricing.json`,
 //!   - synchronous lookups that never block on the network,
 //!   - a background refresh scheduled on cache miss/staleness.
 //!
 //! Lookup order for callers is curated static table first (exact, reviewed),
-//! then this catalog, then provider-specific sources (OpenRouter endpoints),
-//! and only then a generic fallback.
+//! then this catalog, and only then a generic fallback.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -97,48 +96,19 @@ fn save_cache(cache: &PricingCache) {
     let _ = crate::storage::write_json(&path, cache);
 }
 
-/// Translate a jcode provider key (runtime key, activity source key, or
-/// compatible-profile id) to the models.dev provider id.
+/// Translate a jcode provider key (runtime key or activity source key) to the
+/// models.dev provider id.
 pub fn models_dev_provider_id(jcode_provider: &str) -> Option<&'static str> {
-    let key = jcode_provider
-        .trim()
-        .strip_prefix("openai-compatible:")
-        .unwrap_or_else(|| jcode_provider.trim());
-    Some(match key {
+    Some(match jcode_provider.trim() {
         "anthropic" | "claude" | "claude:api-key" | "anthropic-api" => "anthropic",
         "openai" | "openai:api-key" | "openai-api" => "openai",
-        "openrouter" => "openrouter",
-        "opencode" => "opencode",
-        "opencode-go" => "opencode-go",
-        "deepseek" => "deepseek",
-        "moonshotai" => "moonshotai",
-        "kimi" => "kimi-for-coding",
-        "zai" => "zai",
-        "cerebras" => "cerebras",
-        "groq" => "groq",
-        "mistral" => "mistral",
-        "minimax" => "minimax",
-        "togetherai" => "togetherai",
-        "fireworks" => "fireworks-ai",
-        "deepinfra" => "deepinfra",
-        "perplexity" => "perplexity",
-        "nebius" => "nebius",
-        "scaleway" => "scaleway",
-        "stackit" => "stackit",
-        "huggingface" => "huggingface",
-        "baseten" => "baseten",
-        "chutes" => "chutes",
-        "nvidia-nim" => "nvidia",
-        "302ai" => "302ai",
-        "cortecs" => "cortecs",
-        "alibaba-coding-plan" => "alibaba",
         "gemini" | "gemini-api" => "google",
         _ => return None,
     })
 }
 
-/// Strip jcode-local suffixes/prefixes a model id may carry before catalog
-/// lookup (`[1m]` long-context alias, `provider/` prefixes for OpenRouter ids).
+/// Strip jcode-local suffixes a model id may carry before catalog lookup
+/// (`[1m]` long-context alias).
 fn normalize_model_id(model: &str) -> &str {
     jcode_provider_core::model_id::strip_long_context_suffix(model).trim()
 }
@@ -151,15 +121,7 @@ pub fn lookup(jcode_provider: &str, model: &str) -> Option<ModelCost> {
     let cache = ensure_cache_fresh()?;
     let models = cache.providers.get(provider_id)?;
     let model = normalize_model_id(model);
-    if let Some(cost) = models.get(model) {
-        return Some(*cost);
-    }
-    // OpenRouter-style ids (`anthropic/claude-...`) may reach here with the
-    // provider prefix still attached; retry on the bare model name.
-    if let Some((_, bare)) = model.rsplit_once('/') {
-        return models.get(bare).copied();
-    }
-    None
+    models.get(model).copied()
 }
 
 /// Return the freshest cache available, scheduling a refresh if needed.
@@ -357,14 +319,7 @@ mod tests {
     fn provider_key_mapping_covers_jcode_providers() {
         assert_eq!(models_dev_provider_id("claude:api-key"), Some("anthropic"));
         assert_eq!(models_dev_provider_id("openai:api-key"), Some("openai"));
-        assert_eq!(
-            models_dev_provider_id("openai-compatible:deepseek"),
-            Some("deepseek")
-        );
-        assert_eq!(
-            models_dev_provider_id("openai-compatible:nvidia-nim"),
-            Some("nvidia")
-        );
+        assert_eq!(models_dev_provider_id("gemini-api"), Some("google"));
         assert_eq!(models_dev_provider_id("unknown-thing"), None);
     }
 
@@ -376,36 +331,20 @@ mod tests {
         crate::env::set_var("JCODE_HOME", temp.path());
         clear_memory_cache_for_tests();
 
-        save_test_cache(&[
-            (
-                "anthropic",
-                "claude-opus-4-6",
-                ModelCost {
-                    input_usd_per_mtok: 5.0,
-                    output_usd_per_mtok: 25.0,
-                    cache_read_usd_per_mtok: Some(0.5),
-                    cache_write_usd_per_mtok: Some(6.25),
-                },
-            ),
-            (
-                "openrouter",
-                "kimi-k2",
-                ModelCost {
-                    input_usd_per_mtok: 0.5,
-                    output_usd_per_mtok: 2.0,
-                    cache_read_usd_per_mtok: None,
-                    cache_write_usd_per_mtok: None,
-                },
-            ),
-        ]);
+        save_test_cache(&[(
+            "anthropic",
+            "claude-opus-4-6",
+            ModelCost {
+                input_usd_per_mtok: 5.0,
+                output_usd_per_mtok: 25.0,
+                cache_read_usd_per_mtok: Some(0.5),
+                cache_write_usd_per_mtok: Some(6.25),
+            },
+        )]);
 
         // [1m] suffix strips before lookup.
         let opus = lookup("claude:api-key", "claude-opus-4-6[1m]").expect("priced");
         assert!((opus.input_usd_per_mtok - 5.0).abs() < 1e-9);
-
-        // provider/model ids fall back to the bare model name.
-        let kimi = lookup("openrouter", "moonshotai/kimi-k2").expect("priced");
-        assert!((kimi.output_usd_per_mtok - 2.0).abs() < 1e-9);
 
         assert!(lookup("claude:api-key", "claude-unknown").is_none());
 

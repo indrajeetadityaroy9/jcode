@@ -103,21 +103,9 @@ fn swarm_prompt_edit_path_materializes_builtin_default_globally() {
 }
 
 #[test]
-fn openrouter_402_payment_required_is_non_retryable() {
-    use super::is_non_retryable_auto_poke_error;
-    let err = "OpenAI-compatible chat request failed\n  endpoint: \
-        https://openrouter.ai/api/v1/chat/completions\n  model: openai/gpt-5.4\n  \
-        auth: OPENROUTER_API_KEY\n  status: 402 Payment Required\n  response: \
-        {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens. \
-        You requested up to 65536 tokens, but can only afford 34424. To increase, visit \
-        https://openrouter.ai/settings/credits and add more credits\",\"code\":402}}";
-    assert!(is_non_retryable_auto_poke_error(err));
-}
-
-#[test]
 fn transient_server_error_remains_retryable_for_auto_poke() {
     use super::is_non_retryable_auto_poke_error;
-    let err = "OpenAI-compatible chat request failed\n  status: 503 Service Unavailable";
+    let err = "chat request failed\n  status: 503 Service Unavailable";
     assert!(!is_non_retryable_auto_poke_error(err));
 }
 
@@ -134,23 +122,9 @@ fn openai_usage_limit_reached_is_non_retryable() {
 }
 
 #[test]
-fn volcengine_ark_unsupported_model_is_fatal_model_endpoint_error() {
-    use super::{is_fatal_model_endpoint_error, is_non_retryable_auto_poke_error};
-    let err = "OpenAI-compatible chat request failed\n  endpoint: \
-        https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions\n  model: \
-        volcengine:ark-code-latest\n  auth: ARK_API_KEY\n  status: 404 Not Found\n  response: \
-        {\"error\":{\"code\":\"UnsupportedModel\",\"message\":\"The requested model does not \
-        support the coding plan feature.\"}}";
-    // It is both a fatal model/endpoint error (fail fast, no retries) and a
-    // non-retryable auto-poke error (don't keep poking).
-    assert!(is_fatal_model_endpoint_error(err));
-    assert!(is_non_retryable_auto_poke_error(err));
-}
-
-#[test]
 fn transient_5xx_is_not_a_fatal_model_endpoint_error() {
     use super::is_fatal_model_endpoint_error;
-    let err = "OpenAI-compatible chat request failed\n  status: 503 Service Unavailable";
+    let err = "chat request failed\n  status: 503 Service Unavailable";
     assert!(!is_fatal_model_endpoint_error(err));
 }
 

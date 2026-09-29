@@ -19,14 +19,14 @@ fn opencode_api_key_imports_from_trusted_file() {
     write_auth_file(
         &path,
         serde_json::json!({
-            "opencode": { "type": "api", "key": "oc_test_secret" }
+            "anthropic": { "type": "api", "key": "oc_test_secret" }
         }),
     );
 
-    assert!(load_api_key_for_env("OPENCODE_API_KEY").is_none());
+    assert!(load_api_key_for_env("ANTHROPIC_API_KEY").is_none());
     trust_external_auth_source(ExternalAuthSource::OpenCode).unwrap();
     assert_eq!(
-        load_api_key_for_env("OPENCODE_API_KEY").as_deref(),
+        load_api_key_for_env("ANTHROPIC_API_KEY").as_deref(),
         Some("oc_test_secret")
     );
 
@@ -108,12 +108,12 @@ fn unconsented_source_detects_supported_api_key_files() {
     write_auth_file(
         &path,
         serde_json::json!({
-            "opencode": { "type": "api", "key": "oc_test_secret" }
+            "anthropic": { "type": "api", "key": "oc_test_secret" }
         }),
     );
 
     assert_eq!(
-        preferred_unconsented_api_key_source_for_env("OPENCODE_API_KEY"),
+        preferred_unconsented_api_key_source_for_env("ANTHROPIC_API_KEY"),
         Some(ExternalAuthSource::OpenCode)
     );
 
@@ -147,14 +147,14 @@ fn source_provider_labels_reports_supported_oauth_and_api_key_imports() {
                 "refresh": "refresh",
                 "expires": chrono::Utc::now().timestamp_millis() + 60_000
             },
-            "openrouter": { "type": "api", "key": "sk-or-test" }
+            "gemini": { "type": "api", "key": "gemini-test" }
         }),
     );
 
     let labels = source_provider_labels(ExternalAuthSource::OpenCode);
     assert!(labels.contains(&"OpenAI/Codex"));
     assert!(labels.contains(&"Claude"));
-    assert!(labels.contains(&"OpenRouter/API-key providers"));
+    assert!(labels.contains(&"API-key providers"));
 
     if let Some(prev) = prev {
         crate::env::set_var("JCODE_HOME", prev);
@@ -377,10 +377,10 @@ fn openclaw_auth_profiles_store_resolves_and_flattens() {
                     "refresh": "openclaw-refresh",
                     "expires": chrono::Utc::now().timestamp_millis() + 60_000
                 },
-                "openrouter:default": {
+                "google:default": {
                     "type": "api_key",
-                    "provider": "openrouter",
-                    "key": "sk-or-openclaw"
+                    "provider": "google",
+                    "key": "gemini-openclaw"
                 }
             }
         }),
@@ -393,8 +393,8 @@ fn openclaw_auth_profiles_store_resolves_and_flattens() {
     let tokens = load_openai_oauth_tokens().expect("oauth tokens imported");
     assert_eq!(tokens.access_token, "openclaw-access");
     assert_eq!(
-        load_api_key_for_env("OPENROUTER_API_KEY").as_deref(),
-        Some("sk-or-openclaw")
+        load_api_key_for_env("GEMINI_API_KEY").as_deref(),
+        Some("gemini-openclaw")
     );
 
     if let Some(prev) = prev {

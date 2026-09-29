@@ -1,9 +1,7 @@
 //! Context-window resolution matrix.
 //!
-//! Companion to `provider_matrix.rs`. Where that suite sweeps *auth and
-//! endpoint* state, this one sweeps the state space of **how a context window
-//! gets resolved**, because that resolution is where a specific, recurring
-//! class of bug lives.
+//! Sweeps the state space of **how a context window gets resolved**, because
+//! that resolution is where a specific, recurring class of bug lives.
 //!
 //! Why this deserves its own suite: an over-reported window is a silent
 //! correctness bug, not a crash. jcode budgets prompts and triggers compaction
@@ -50,8 +48,6 @@ fn representative_models() -> Vec<(&'static str, Option<&'static str>)> {
         ("claude-opus-4-5", Some("anthropic")),
         ("claude-sonnet-4-5", Some("anthropic")),
         ("gpt-5.3-codex-spark", Some("openai")),
-        ("deepseek-v4-flash", Some("openrouter")),
-        ("qwen3:0.6b", Some("openrouter")),
         ("some-model-nobody-has-heard-of", None),
     ]
 }
@@ -136,7 +132,7 @@ fn resolution_is_deterministic() {
 /// than an accident of hint parsing.
 #[test]
 fn provider_hints_do_not_silently_widen_windows() {
-    let hints = [Some("openrouter"), Some("anthropic"), Some("openai"), None];
+    let hints = [Some("anthropic"), Some("openai"), None];
 
     for (model, _) in representative_models() {
         let baseline = context_limit_for_model_with_provider(model, None);

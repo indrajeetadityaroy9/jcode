@@ -381,7 +381,6 @@ fn test_remote_rewind_completion_shows_undo_hint_after_history_refresh() {
             was_interrupted: None,
             connection_type: None,
             status_detail: None,
-            upstream_provider: None,
             resolved_credential: None,
             reasoning_effort: None,
             service_tier: None,

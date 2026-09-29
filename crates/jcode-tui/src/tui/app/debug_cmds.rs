@@ -64,8 +64,6 @@ impl App {
                     "recommended": entry.recommended,
                     "current": entry.is_current,
                     "default": entry.is_default,
-                    "old": entry.old,
-                    "created_date": entry.created_date,
                 }))
             })
             .collect();

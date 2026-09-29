@@ -86,29 +86,20 @@ impl MultiProvider {
         let provider_init_start = std::time::Instant::now();
         let cfg = crate::config::config();
         let provider_state = ProviderState::from_parts(cfg);
-        let mut default_named_provider_profile: Option<String> = None;
         if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none()
             && std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_none()
             && let Some(pref) = provider_state.default_provider_key()
+            && cfg.providers.contains_key(pref)
         {
-            if let Some(profile) =
-                crate::provider_catalog::resolve_openai_compatible_profile_selection(pref)
-            {
-                crate::provider_catalog::apply_openai_compatible_profile_env(Some(profile));
-            } else if cfg.providers.contains_key(pref) {
-                match crate::provider_catalog::apply_named_provider_profile_env_from_config(
-                    pref, cfg,
-                ) {
-                    Ok(profile_name) => {
-                        crate::env::set_var("JCODE_PROVIDER_PROFILE_NAME", &profile_name);
-                        crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
-                        default_named_provider_profile = Some(profile_name);
-                    }
-                    Err(err) => crate::logging::warn(&format!(
-                        "Failed to apply default provider profile '{}': {}",
-                        pref, err
-                    )),
+            match crate::provider_catalog::apply_named_provider_profile_env_from_config(pref, cfg) {
+                Ok(profile_name) => {
+                    crate::env::set_var("JCODE_PROVIDER_PROFILE_NAME", &profile_name);
+                    crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
                 }
+                Err(err) => crate::logging::warn(&format!(
+                    "Failed to apply default provider profile '{}': {}",
+                    pref, err
+                )),
             }
         }
 
@@ -117,7 +108,6 @@ impl MultiProvider {
         let has_openai_creds = auth::codex::load_credentials().is_ok();
         let has_antigravity_creds = auth::antigravity::load_tokens().is_ok();
         let has_gemini_creds = auth::gemini::load_tokens().is_ok() || auth::gemini::has_api_key();
-        let has_openrouter_creds = openrouter::has_credentials();
 
         let use_claude_cli = std::env::var("JCODE_USE_CLAUDE_CLI")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -175,48 +165,11 @@ impl MultiProvider {
             None
         };
 
-        let active_named_profile_is_anthropic = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
-            .ok()
-            .or_else(|| default_named_provider_profile.clone())
-            .and_then(|name| cfg.providers.get(&name))
-            .is_some_and(|profile| {
-                matches!(
-                    profile.provider_type,
-                    crate::config::NamedProviderType::AnthropicCompatible
-                )
-            });
-        let openrouter = if has_openrouter_creds && !active_named_profile_is_anthropic {
-            let named_profile = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
-                .ok()
-                .or_else(|| default_named_provider_profile.clone());
-            let spec = named_profile
-                .as_deref()
-                .and_then(|profile_name| {
-                    cfg.providers.get(profile_name).map(|profile| {
-                        external::OpenRouterRuntimeSpec::NamedProfile {
-                            name: profile_name.to_string(),
-                            config: profile.clone(),
-                        }
-                    })
-                })
-                .unwrap_or(external::OpenRouterRuntimeSpec::Default);
-            match external::instantiate_openrouter_runtime(spec) {
-                Ok(p) => Some(p),
-                Err(e) => {
-                    crate::logging::info(&format!("Failed to initialize OpenRouter: {}", e));
-                    None
-                }
-            }
-        } else {
-            None
-        };
-
         let availability = ProviderAvailability {
             openai: openai.is_some(),
             claude: claude.is_some() || anthropic.is_some(),
             antigravity: antigravity_provider.is_some(),
             gemini: gemini_provider.is_some(),
-            openrouter: openrouter.is_some(),
         };
         let mut active = Self::auto_default_provider(availability);
 
@@ -225,15 +178,9 @@ impl MultiProvider {
             active = initial;
             let is_configured = availability.is_configured(initial);
             if is_configured {
-                let display = if matches!(initial, ActiveProvider::OpenRouter) {
-                    crate::provider_catalog::active_openai_compatible_display_name()
-                        .unwrap_or_else(|| Self::provider_key(initial).to_string())
-                } else {
-                    Self::provider_key(initial).to_string()
-                };
                 crate::logging::info(&format!(
                     "Using initial provider '{}' from CLI/environment",
-                    display
+                    Self::provider_key(initial)
                 ));
             } else {
                 crate::logging::warn(&format!(
@@ -264,7 +211,7 @@ impl MultiProvider {
                 }
             } else {
                 crate::logging::warn(&format!(
-                    "Unknown default_provider '{}' in config (expected: claude|openai|antigravity|gemini|openrouter or an OpenAI-compatible profile such as deepseek|comtegra|zai|openai-compatible)",
+                    "Unknown default_provider '{}' in config (expected: claude|openai|antigravity|gemini or a [providers.<name>] profile)",
                     pref
                 ));
             }
@@ -276,9 +223,6 @@ impl MultiProvider {
             openai: RwLock::new(openai),
             antigravity: RwLock::new(antigravity_provider),
             gemini: RwLock::new(gemini_provider),
-            openrouter: RwLock::new(openrouter),
-            openai_compatible_profiles: RwLock::new(HashMap::new()),
-            active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(active),
             use_claude_cli,
             startup_notices: RwLock::new(Vec::new()),
@@ -304,7 +248,7 @@ impl MultiProvider {
         result.spawn_openai_catalog_refresh_if_needed();
         result.auto_select_active_multi_account();
         crate::logging::info(&format!(
-            "[TIMING] provider_init: claude={}, anthropic={}, openai={}, antigravity={}, gemini={}, openrouter={}, total={}ms",
+            "[TIMING] provider_init: claude={}, anthropic={}, openai={}, antigravity={}, gemini={}, total={}ms",
             result
                 .claude
                 .read()
@@ -327,11 +271,6 @@ impl MultiProvider {
                 .is_some(),
             result
                 .gemini
-                .read()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .is_some(),
-            result
-                .openrouter
                 .read()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .is_some(),

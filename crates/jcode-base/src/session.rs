@@ -125,8 +125,8 @@ pub struct Session {
     /// Model identifier for this session (e.g., "gpt-5.2-codex")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    /// API method/runtime route used to select this model (e.g. "openrouter",
-    /// "openai-compatible:nvidia-nim", "openai-api").
+    /// API method/runtime route used to select this model (e.g. "claude-oauth",
+    /// "openai-api", "profile:<name>").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route_api_method: Option<String>,
     /// Provider reasoning/thinking effort for this session (e.g., OpenAI low|medium|high|xhigh).
@@ -271,9 +271,8 @@ fn default_is_test_session() -> bool {
 /// The runtime env vars below are process-global and rewritten per activation,
 /// so they are only trusted when they do not contradict the provider actually
 /// handed in: in a daemon holding many sessions, one provider's activation
-/// otherwise renames every session created afterwards. An autodetected
-/// OpenAI-compatible profile used to leave `gemini-api` on Claude sessions this
-/// way, which made their persisted route unusable on resume and on spawn.
+/// otherwise renames every session created afterwards, which makes their
+/// persisted route unusable on resume and on spawn.
 pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
     let normalized_name = provider_name.trim().to_ascii_lowercase();
     let usable = |key: &str| {
@@ -282,18 +281,8 @@ pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
 
     if let Ok(runtime_provider) = std::env::var("JCODE_RUNTIME_PROVIDER") {
         let runtime_provider = runtime_provider.trim().to_ascii_lowercase();
-        if !runtime_provider.is_empty()
-            && runtime_provider != "openai-compatible"
-            && usable(&runtime_provider)
-        {
+        if !runtime_provider.is_empty() && usable(&runtime_provider) {
             return Some(runtime_provider);
-        }
-    }
-
-    if let Ok(namespace) = std::env::var("JCODE_OPENROUTER_CACHE_NAMESPACE") {
-        let namespace = namespace.trim().to_ascii_lowercase();
-        if !namespace.is_empty() && usable(&namespace) {
-            return Some(namespace);
         }
     }
 
@@ -307,7 +296,6 @@ pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
     let fallback = match normalized_name.as_str() {
         "anthropic" | "claude" | "claude cli" => "claude",
         "openai" => "openai",
-        "openrouter" => "openrouter",
         "gemini" => "gemini",
         "antigravity" => "antigravity",
         "" => return None,

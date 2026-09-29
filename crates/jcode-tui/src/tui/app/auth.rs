@@ -140,23 +140,16 @@ impl App {
                 Self::clear_api_key_login("OPENAI_API_KEY", "openai.env")?;
                 Ok("Logged out of OpenAI API key.".to_string())
             }
-            LoginProviderTarget::OpenRouter => {
-                Self::clear_api_key_login("OPENROUTER_API_KEY", "openrouter.env")?;
-                Ok("Logged out of OpenRouter API key.".to_string())
-            }
-            LoginProviderTarget::OpenAiCompatible(profile) => {
-                let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-                Self::clear_api_key_login(&resolved.api_key_env, &resolved.env_file)?;
-                crate::provider_catalog::save_env_value_to_env_file(
-                    crate::provider_catalog::OPENAI_COMPAT_LOCAL_ENABLED_ENV,
-                    &resolved.env_file,
-                    None,
-                )?;
-                Ok(format!("Logged out of {} API key.", resolved.display_name))
-            }
             LoginProviderTarget::Gemini => {
                 crate::auth::gemini::clear_tokens()?;
                 Ok("Logged out of Gemini.".to_string())
+            }
+            LoginProviderTarget::GeminiApiKey => {
+                Self::clear_api_key_login(
+                    crate::auth::gemini::GEMINI_API_KEY_ENV_VARS[0],
+                    crate::auth::gemini::GEMINI_API_KEY_ENV_FILE,
+                )?;
+                Ok("Logged out of Gemini API key.".to_string())
             }
             _ => Ok(format!(
                 "Logout for {} is not automated yet. Remove its saved API key or external CLI session from /account {} settings.",
@@ -212,30 +205,10 @@ impl App {
         Self::clear_api_key_logout_summary(
             &mut summary,
             &mut errors,
-            "OpenRouter API key",
-            "OPENROUTER_API_KEY",
-            "openrouter.env",
+            "Gemini API key",
+            crate::auth::gemini::GEMINI_API_KEY_ENV_VARS[0],
+            crate::auth::gemini::GEMINI_API_KEY_ENV_FILE,
         );
-        for profile in crate::provider_catalog::openai_compatible_profiles() {
-            let resolved = crate::provider_catalog::resolve_openai_compatible_profile(*profile);
-            Self::clear_api_key_logout_summary(
-                &mut summary,
-                &mut errors,
-                &format!("{} API key", resolved.display_name),
-                &resolved.api_key_env,
-                &resolved.env_file,
-            );
-            if let Err(err) = crate::provider_catalog::save_env_value_to_env_file(
-                crate::provider_catalog::OPENAI_COMPAT_LOCAL_ENABLED_ENV,
-                &resolved.env_file,
-                None,
-            ) {
-                errors.push(format!(
-                    "{} local endpoint config: {}",
-                    resolved.display_name, err
-                ));
-            }
-        }
         match crate::auth::gemini::clear_tokens() {
             Ok(()) => summary.push("Gemini".to_string()),
             Err(err) => errors.push(format!("Gemini: {}", err)),
@@ -327,13 +300,10 @@ impl App {
             crate::provider_catalog::LoginProviderTarget::OpenAiApiKey => {
                 self.start_openai_api_key_login()
             }
-            crate::provider_catalog::LoginProviderTarget::OpenRouter => {
-                self.start_openrouter_login()
-            }
-            crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
-                self.start_openai_compatible_profile_login(profile)
-            }
             crate::provider_catalog::LoginProviderTarget::Gemini => self.start_gemini_login(),
+            crate::provider_catalog::LoginProviderTarget::GeminiApiKey => {
+                self.start_gemini_api_key_login()
+            }
             crate::provider_catalog::LoginProviderTarget::Antigravity => {
                 self.start_antigravity_login()
             }
@@ -977,29 +947,13 @@ impl App {
         });
     }
 
-    fn start_openrouter_login(&mut self) {
-        self.start_api_key_login(
-            "OpenRouter",
-            "https://openrouter.ai/keys",
-            "openrouter.env",
-            "OPENROUTER_API_KEY",
-            None,
-            None,
-            false,
-            None,
-        );
-    }
-
     fn start_openai_api_key_login(&mut self) {
         self.start_api_key_login(
             "OpenAI API",
             "https://platform.openai.com/api-keys",
             "openai.env",
             "OPENAI_API_KEY",
-            None,
             Some("https://api.openai.com/v1"),
-            false,
-            None,
         );
     }
 
@@ -1009,123 +963,48 @@ impl App {
             "https://console.anthropic.com/settings/keys",
             "anthropic.env",
             "ANTHROPIC_API_KEY",
-            None,
             Some("https://api.anthropic.com"),
-            false,
-            None,
         );
     }
 
-    fn start_openai_compatible_profile_login(
-        &mut self,
-        profile: crate::provider_catalog::OpenAiCompatibleProfile,
-    ) {
-        if profile.id == crate::provider_catalog::OPENAI_COMPAT_PROFILE.id {
-            let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-            self.push_display_message(DisplayMessage::system(format!(
-                "{} Endpoint\n\n\
-                 Setup docs: {}\n\
-                 Current API base: {}\n\n\
-                 Paste the API base below. Press Enter to keep the current value, or type /cancel to abort.",
-                resolved.display_name, resolved.setup_url, resolved.api_base
-            )));
-            self.set_status_notice("Login: API base...");
-            self.pending_login = Some(PendingLogin::OpenAiCompatibleApiBase { profile });
-            return;
-        }
-
-        self.start_openai_compatible_key_login(profile);
-    }
-
-    fn start_openai_compatible_key_login(
-        &mut self,
-        profile: crate::provider_catalog::OpenAiCompatibleProfile,
-    ) {
-        let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
+    fn start_gemini_api_key_login(&mut self) {
         self.start_api_key_login(
-            &resolved.display_name,
-            &resolved.setup_url,
-            &resolved.env_file,
-            &resolved.api_key_env,
-            resolved.default_model.as_deref(),
-            Some(&resolved.api_base),
-            !resolved.requires_api_key,
-            Some(profile),
+            "Gemini API",
+            "https://aistudio.google.com/apikey",
+            crate::auth::gemini::GEMINI_API_KEY_ENV_FILE,
+            crate::auth::gemini::GEMINI_API_KEY_ENV_VARS[0],
+            Some("https://generativelanguage.googleapis.com"),
         );
     }
 
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "API-key login setup passes provider-specific metadata assembled at call sites"
-    )]
     fn start_api_key_login(
         &mut self,
         provider: &str,
         docs_url: &str,
         env_file: &str,
         key_name: &str,
-        default_model: Option<&str>,
         endpoint: Option<&str>,
-        api_key_optional: bool,
-        openai_compatible_profile: Option<crate::provider_catalog::OpenAiCompatibleProfile>,
     ) {
-        let model_hint = default_model
-            .map(|m| format!("Suggested default model: {}\n\n", m))
-            .unwrap_or_default();
         let endpoint_hint = endpoint
             .map(|endpoint| format!("Endpoint: {}\n", endpoint))
             .unwrap_or_default();
-        let prompt = if api_key_optional {
-            "Paste your API key below if your endpoint requires one. Press Enter to skip, or type /cancel to abort."
-        } else {
-            "Paste your API key below (it will be saved securely), or type /cancel to abort."
-        };
         self.push_display_message(DisplayMessage::system(format!(
-            "{} {}\n\n\
+            "{} API Key\n\n\
              Setup docs: {}\n\
              Stored variable: {}\n\
-             {}\
              {}\n\
-             {}",
-            provider,
-            if api_key_optional {
-                "Local Endpoint"
-            } else {
-                "API Key"
-            },
-            docs_url,
-            key_name,
-            endpoint_hint,
-            model_hint,
-            prompt,
+             Paste your API key below (it will be saved securely), or type /cancel to abort.",
+            provider, docs_url, key_name, endpoint_hint,
         )));
-        self.set_status_notice(if api_key_optional {
-            "Login: optional key..."
-        } else {
-            "Login: paste key..."
-        });
-        let provider_id = openai_compatible_profile
-            .map(|profile| profile.id.to_string())
-            .unwrap_or_else(|| match key_name {
-                "OPENROUTER_API_KEY" => "openrouter".to_string(),
-                _ => provider.to_ascii_lowercase().replace(' ', "-"),
-            });
-        let auth_method = if api_key_optional {
-            "local_endpoint"
-        } else {
-            "api_key"
-        };
+        self.set_status_notice("Login: paste key...");
         self.begin_pending_login(PendingLogin::ApiKeyProfile {
-            provider_id,
+            provider_id: provider.to_ascii_lowercase().replace(' ', "-"),
             provider: provider.to_string(),
-            auth_method: auth_method.to_string(),
+            auth_method: "api_key".to_string(),
             docs_url: docs_url.to_string(),
             env_file: env_file.to_string(),
             key_name: key_name.to_string(),
-            default_model: default_model.map(|m| m.to_string()),
             endpoint: endpoint.map(|value| value.to_string()),
-            api_key_optional,
-            openai_compatible_profile,
         });
     }
 
@@ -1498,13 +1377,10 @@ impl App {
                 docs_url,
                 env_file,
                 key_name,
-                default_model,
                 endpoint,
-                api_key_optional,
-                openai_compatible_profile,
             } => {
                 let key = input.trim().to_string();
-                if key.is_empty() && !api_key_optional {
+                if key.is_empty() {
                     self.push_display_message(DisplayMessage::error(
                         "API key cannot be empty.".to_string(),
                     ));
@@ -1515,10 +1391,7 @@ impl App {
                         docs_url,
                         env_file,
                         key_name,
-                        default_model,
                         endpoint,
-                        api_key_optional,
-                        openai_compatible_profile,
                     });
                     return;
                 }
@@ -1526,7 +1399,7 @@ impl App {
                 // type a menu number like `1` here, trying to select from a
                 // numbered list shown earlier; silently saving that as the key
                 // bricks the provider until they log in again (issue #496).
-                if !key.is_empty() && key.len() < 8 && key.chars().all(|c| c.is_ascii_digit()) {
+                if key.len() < 8 && key.chars().all(|c| c.is_ascii_digit()) {
                     self.push_display_message(DisplayMessage::error(format!(
                         "'{}' looks like a menu selection, not an API key. This prompt is waiting for the {} API key itself. Paste the key (see {}), or type /cancel to abort.",
                         key, provider, docs_url
@@ -1538,27 +1411,16 @@ impl App {
                         docs_url,
                         env_file,
                         key_name,
-                        default_model,
                         endpoint,
-                        api_key_optional,
-                        openai_compatible_profile,
                     });
                     return;
                 }
-                if key_name == "OPENROUTER_API_KEY" && !key.starts_with("sk-or-") {
-                    self.push_display_message(DisplayMessage::system(
-                        "OpenRouter keys typically start with sk-or-. Saving anyway...".to_string(),
-                    ));
-                }
-
-                let resolved_openai_compatible = openai_compatible_profile
-                    .map(crate::provider_catalog::resolve_openai_compatible_profile);
 
                 // Record the key-save attempt before touching disk. This is the
                 // single most important breadcrumb for issue #312 ("paste API
-                // key for OpenAI-compatible/opencode silently returns to menu"):
-                // it proves the input was received and which env var/file jcode
-                // tried to write, without logging the key itself.
+                // key silently returns to menu"): it proves the input was
+                // received and which env var/file jcode tried to write, without
+                // logging the key itself.
                 crate::logging::event_info(
                     "login_api_key_save_attempt",
                     vec![
@@ -1568,50 +1430,10 @@ impl App {
                         ("env_var", key_name.clone()),
                         ("env_file", env_file.clone()),
                         ("input_len", key.len().to_string()),
-                        ("optional", api_key_optional.to_string()),
-                        (
-                            "openai_compatible",
-                            openai_compatible_profile.is_some().to_string(),
-                        ),
                     ],
                 );
 
-                let save_result: anyhow::Result<()> =
-                    if let Some(resolved) = resolved_openai_compatible.as_ref() {
-                        (|| {
-                            if resolved.requires_api_key {
-                                crate::provider_catalog::save_env_value_to_env_file(
-                                    crate::provider_catalog::OPENAI_COMPAT_LOCAL_ENABLED_ENV,
-                                    &resolved.env_file,
-                                    None,
-                                )?;
-                                crate::provider_catalog::save_env_value_to_env_file(
-                                    &resolved.api_key_env,
-                                    &resolved.env_file,
-                                    Some(key.trim()),
-                                )
-                            } else {
-                                crate::provider_catalog::save_env_value_to_env_file(
-                                    crate::provider_catalog::OPENAI_COMPAT_LOCAL_ENABLED_ENV,
-                                    &resolved.env_file,
-                                    Some("1"),
-                                )?;
-                                crate::provider_catalog::save_env_value_to_env_file(
-                                    &resolved.api_key_env,
-                                    &resolved.env_file,
-                                    if key.trim().is_empty() {
-                                        None
-                                    } else {
-                                        Some(key.trim())
-                                    },
-                                )
-                            }
-                        })()
-                    } else {
-                        Self::save_named_api_key(&env_file, &key_name, &key)
-                    };
-
-                match save_result {
+                match Self::save_named_api_key(&env_file, &key_name, &key) {
                     Ok(()) => {
                         crate::auth::AuthStatus::invalidate_cache();
                         crate::logging::event_info(
@@ -1621,64 +1443,16 @@ impl App {
                                 ("provider", provider.clone()),
                                 ("env_var", key_name.clone()),
                                 ("env_file", env_file.clone()),
-                                (
-                                    "openai_compatible",
-                                    openai_compatible_profile.is_some().to_string(),
-                                ),
                             ],
                         );
-                        if let Some(profile) = openai_compatible_profile {
-                            crate::provider_catalog::apply_openai_compatible_profile_env(Some(
-                                profile,
-                            ));
-                            self.start_openai_compatible_post_login_activation(
-                                profile.id.to_string(),
-                                provider.clone(),
-                            );
-                        }
-
-                        let effective_default_model = resolved_openai_compatible
-                            .as_ref()
-                            .and_then(|resolved| resolved.default_model.as_deref())
-                            .or(default_model.as_deref());
-                        let model_hint = effective_default_model
-                            .map(|m| format!("\nSuggested default model: {}", m))
-                            .unwrap_or_default();
-                        let guidance = if let Some(resolved) = resolved_openai_compatible.as_ref() {
-                            if resolved.requires_api_key {
-                                "Fetching models now. Jcode will switch to an accessible model returned by the live catalog and show the catalog diff when discovery finishes. If the model list looks stale, run /refresh-model-list.".to_string()
-                            } else {
-                                format!(
-                                    "Local endpoint configured at {}. Fetching models now; Jcode will switch to an accessible model returned by the live catalog and show the catalog diff when discovery finishes. If the model list looks stale, run /refresh-model-list.",
-                                    endpoint.as_deref().unwrap_or(resolved.api_base.as_str()),
-                                )
-                            }
-                        } else if key_name == "OPENROUTER_API_KEY" {
-                            "You can now use /model to switch to OpenRouter models. If the model list looks stale, run /refresh-model-list.".to_string()
-                        } else {
-                            "API key saved. Run /refresh-model-list to refresh model discovery, then use /model to pick an accessible model.".to_string()
-                        };
-                        let saved_label = if let Some(resolved) =
-                            resolved_openai_compatible.as_ref()
-                        {
-                            if resolved.requires_api_key {
-                                format!("{} API key saved", provider)
-                            } else if key.trim().is_empty() {
-                                format!("{} local endpoint saved", provider)
-                            } else {
-                                format!("{} local endpoint and optional API key saved", provider)
-                            }
-                        } else {
-                            format!("{} API key saved", provider)
-                        };
                         Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
                             provider: provider.clone(),
                             success: true,
                             message: format!(
-                                "{}.\n\n\
+                                "{} API key saved.\n\n\
                                  Stored at ~/.config/jcode/{}.\n\
-                                 {}{}",
-                                saved_label, env_file, guidance, model_hint
+                                 API key saved. Run /refresh-model-list to refresh model discovery, then use /model to pick an accessible model.",
+                                provider, env_file
                             ),
                         }));
                     }
@@ -1708,44 +1482,10 @@ impl App {
                             docs_url,
                             env_file,
                             key_name,
-                            default_model,
                             endpoint,
-                            api_key_optional,
-                            openai_compatible_profile,
                         });
                     }
                 }
-            }
-            PendingLogin::OpenAiCompatibleApiBase { profile } => {
-                let api_base = input.trim();
-                if !api_base.is_empty() {
-                    let normalized = match crate::provider_catalog::normalize_api_base(api_base) {
-                        Some(value) => value,
-                        None => {
-                            self.push_display_message(DisplayMessage::error(
-                                "OpenAI-compatible API base must be https://... or http://localhost."
-                                    .to_string(),
-                            ));
-                            self.pending_login =
-                                Some(PendingLogin::OpenAiCompatibleApiBase { profile });
-                            return;
-                        }
-                    };
-                    if let Err(err) = crate::provider_catalog::save_env_value_to_env_file(
-                        "JCODE_OPENAI_COMPAT_API_BASE",
-                        crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
-                        Some(&normalized),
-                    ) {
-                        self.push_display_message(DisplayMessage::error(format!(
-                            "Failed to save OpenAI-compatible API base: {}",
-                            err
-                        )));
-                        self.pending_login =
-                            Some(PendingLogin::OpenAiCompatibleApiBase { profile });
-                        return;
-                    }
-                }
-                self.start_openai_compatible_key_login(profile);
             }
             PendingLogin::AutoImportSelection { candidates } => {
                 let selected = match crate::external_auth::parse_external_auth_review_selection(
@@ -1886,218 +1626,6 @@ impl App {
         }
     }
 
-    pub(super) fn start_openai_compatible_post_login_activation(
-        &mut self,
-        provider_id: String,
-        provider_label: String,
-    ) {
-        crate::logging::event_info(
-            "login_post_activation_started",
-            vec![
-                ("provider_id", provider_id.clone()),
-                ("provider", provider_label.clone()),
-                ("session_id", self.session.id.clone()),
-            ],
-        );
-        crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
-            crate::bus::UiActivity::catalog(
-                Some(self.session.id.clone()),
-                format!(
-                    "{} Model Discovery Started\n\nSaved credentials are active. Jcode is fetching the live model catalog, will only switch to a model returned by that catalog, and will show what changed when discovery finishes.",
-                    provider_label
-                ),
-                Some(format!("{}: fetching models...", provider_label)),
-            ),
-        ));
-        self.set_status_notice(format!("{}: fetching models...", provider_label));
-        self.invalidate_model_picker_cache();
-
-        // Make the newly saved OpenAI-compatible credentials usable in this
-        // session immediately. The normal LoginCompleted path also calls this,
-        // but doing it here lets the refresh task see the hot-added provider
-        // without requiring a restart or a second user action.
-        let provider = Arc::clone(&self.provider);
-        let session_id = self.session.id.clone();
-        let before_routes = provider.model_routes();
-        self.provider.on_auth_changed();
-
-        if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            handle.spawn(async move {
-                let result = provider.refresh_model_catalog().await;
-                match result {
-                    Ok(_summary) => {
-                        let routes = provider.model_routes();
-                        let expected_api_method = format!("openai-compatible:{}", provider_id);
-                        let route_matches_profile = |route: &crate::provider::ModelRoute| {
-                            route.available
-                                && crate::provider::is_listable_model_name(&route.model)
-                                && (route.api_method.eq_ignore_ascii_case(&expected_api_method)
-                                    || route.api_method.eq_ignore_ascii_case(&provider_id))
-                        };
-                        let before_provider_routes = before_routes
-                            .into_iter()
-                            .filter(route_matches_profile)
-                            .collect::<Vec<_>>();
-                        let provider_routes = routes
-                            .iter()
-                            .filter(|route| route_matches_profile(route))
-                            .cloned()
-                            .collect::<Vec<_>>();
-                        let before_provider_models = before_provider_routes
-                            .iter()
-                            .map(|route| route.model.clone())
-                            .collect::<Vec<_>>();
-                        let after_provider_models = provider_routes
-                            .iter()
-                            .map(|route| route.model.clone())
-                            .collect::<Vec<_>>();
-                        let summary = crate::provider::summarize_model_catalog_refresh(
-                            before_provider_models,
-                            after_provider_models,
-                            before_provider_routes,
-                            provider_routes.clone(),
-                        );
-                        let selected = provider_routes
-                            .iter()
-                            .find(|route| {
-                                route.available
-                                    && route.api_method.eq_ignore_ascii_case(&expected_api_method)
-                                    && crate::provider::is_listable_model_name(&route.model)
-                            })
-                            .or_else(|| {
-                                provider_routes.iter().find(|route| {
-                                    route.available
-                                        && route.api_method.eq_ignore_ascii_case(&provider_id)
-                                        && crate::provider::is_listable_model_name(&route.model)
-                                })
-                            })
-                            .map(|route| route.model.clone());
-
-                        if let Some(model) = selected {
-                            let model_request = format!("{}:{}", provider_id, model);
-                            crate::logging::event_info(
-                                "login_post_activation_route_selected",
-                                vec![
-                                    ("provider_id", provider_id.clone()),
-                                    ("model", model.clone()),
-                                    ("provider_routes", provider_routes.len().to_string()),
-                                    ("models_added", summary.models_added.to_string()),
-                                    ("routes_added", summary.routes_added.to_string()),
-                                ],
-                            );
-                            match provider.set_model(&model_request) {
-                                Ok(()) => {
-                                    let provider_key = crate::provider::MultiProvider::session_provider_key_for_model_request(
-                                        &model_request,
-                                        provider.name(),
-                                    );
-                                    crate::logging::event_info(
-                                        "login_post_activation_model_applied",
-                                        vec![
-                                            ("provider_id", provider_id.clone()),
-                                            ("model", model.clone()),
-                                            (
-                                                "session_provider",
-                                                provider_key.clone().unwrap_or_default(),
-                                            ),
-                                        ],
-                                    );
-                                    crate::bus::Bus::global().publish_models_updated();
-                                    crate::bus::Bus::global().publish(
-                                        crate::bus::BusEvent::ProviderModelActivated {
-                                            session_id,
-                                            model: model.clone(),
-                                            provider_key,
-                                            message: format!(
-                                                "{} is ready.\n\nFetched model catalog: +{} models, +{} routes, ~{} changed.{}\n\nSwitched to {}. Use /model if you want to choose a different accessible model.\n\nIf the model list ever looks stale, run /refresh-model-list.",
-                                                provider_label,
-                                                summary.models_added,
-                                                summary.routes_added,
-                                                summary.routes_changed,
-                                                {
-                                                    let mut details = String::new();
-                                                    super::model_context::append_model_name_diff(&mut details, &summary);
-                                                    if details.is_empty() { String::new() } else { format!("\n{}", details) }
-                                                },
-                                                model
-                                            ),
-                                            open_picker: false,
-                                        },
-                                    );
-                                }
-                                Err(error) => {
-                                    crate::logging::event_error(
-                                        "login_post_activation_model_failed",
-                                        vec![
-                                            ("provider_id", provider_id.clone()),
-                                            ("model", model.clone()),
-                                            ("error", error.to_string()),
-                                        ],
-                                    );
-                                    crate::bus::Bus::global().publish(
-                                        crate::bus::BusEvent::LoginCompleted(
-                                            crate::bus::LoginCompleted {
-                                                provider: provider_label,
-                                                success: false,
-                                                message: format!(
-                                                    "Fetched models, but failed to switch to {}: {}\n\nYou can run /refresh-model-list to retry model discovery.",
-                                                    model, error
-                                                ),
-                                            },
-                                        ),
-                                    );
-                                }
-                            }
-                        } else {
-                            crate::logging::event_warn(
-                                "login_post_activation_no_route",
-                                vec![
-                                    ("provider_id", provider_id.clone()),
-                                    ("provider_routes", provider_routes.len().to_string()),
-                                ],
-                            );
-                            crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
-                                crate::bus::UiActivity::catalog(
-                                    Some(session_id),
-                                    format!(
-                                        "{} Model Discovery Still Updating\n\nSaved credentials are active, but this local refresh pass did not find a selectable {} route yet. Jcode is still processing the auth-change catalog refresh and will switch once provider routes are available. If the model list still looks stale after the auth catalog update, run /refresh-model-list.",
-                                        provider_label, provider_label
-                                    ),
-                                    Some(format!(
-                                        "{}: waiting for model routes...",
-                                        provider_label
-                                    )),
-                                ),
-                            ));
-                        }
-                    }
-                    Err(error) => {
-                        crate::logging::event_error(
-                            "login_post_activation_refresh_failed",
-                            vec![
-                                ("provider_id", provider_id.clone()),
-                                ("error", error.to_string()),
-                            ],
-                        );
-                        crate::bus::Bus::global().publish(crate::bus::BusEvent::UiActivity(
-                            crate::bus::UiActivity::catalog(
-                                Some(session_id),
-                                format!(
-                                    "{} Model Discovery Still Updating\n\nSaved credentials are active, but this local refresh pass failed before the server auth-change catalog refresh finished. Jcode is still processing the auth-change catalog refresh and will switch once provider routes are available. If the model list still looks stale after the auth catalog update, run /refresh-model-list.\n\nLocal refresh error: {}",
-                                    provider_label, error
-                                ),
-                                Some(format!(
-                                    "{}: waiting for model routes...",
-                                    provider_label
-                                )),
-                            ),
-                        ));
-                    }
-                }
-            });
-        }
-    }
-
     pub(super) fn handle_login_completed(&mut self, login: LoginCompleted) {
         crate::auth::AuthStatus::invalidate_cache();
         crate::logging::event_info(
@@ -2116,20 +1644,7 @@ impl App {
             self.invalidate_model_picker_cache();
             self.push_display_message(DisplayMessage::system(login.message));
             self.set_status_notice(format!("Login: {} ready", login.provider));
-            // Direct OpenAI-compatible logins already launched the
-            // profile-specific catalog refresh and model activation before
-            // publishing LoginCompleted. The generic auth refresh still
-            // needs to rebuild routes and release the picker loading state,
-            // but must not race it with a second model selection.
-            let profile_activation_owns_selection =
-                crate::provider_catalog::resolve_openai_compatible_profile_selection(
-                    &login.provider,
-                )
-                .is_some();
-            self.trigger_provider_auth_changed(
-                Some(&login.provider),
-                !profile_activation_owns_selection,
-            );
+            self.trigger_provider_auth_changed(Some(&login.provider), true);
         } else {
             let message = crate::auth::login_diagnostics::augment_auth_error_message(
                 &login.provider,
@@ -2198,62 +1713,6 @@ impl App {
         crate::env::set_var(key_name, key);
         Ok(())
     }
-}
-
-#[cfg(test)]
-fn save_tui_openai_compatible_api_base(
-    api_base: &str,
-) -> anyhow::Result<crate::provider_catalog::ResolvedOpenAiCompatibleProfile> {
-    let trimmed = api_base.trim();
-    if !trimmed.is_empty() {
-        let normalized = crate::provider_catalog::normalize_api_base(trimmed).ok_or_else(|| {
-            anyhow::anyhow!("OpenAI-compatible API base must be https://... or http://localhost.")
-        })?;
-        crate::provider_catalog::save_env_value_to_env_file(
-            "JCODE_OPENAI_COMPAT_API_BASE",
-            crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
-            Some(&normalized),
-        )?;
-    }
-    Ok(crate::provider_catalog::resolve_openai_compatible_profile(
-        crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-    ))
-}
-
-#[cfg(test)]
-fn save_tui_openai_compatible_key(
-    profile: crate::provider_catalog::OpenAiCompatibleProfile,
-    key: &str,
-) -> anyhow::Result<crate::provider_catalog::ResolvedOpenAiCompatibleProfile> {
-    let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-    if resolved.requires_api_key {
-        crate::provider_catalog::save_env_value_to_env_file(
-            crate::provider_catalog::OPENAI_COMPAT_LOCAL_ENABLED_ENV,
-            &resolved.env_file,
-            None,
-        )?;
-        crate::provider_catalog::save_env_value_to_env_file(
-            &resolved.api_key_env,
-            &resolved.env_file,
-            Some(key.trim()),
-        )?;
-    } else {
-        crate::provider_catalog::save_env_value_to_env_file(
-            crate::provider_catalog::OPENAI_COMPAT_LOCAL_ENABLED_ENV,
-            &resolved.env_file,
-            Some("1"),
-        )?;
-        crate::provider_catalog::save_env_value_to_env_file(
-            &resolved.api_key_env,
-            &resolved.env_file,
-            if key.trim().is_empty() {
-                None
-            } else {
-                Some(key.trim())
-            },
-        )?;
-    }
-    Ok(resolved)
 }
 
 fn looks_like_oauth_callback_input(input: &str) -> bool {

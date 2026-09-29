@@ -51,7 +51,6 @@ pub(crate) struct TestEnvGuard {
     prev_debug_control: Option<OsString>,
     prev_runtime_provider: Option<OsString>,
     prev_active_provider: Option<OsString>,
-    prev_openrouter_cache_namespace: Option<OsString>,
     _temp_home: tempfile::TempDir,
 }
 
@@ -67,7 +66,6 @@ impl TestEnvGuard {
         let prev_debug_control = std::env::var_os("JCODE_DEBUG_CONTROL");
         let prev_runtime_provider = std::env::var_os("JCODE_RUNTIME_PROVIDER");
         let prev_active_provider = std::env::var_os("JCODE_ACTIVE_PROVIDER");
-        let prev_openrouter_cache_namespace = std::env::var_os("JCODE_OPENROUTER_CACHE_NAMESPACE");
         let runtime_dir = temp_home.path().join("runtime");
         std::fs::create_dir_all(&runtime_dir)?;
 
@@ -77,7 +75,6 @@ impl TestEnvGuard {
         jcode::env::set_var("JCODE_DEBUG_CONTROL", "1");
         jcode::env::remove_var("JCODE_RUNTIME_PROVIDER");
         jcode::env::remove_var("JCODE_ACTIVE_PROVIDER");
-        jcode::env::remove_var("JCODE_OPENROUTER_CACHE_NAMESPACE");
         // Disable the memory sidecar/extraction in e2e runs. Its background
         // extraction makes its own provider `complete()` call, which would steal
         // a queued mock response from the scenario under test and make turn
@@ -93,7 +90,6 @@ impl TestEnvGuard {
             prev_debug_control,
             prev_runtime_provider,
             prev_active_provider,
-            prev_openrouter_cache_namespace,
             _temp_home: temp_home,
         })
     }
@@ -135,15 +131,6 @@ impl Drop for TestEnvGuard {
             jcode::env::set_var("JCODE_ACTIVE_PROVIDER", prev_active_provider);
         } else {
             jcode::env::remove_var("JCODE_ACTIVE_PROVIDER");
-        }
-
-        if let Some(prev_openrouter_cache_namespace) = &self.prev_openrouter_cache_namespace {
-            jcode::env::set_var(
-                "JCODE_OPENROUTER_CACHE_NAMESPACE",
-                prev_openrouter_cache_namespace,
-            );
-        } else {
-            jcode::env::remove_var("JCODE_OPENROUTER_CACHE_NAMESPACE");
         }
     }
 }
@@ -317,11 +304,10 @@ pub(crate) fn summarize_history_invariant(event: &ServerEvent) -> Option<String>
             mcp_servers,
             skills,
             client_count,
-            upstream_provider,
             reasoning_effort,
             ..
         } => Some(format!(
-            "history:{id}:messages={}:provider={}:model={}:available_models={:?}:routes={:?}:mcp={:?}:skills={:?}:client_count={:?}:upstream={:?}:reasoning={:?}",
+            "history:{id}:messages={}:provider={}:model={}:available_models={:?}:routes={:?}:mcp={:?}:skills={:?}:client_count={:?}:reasoning={:?}",
             messages.len(),
             provider_name.as_deref().unwrap_or(""),
             provider_model.as_deref().unwrap_or(""),
@@ -330,7 +316,6 @@ pub(crate) fn summarize_history_invariant(event: &ServerEvent) -> Option<String>
             mcp_servers,
             skills,
             client_count,
-            upstream_provider,
             reasoning_effort,
         )),
         _ => None,

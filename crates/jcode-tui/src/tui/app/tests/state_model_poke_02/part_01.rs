@@ -1123,39 +1123,6 @@ fn configure_test_remote_models_with_openai_recommendations(app: &mut App) {
     });
 }
 
-fn configure_test_remote_openrouter_provider_routes(app: &mut App) {
-    app.is_remote = true;
-    app.remote_provider_name = Some("openrouter".to_string());
-    app.remote_provider_model = Some("anthropic/claude-sonnet-4".to_string());
-    app.remote_available_entries = vec!["anthropic/claude-sonnet-4".to_string()];
-    app.remote_model_options = vec![
-        crate::provider::ModelRoute {
-            model: "anthropic/claude-sonnet-4".to_string(),
-            provider: "auto".to_string(),
-            api_method: "openrouter".to_string(),
-            available: true,
-            detail: "→ Fireworks".to_string(),
-            cheapness: None,
-        },
-        crate::provider::ModelRoute {
-            model: "anthropic/claude-sonnet-4".to_string(),
-            provider: "Fireworks".to_string(),
-            api_method: "openrouter".to_string(),
-            available: true,
-            detail: String::new(),
-            cheapness: None,
-        },
-        crate::provider::ModelRoute {
-            model: "anthropic/claude-sonnet-4".to_string(),
-            provider: "OpenAI".to_string(),
-            api_method: "openrouter".to_string(),
-            available: true,
-            detail: String::new(),
-            cheapness: None,
-        },
-    ];
-}
-
 #[test]
 fn test_model_picker_preview_filter_parsing() {
     assert_eq!(
@@ -1181,8 +1148,8 @@ fn test_login_picker_preview_filter_parsing() {
         Some(String::new())
     );
     assert_eq!(
-        App::login_picker_preview_filter("/login   zai"),
-        Some("zai".to_string())
+        App::login_picker_preview_filter("/login   gemini"),
+        Some("gemini".to_string())
     );
     assert_eq!(App::login_picker_preview_filter("/loginx"), None);
     assert_eq!(App::login_picker_preview_filter("hello /login"), None);

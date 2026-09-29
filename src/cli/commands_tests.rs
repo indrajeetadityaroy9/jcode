@@ -6,37 +6,9 @@ use crate::provider::{EventStream, Provider};
 use crate::todo::ConfidenceState;
 use crate::tool::Registry;
 use async_trait::async_trait;
-use std::io::{Read, Write};
 use std::sync::Arc;
 use tokio::sync::mpsc as tokio_mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-
-struct SavedEnv {
-    vars: Vec<(String, Option<String>)>,
-}
-
-impl SavedEnv {
-    fn capture(keys: &[&str]) -> Self {
-        Self {
-            vars: keys
-                .iter()
-                .map(|key| (key.to_string(), std::env::var(key).ok()))
-                .collect(),
-        }
-    }
-}
-
-impl Drop for SavedEnv {
-    fn drop(&mut self) {
-        for (key, value) in &self.vars {
-            if let Some(value) = value {
-                crate::env::set_var(key, value);
-            } else {
-                crate::env::remove_var(key);
-            }
-        }
-    }
-}
 
 struct TestProvider;
 
@@ -70,49 +42,9 @@ impl Provider for TestProvider {
     }
 }
 
-fn spawn_single_response_http_server(status: u16, body: &str) -> String {
-    spawn_single_response_http_server_on_host("127.0.0.1", status, body)
-}
-
-fn spawn_single_response_http_server_on_host(host: &str, status: u16, body: &str) -> String {
-    let listener = std::net::TcpListener::bind((host, 0)).expect("bind test server");
-    let addr = listener.local_addr().expect("local addr");
-    let body = body.to_string();
-    std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept connection");
-        let mut buf = [0u8; 2048];
-        let _ = stream.read(&mut buf);
-        let status_text = match status {
-            200 => "OK",
-            400 => "Bad Request",
-            404 => "Not Found",
-            500 => "Internal Server Error",
-            _ => "OK",
-        };
-        let response = format!(
-            "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            status,
-            status_text,
-            body.len(),
-            body
-        );
-        stream
-            .write_all(response.as_bytes())
-            .expect("write response");
-    });
-    format!("http://{}:{}/v1", host, addr.port())
-}
-
 #[test]
 fn configured_auth_test_targets_only_include_configured_supported_providers() {
     let _guard = crate::storage::lock_test_env();
-    // OpenRouter has no OAuth state to set: its availability is read straight
-    // from `OPENROUTER_API_KEY` (or `openrouter.env`). Setting it here is what
-    // makes the expectation below independent of whoever runs the test having
-    // a key exported.
-    let saved_openrouter_key = std::env::var("OPENROUTER_API_KEY").ok();
-    crate::env::set_var("OPENROUTER_API_KEY", "test-key");
-
     let status = AuthStatus {
         anthropic: ProviderAuth {
             state: AuthState::Available,
@@ -122,23 +54,13 @@ fn configured_auth_test_targets_only_include_configured_supported_providers() {
         },
         openai: AuthState::NotConfigured,
         gemini: AuthState::Available,
-        openrouter: AuthState::Available,
         ..AuthStatus::default()
     };
 
     let targets = configured_auth_test_targets(&status);
 
-    match saved_openrouter_key {
-        Some(key) => crate::env::set_var("OPENROUTER_API_KEY", key),
-        None => crate::env::remove_var("OPENROUTER_API_KEY"),
-    }
-
     assert!(targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Claude)));
     assert!(targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Gemini)));
-    assert!(targets.contains(&ResolvedAuthTestTarget::Generic {
-        provider: crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER,
-        choice: super::super::provider_init::ProviderChoice::Openrouter,
-    }));
 
     assert!(!targets.contains(&ResolvedAuthTestTarget::Detailed(AuthTestTarget::Openai)));
 }
@@ -157,15 +79,15 @@ fn explicit_supported_provider_maps_to_single_auth_target() {
 #[test]
 fn explicit_generic_provider_maps_to_generic_auth_target() {
     let targets = resolve_auth_test_targets(
-        &super::super::provider_init::ProviderChoice::Openrouter,
+        &super::super::provider_init::ProviderChoice::AnthropicApi,
         false,
     )
     .expect("resolve target");
     assert_eq!(
         targets,
         vec![ResolvedAuthTestTarget::Generic {
-            provider: crate::provider_catalog::OPENROUTER_LOGIN_PROVIDER,
-            choice: super::super::provider_init::ProviderChoice::Openrouter,
+            provider: crate::provider_catalog::ANTHROPIC_API_LOGIN_PROVIDER,
+            choice: super::super::provider_init::ProviderChoice::AnthropicApi,
         }]
     );
 }
@@ -179,22 +101,6 @@ fn collect_cli_model_names_prefers_available_routes_and_dedupes() {
             api_method: "openai-oauth".to_string(),
             available: true,
             detail: String::new(),
-            cheapness: None,
-        },
-        ModelRoute {
-            model: "gpt-5.4".to_string(),
-            provider: "auto".to_string(),
-            api_method: "openrouter".to_string(),
-            available: true,
-            detail: String::new(),
-            cheapness: None,
-        },
-        ModelRoute {
-            model: "openrouter models".to_string(),
-            provider: "—".to_string(),
-            api_method: "openrouter".to_string(),
-            available: false,
-            detail: "OPENROUTER_API_KEY not set".to_string(),
             cheapness: None,
         },
     ];
@@ -222,15 +128,7 @@ fn test_route(model: &str, provider: &str, api_method: &str) -> ModelRoute {
 fn cli_route_display_uses_typed_api_methods() {
     assert_eq!(cli_api_method_display("openai-oauth"), "oauth");
     assert_eq!(cli_api_method_display("openai-api-key"), "api key");
-    assert_eq!(
-        cli_api_method_display("openai-compatible:cerebras"),
-        "api key"
-    );
     assert_eq!(cli_api_method_display("mock-auth:profile"), "mock-auth");
-    assert_eq!(
-        cli_route_provider_display("DeepSeek", "openrouter"),
-        "OpenRouter/DeepSeek"
-    );
 }
 
 fn test_todo(
@@ -617,7 +515,6 @@ fn cli_provider_choice_filter_uses_typed_api_methods() {
         test_route("claude-opus-4-6", "Anthropic", "claude-api"),
         test_route("gpt-5.5", "OpenAI", "openai-oauth"),
         test_route("gpt-5.5", "OpenAI", "openai-api-key"),
-        test_route("deepseek/deepseek-v4-pro", "auto", "openrouter"),
     ];
 
     let openai = filter_cli_model_routes_for_choice(
@@ -658,158 +555,6 @@ fn auth_test_retryable_error_detection_rejects_schema_errors() {
     assert!(!auth_test_error_is_retryable(&err));
 }
 
-#[tokio::test]
-async fn auth_test_choice_plan_preserves_explicit_model_for_local_provider() {
-    let plan = auth_test_choice_plan(
-        &super::super::provider_init::ProviderChoice::Ollama,
-        Some("llama3.2"),
-    )
-    .await
-    .expect("choice plan");
-
-    match plan {
-        AuthTestChoicePlan::Run { model } => assert_eq!(model.as_deref(), Some("llama3.2")),
-        AuthTestChoicePlan::Skip(detail) => panic!("unexpected skip: {detail}"),
-    }
-}
-
-#[tokio::test]
-async fn auth_test_choice_plan_leaves_non_compat_provider_unchanged() {
-    let plan = auth_test_choice_plan(
-        &super::super::provider_init::ProviderChoice::Openrouter,
-        None,
-    )
-    .await
-    .expect("choice plan");
-
-    match plan {
-        AuthTestChoicePlan::Run { model } => assert!(model.is_none()),
-        AuthTestChoicePlan::Skip(detail) => panic!("unexpected skip: {detail}"),
-    }
-}
-
-#[tokio::test]
-async fn auth_test_choice_plan_discovers_model_for_local_custom_compat_endpoint() {
-    let _env_guard = crate::storage::lock_test_env();
-    let _saved = SavedEnv::capture(&[
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
-        "JCODE_OPENAI_COMPAT_LOCAL_ENABLED",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-    ]);
-    let api_base = spawn_single_response_http_server(200, r#"{"data":[{"id":"llama3.2"}]}"#);
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", &api_base);
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_LOCAL_ENABLED");
-    crate::provider_catalog::apply_openai_compatible_profile_env(None);
-
-    let plan = auth_test_choice_plan(
-        &super::super::provider_init::ProviderChoice::OpenaiCompatible,
-        None,
-    )
-    .await
-    .expect("choice plan");
-
-    match plan {
-        AuthTestChoicePlan::Run { model } => assert_eq!(model.as_deref(), Some("llama3.2")),
-        AuthTestChoicePlan::Skip(detail) => panic!("unexpected skip: {detail}"),
-    }
-}
-
-#[tokio::test]
-async fn auth_test_choice_plan_discovers_model_for_hosted_custom_compat_endpoint_with_api_key() {
-    let _env_guard = crate::storage::lock_test_env();
-    let _saved = SavedEnv::capture(&[
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
-        "JCODE_OPENAI_COMPAT_LOCAL_ENABLED",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "OPENAI_COMPAT_API_KEY",
-        "NO_PROXY",
-        "no_proxy",
-    ]);
-    // 0.0.0.0 is accepted as an insecure HTTP test host but is not treated as
-    // localhost by resolve_openai_compatible_profile, so this exercises the
-    // hosted/API-key code path while still serving the response locally.
-    let api_base = spawn_single_response_http_server_on_host(
-        "0.0.0.0",
-        200,
-        r#"{"data":[{"id":"hosted-compatible-model"}]}"#,
-    );
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", &api_base);
-    crate::env::set_var("OPENAI_COMPAT_API_KEY", "test-key");
-    crate::env::set_var("NO_PROXY", "0.0.0.0,127.0.0.1,localhost");
-    crate::env::set_var("no_proxy", "0.0.0.0,127.0.0.1,localhost");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_LOCAL_ENABLED");
-    crate::provider_catalog::apply_openai_compatible_profile_env(None);
-
-    let resolved = crate::provider_catalog::resolve_openai_compatible_profile(
-        crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-    );
-    assert!(resolved.requires_api_key);
-
-    let plan = auth_test_choice_plan(
-        &super::super::provider_init::ProviderChoice::OpenaiCompatible,
-        None,
-    )
-    .await
-    .expect("choice plan");
-
-    match plan {
-        AuthTestChoicePlan::Run { model } => {
-            assert_eq!(model.as_deref(), Some("hosted-compatible-model"))
-        }
-        AuthTestChoicePlan::Skip(detail) => panic!("unexpected skip: {detail}"),
-    }
-}
-
-#[tokio::test]
-async fn auth_test_choice_plan_skips_local_custom_compat_endpoint_without_models() {
-    let _env_guard = crate::storage::lock_test_env();
-    let _saved = SavedEnv::capture(&[
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
-        "JCODE_OPENAI_COMPAT_LOCAL_ENABLED",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-    ]);
-    let api_base = spawn_single_response_http_server(200, r#"{"data":[]}"#);
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", &api_base);
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_LOCAL_ENABLED");
-    crate::provider_catalog::apply_openai_compatible_profile_env(None);
-
-    let plan = auth_test_choice_plan(
-        &super::super::provider_init::ProviderChoice::OpenaiCompatible,
-        None,
-    )
-    .await
-    .expect("choice plan");
-
-    match plan {
-        AuthTestChoicePlan::Run { model } => panic!("unexpected run plan: {model:?}"),
-        AuthTestChoicePlan::Skip(detail) => {
-            assert!(detail.contains("reported no models"));
-            assert!(detail.contains("openai-compatible"));
-        }
-    }
-}
-
 #[test]
 fn collect_cli_model_names_falls_back_when_no_routes_are_available() {
     let routes = vec![ModelRoute {
@@ -835,7 +580,6 @@ fn list_cli_providers_includes_auto_and_openai() {
             && provider.display_name == "OpenAI"
             && provider.auth_kind.as_deref() == Some("OAuth")
     }));
-    assert!(providers.iter().any(|provider| provider.id == "groq"));
 }
 
 #[test]

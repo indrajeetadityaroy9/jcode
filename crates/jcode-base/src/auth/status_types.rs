@@ -14,8 +14,6 @@ use serde::{Deserialize, Serialize};
 pub struct AuthStatus {
     /// Anthropic provider (Claude models) - via OAuth or API key
     pub anthropic: ProviderAuth,
-    /// OpenRouter provider - via API key
-    pub openrouter: AuthState,
     /// OpenAI provider - via OAuth or API key
     pub openai: AuthState,
     /// OpenAI has OAuth credentials

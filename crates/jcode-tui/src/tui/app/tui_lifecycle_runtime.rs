@@ -35,7 +35,6 @@ impl App {
         let provider_name = match crate::provider::provider_for_model(&effective_model) {
             Some("claude") => "anthropic",
             Some("openai") => "openai",
-            Some("openrouter") => "openrouter",
             Some("gemini") => "gemini",
             Some("antigravity") => "antigravity",
             Some(other) => other,

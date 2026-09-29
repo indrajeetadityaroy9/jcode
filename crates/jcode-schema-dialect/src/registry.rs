@@ -154,20 +154,6 @@ pub const ANTHROPIC: DialectSpec = DialectSpec {
     },
 };
 
-/// OpenRouter forwards to whichever upstream serves the model, so it must
-/// satisfy the strictest of them: Anthropic-family top-level combiner
-/// rejection (#495) plus LM Studio's demand for `properties` (#446).
-pub const OPENROUTER: DialectSpec = DialectSpec {
-    id: "openrouter",
-    supported_keywords: OPENAI.supported_keywords,
-    supported_string_formats: &[],
-    transforms: DialectTransforms {
-        flatten_top_level_combiners: true,
-        require_properties_on_objects: true,
-        ..DEFAULT_TRANSFORMS
-    },
-};
-
 /// Antigravity's Claude route: the Cloud Code backend translates the request
 /// to Anthropic *after* parsing it.
 ///
@@ -235,7 +221,6 @@ pub const ALL: &[&DialectSpec] = &[
     &OPENAI,
     &GEMINI,
     &ANTHROPIC,
-    &OPENROUTER,
     &ANTIGRAVITY_CLAUDE,
     &ANTIGRAVITY_BRIDGE,
 ];

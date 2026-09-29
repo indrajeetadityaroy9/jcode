@@ -6,26 +6,8 @@ fn generic_credential_paths_for_provider(
     };
 
     match provider.target {
-        crate::provider_catalog::LoginProviderTarget::OpenRouter => {
-            vec![config_dir.join("openrouter.env")]
-        }
         crate::provider_catalog::LoginProviderTarget::OpenAiApiKey => {
             vec![config_dir.join("openai.env")]
-        }
-        crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(profile) => {
-            // When a named config profile is active (selected via
-            // `--provider-profile`), its credentials come from the profile's
-            // configured `api_key_env`/`env_file`, not the built-in
-            // `openai-compatible.env`. Report that path so the audit is accurate
-            // (#402).
-            if let Some((_key_env, env_file)) =
-                crate::provider_catalog::active_named_provider_profile_credential_source()
-            {
-                vec![config_dir.join(env_file)]
-            } else {
-                let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-                vec![config_dir.join(resolved.env_file)]
-            }
         }
         _ => Vec::new(),
     }
@@ -42,29 +24,12 @@ fn auth_state_label(state: crate::auth::AuthState) -> &'static str {
     }
 }
 
-/// Name the probe target the way the user selected it.
-///
-/// Named profiles run on the generic openai-compatible runtime, so the builtin
-/// descriptor's display name describes the slot rather than the profile. Saying
-/// "openai-compatible" for a profile the user named explicitly is what made
-/// #712 so hard to diagnose.
-fn probe_display_name(provider: crate::provider_catalog::LoginProviderDescriptor) -> String {
-    if let Ok(profile) = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
-        && !profile.trim().is_empty()
-        && provider.id == "openai-compatible"
-    {
-        return profile.trim().to_string();
-    }
-    provider.display_name.to_string()
-}
-
 fn probe_generic_provider_auth(
     provider: crate::provider_catalog::LoginProviderDescriptor,
     report: &mut AuthTestProviderReport,
 ) {
-    // Keep generic provider probes provider-local. A DeepSeek/Z.AI/OpenRouter
-    // auth-test should never be delayed or wedged by an unrelated Gemini
-    // external auth probe.
+    // Keep generic provider probes provider-local. An API-key auth-test should
+    // never be delayed or wedged by an unrelated Gemini external auth probe.
     let status = crate::auth::AuthStatus::check_fast();
     let assessment = status.assessment_for_provider(provider);
     report.push_step(
@@ -72,7 +37,7 @@ fn probe_generic_provider_auth(
         assessment.is_available(),
         format!(
             "{} auth status is {} ({}).",
-            probe_display_name(provider),
+            provider.display_name,
             auth_state_label(assessment.state),
             assessment.method_detail,
         ),

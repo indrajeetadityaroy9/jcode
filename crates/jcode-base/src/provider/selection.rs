@@ -5,34 +5,23 @@ pub(super) use jcode_provider_core::{ActiveProvider, ProviderAvailability};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ConfigProviderSelection {
     BuiltIn(ActiveProvider),
-    OpenAiCompatibleProfile(&'static str),
-    NamedProfile(String, ActiveProvider),
+    /// A user-defined `[providers.<name>]` profile. Every named profile is
+    /// Anthropic-compatible, so it always executes through the Claude slot.
+    NamedProfile(String),
 }
 
 impl ConfigProviderSelection {
     pub(crate) fn active_provider(&self) -> ActiveProvider {
         match self {
             Self::BuiltIn(provider) => *provider,
-            Self::OpenAiCompatibleProfile(_) => ActiveProvider::OpenRouter,
-            Self::NamedProfile(_, provider) => *provider,
+            Self::NamedProfile(_) => ActiveProvider::Claude,
         }
     }
 
     pub(crate) fn display_label(&self) -> String {
         match self {
             Self::BuiltIn(provider) => MultiProvider::provider_key(*provider).to_string(),
-            Self::OpenAiCompatibleProfile(profile_id) => {
-                let resolved =
-                    crate::provider_catalog::resolve_openai_compatible_profile_selection(
-                        profile_id,
-                    )
-                    .map(crate::provider_catalog::resolve_openai_compatible_profile);
-                match resolved {
-                    Some(profile) => format!("OpenAI-compatible profile {}", profile.display_name),
-                    None => format!("OpenAI-compatible profile {}", profile_id),
-                }
-            }
-            Self::NamedProfile(profile, _) => format!("provider profile '{}'", profile),
+            Self::NamedProfile(profile) => format!("provider profile '{}'", profile),
         }
     }
 }
@@ -92,32 +81,9 @@ impl MultiProvider {
         match provider.target {
             LoginProviderTarget::Claude | LoginProviderTarget::ClaudeApiKey => Some("claude"),
             LoginProviderTarget::OpenAi | LoginProviderTarget::OpenAiApiKey => Some("openai"),
-            LoginProviderTarget::OpenRouter => Some("openrouter"),
-            LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id),
-            LoginProviderTarget::Gemini => Some("gemini"),
+            LoginProviderTarget::Gemini | LoginProviderTarget::GeminiApiKey => Some("gemini"),
             LoginProviderTarget::Antigravity => Some("antigravity"),
             LoginProviderTarget::AutoImport => None,
-        }
-    }
-
-    pub fn openai_compatible_profile_id_from_route<'a>(
-        api_method: &'a str,
-        provider_display: &str,
-    ) -> Option<&'a str> {
-        let parsed = ModelRouteApiMethod::parse(api_method);
-        match parsed {
-            ModelRouteApiMethod::OpenAiCompatible {
-                profile_id: Some(_),
-            } => api_method
-                .split_once(':')
-                .map(|(_, profile_id)| profile_id.trim())
-                .filter(|profile_id| !profile_id.is_empty()),
-            ModelRouteApiMethod::OpenAiCompatible { profile_id: None } => {
-                crate::provider_catalog::openai_compatible_profile_id_for_display_name(
-                    provider_display,
-                )
-            }
-            _ => None,
         }
     }
 
@@ -127,18 +93,6 @@ impl MultiProvider {
         provider_display: &str,
     ) -> DefaultModelSelection {
         let api_method_kind = ModelRouteApiMethod::parse(api_method);
-        let profile_id = match &api_method_kind {
-            ModelRouteApiMethod::OpenAiCompatible {
-                profile_id: Some(profile_id),
-            } => Some(profile_id.clone()),
-            ModelRouteApiMethod::OpenAiCompatible { profile_id: None } => {
-                crate::provider_catalog::openai_compatible_profile_id_for_display_name(
-                    provider_display,
-                )
-                .map(ToOwned::to_owned)
-            }
-            _ => None,
-        };
         let model_spec = match &api_method_kind {
             ModelRouteApiMethod::ClaudeOAuth => format!("claude-oauth:{}", bare_name),
             ModelRouteApiMethod::AnthropicApiKey if provider_display == "Anthropic" => {
@@ -147,12 +101,6 @@ impl MultiProvider {
             ModelRouteApiMethod::OpenAIApiKey => format!("openai-api:{}", bare_name),
             ModelRouteApiMethod::OpenAIOAuth => format!("openai-oauth:{}", bare_name),
             _ if provider_display == "Antigravity" => format!("antigravity:{}", bare_name),
-            ModelRouteApiMethod::OpenAiCompatible { .. } => bare_name.to_string(),
-            ModelRouteApiMethod::OpenRouter if provider_display != "auto" => {
-                let model_id = crate::provider::openrouter_catalog_model_id(bare_name)
-                    .unwrap_or_else(|| bare_name.to_string());
-                format!("{}@{}", model_id, provider_display)
-            }
             _ => bare_name.to_string(),
         };
 
@@ -179,9 +127,8 @@ impl MultiProvider {
             {
                 Some("antigravity".to_string())
             }
-            ModelRouteApiMethod::OpenRouter => Some("openrouter".to_string()),
-            ModelRouteApiMethod::OpenAiCompatible { .. } => profile_id.clone(),
-            _ => profile_id.clone(),
+            ModelRouteApiMethod::NamedProfile(name) => Some(name.clone()),
+            _ => None,
         };
 
         DefaultModelSelection {
@@ -228,26 +175,12 @@ impl MultiProvider {
                 if let Some(route) = jcode_provider_core::AuthRoute::parse(prefix) {
                     return Some(route.session_provider_key().to_string());
                 }
-                match prefix {
-                    "antigravity" | "gemini" | "openrouter" => {
-                        return Some(prefix.to_string());
-                    }
-                    _ => {
-                        if crate::provider_catalog::resolve_openai_compatible_profile_selection(
-                            prefix,
-                        )
-                        .is_some()
-                            || crate::config::config().providers.contains_key(prefix)
-                        {
-                            return Some(prefix.to_string());
-                        }
-                    }
+                if matches!(prefix, "antigravity" | "gemini")
+                    || crate::config::config().providers.contains_key(prefix)
+                {
+                    return Some(prefix.to_string());
                 }
             }
-        }
-
-        if model_request.contains('@') {
-            return Some("openrouter".to_string());
         }
 
         None
@@ -298,7 +231,6 @@ impl MultiProvider {
         let key = match normalized.as_str() {
             "anthropic" | "claude" | "claude cli" => "claude",
             "openai" => "openai",
-            "openrouter" => "openrouter",
             "gemini" | "google" => "gemini",
             "antigravity" => "antigravity",
             "" => return None,
@@ -310,12 +242,10 @@ impl MultiProvider {
     /// Whether a process-global runtime env value may name this session's
     /// provider, given the provider the caller was actually handed.
     ///
-    /// `JCODE_RUNTIME_PROVIDER` / `JCODE_OPENROUTER_CACHE_NAMESPACE` /
-    /// `JCODE_ACTIVE_PROVIDER` are process-wide and rewritten per activation, so
-    /// in a daemon holding many sessions one provider's runtime can name the
-    /// *next* session. Rejecting only a confident disagreement keeps every
-    /// legitimate use working: the OpenRouter slot multiplexes every
-    /// OpenAI-compatible profile, so a profile id there is authoritative; an
+    /// `JCODE_RUNTIME_PROVIDER` / `JCODE_ACTIVE_PROVIDER` are process-wide and
+    /// rewritten per activation, so in a daemon holding many sessions one
+    /// provider's runtime can name the *next* session. Rejecting only a
+    /// confident disagreement keeps every legitimate use working: an
     /// unclassifiable name or value is no evidence against the env.
     pub(crate) fn runtime_env_key_matches_provider_name(
         env_key: &str,
@@ -324,9 +254,6 @@ impl MultiProvider {
         let Some(name_key) = Self::session_provider_key_from_provider_name(provider_name) else {
             return true;
         };
-        if name_key == "openrouter" {
-            return true;
-        }
         let Some(env_family) = Self::confident_provider_family(env_key) else {
             return true;
         };
@@ -346,14 +273,6 @@ impl MultiProvider {
                 "claude" | "claude-oauth" | "claude-api" | "anthropic"
             ),
             "openai" => matches!(provider_key, "openai" | "openai-oauth" | "openai-api"),
-            "openrouter" => {
-                provider_key == "openrouter"
-                    || crate::provider_catalog::resolve_openai_compatible_profile_selection(
-                        provider_key,
-                    )
-                    .is_some()
-                    || crate::config::config().providers.contains_key(provider_key)
-            }
             other => provider_key == other,
         }
     }
@@ -361,8 +280,7 @@ impl MultiProvider {
     /// The first-party provider family a session `provider_key` names, when it
     /// names one unambiguously.
     ///
-    /// `None` for OpenAI-compatible profile ids, custom provider names, and
-    /// anything else that cannot be classified with confidence - those are
+    /// `None` for custom provider names and anything else that cannot be classified with confidence - those are
     /// legitimately free to serve model ids this table knows nothing about.
     fn confident_provider_family(provider_key: &str) -> Option<&'static str> {
         let key = Self::canonical_session_provider_key(provider_key)
@@ -388,19 +306,17 @@ impl MultiProvider {
     /// endpoint that cannot answer for that model.
     ///
     /// Only a confident disagreement between two first-party families is
-    /// reported. Everything else - an unclassifiable key, an unclassifiable
-    /// model, or an `openrouter` guess, which `provider_for_model` returns for
-    /// any id merely containing `/` or `@` - returns `true`, because a
-    /// heuristic is not evidence enough to override an explicit key.
+    /// reported. Everything else - an unclassifiable key or an unclassifiable
+    /// model - returns `true`, because a heuristic is not evidence enough to
+    /// override an explicit key.
     pub fn session_provider_key_serves_model(provider_key: &str, model: &str) -> bool {
         let Some(key_family) = Self::confident_provider_family(provider_key) else {
             return true;
         };
-        let Some(model_family) = crate::provider::provider_for_model(model.trim())
-            .and_then(|provider_name| {
+        let Some(model_family) =
+            crate::provider::provider_for_model(model.trim()).and_then(|provider_name| {
                 jcode_provider_core::provider_key_from_hint(Some(provider_name))
             })
-            .filter(|family| *family != "openrouter")
         else {
             return true;
         };
@@ -420,25 +336,11 @@ impl MultiProvider {
             return model.to_string();
         }
 
-        // An `@provider` suffix is an explicit OpenRouter upstream pin. It is
-        // stronger route identity than older/stale `provider_key` metadata.
-        // In particular, sessions created through the public CLI could retain
-        // an `openai-api` key from process-level runtime state while correctly
-        // persisting `z-ai/glm-5.2@Novita` as their model. Restoring through the
-        // stale key sent the pinned model to OpenAI and left the resumed run on
-        // its default model instead. Reconstruct the explicit OpenRouter route
-        // first so both the provider and pin survive resume.
-        if model.contains('@') {
-            return format!("openrouter:{model}");
-        }
-
         if let Some((prefix, rest)) = model.split_once(':') {
             let prefix = prefix.trim();
             if !prefix.is_empty()
                 && !rest.trim().is_empty()
-                && (crate::provider_catalog::resolve_openai_compatible_profile_selection(prefix)
-                    .is_some()
-                    || crate::config::config().providers.contains_key(prefix))
+                && crate::config::config().providers.contains_key(prefix)
             {
                 return model.to_string();
             }
@@ -477,25 +379,15 @@ impl MultiProvider {
         }
 
         // Fold the remaining picker vocabulary onto the canonical keys
-        // (non-dual-auth providers and OpenAI-compatible profiles).
+        // (non-dual-auth providers and named provider profiles).
         let provider_key = Self::canonical_session_provider_key(provider_key);
 
-        match provider_key {
-            "antigravity" | "gemini" | "openrouter" => {
-                format!("{provider_key}:{model}")
-            }
-            _ => {
-                if crate::provider_catalog::resolve_openai_compatible_profile_selection(
-                    provider_key,
-                )
-                .is_some()
-                    || crate::config::config().providers.contains_key(provider_key)
-                {
-                    format!("{provider_key}:{model}")
-                } else {
-                    model.to_string()
-                }
-            }
+        if matches!(provider_key, "antigravity" | "gemini")
+            || crate::config::config().providers.contains_key(provider_key)
+        {
+            format!("{provider_key}:{model}")
+        } else {
+            model.to_string()
         }
     }
 
@@ -508,12 +400,6 @@ impl MultiProvider {
         if model.is_empty() {
             return String::new();
         }
-        // The model itself carries explicit OpenRouter route identity. Honor it
-        // before persisted route metadata, which may come from an older buggy
-        // session and contradict the pin.
-        if crate::provider::explicit_model_provider_prefix(model).is_none() && model.contains('@') {
-            return format!("openrouter:{model}");
-        }
         if let Some(api_method) = route_api_method
             .map(str::trim)
             .filter(|api_method| !api_method.is_empty())
@@ -523,13 +409,9 @@ impl MultiProvider {
                 ModelRouteApiMethod::AnthropicApiKey => return format!("claude-api:{model}"),
                 ModelRouteApiMethod::OpenAIOAuth => return format!("openai-oauth:{model}"),
                 ModelRouteApiMethod::OpenAIApiKey => return format!("openai-api:{model}"),
-                ModelRouteApiMethod::OpenRouter => return format!("openrouter:{model}"),
-                ModelRouteApiMethod::OpenAiCompatible {
-                    profile_id: Some(profile_id),
-                } => return format!("{profile_id}:{model}"),
+                ModelRouteApiMethod::NamedProfile(name) => return format!("{name}:{model}"),
                 ModelRouteApiMethod::AntigravityHttps => return format!("antigravity:{model}"),
-                ModelRouteApiMethod::OpenAiCompatible { profile_id: None }
-                | ModelRouteApiMethod::CodeAssistOAuth
+                ModelRouteApiMethod::CodeAssistOAuth
                 | ModelRouteApiMethod::RemoteCatalog
                 | ModelRouteApiMethod::Current
                 | ModelRouteApiMethod::Other(_) => {}
@@ -548,25 +430,8 @@ impl MultiProvider {
             return None;
         }
 
-        if let Some(profile) =
-            crate::provider_catalog::resolve_openai_compatible_profile_selection(trimmed)
-        {
-            return Some(ConfigProviderSelection::OpenAiCompatibleProfile(profile.id));
-        }
-
-        if let Some(profile) = cfg.providers.get(trimmed) {
-            let provider = if matches!(
-                profile.provider_type,
-                crate::config::NamedProviderType::AnthropicCompatible
-            ) {
-                ActiveProvider::Claude
-            } else {
-                ActiveProvider::OpenRouter
-            };
-            return Some(ConfigProviderSelection::NamedProfile(
-                trimmed.to_string(),
-                provider,
-            ));
+        if cfg.providers.contains_key(trimmed) {
+            return Some(ConfigProviderSelection::NamedProfile(trimmed.to_string()));
         }
 
         // Accept the dual-auth `--provider` vocabulary (`anthropic-api`,
@@ -608,9 +473,9 @@ mod tests {
         );
         assert_eq!(
             MultiProvider::config_default_provider_for_login_provider(
-                crate::provider_catalog::OPENCODE_LOGIN_PROVIDER,
+                crate::provider_catalog::GEMINI_API_LOGIN_PROVIDER,
             ),
-            Some("opencode")
+            Some("gemini")
         );
     }
 
@@ -645,13 +510,6 @@ mod tests {
                 "claude-api:claude-opus-4-6",
                 Some("claude-api"),
             ),
-            (
-                "glm-51-nvfp4",
-                "openai-compatible:comtegra",
-                "Comtegra GPU Cloud",
-                "glm-51-nvfp4",
-                Some("comtegra"),
-            ),
         ] {
             let selection =
                 MultiProvider::default_model_selection_from_route(bare, api_method, provider);
@@ -681,24 +539,12 @@ mod tests {
                 None,
                 Some("claude-oauth"),
             ),
-            (
-                "cerebras:qwen-3-235b-a22b-instruct-2507",
-                "OpenRouter",
-                None,
-                Some("cerebras"),
-            ),
             ("gpt-5.5", "OpenAI", Some("openai-api"), Some("openai-api")),
             (
                 "claude-opus-4-6",
                 "Anthropic",
                 Some("claude-api"),
                 Some("claude-api"),
-            ),
-            (
-                "qwen-3-235b-a22b-instruct-2507",
-                "OpenRouter",
-                Some("cerebras"),
-                Some("cerebras"),
             ),
         ] {
             assert_eq!(
@@ -725,11 +571,6 @@ mod tests {
                 "claude-api:claude-opus-4-6",
             ),
             ("claude-opus-4-6", Some("claude"), "claude:claude-opus-4-6"),
-            (
-                "qwen-3-235b-a22b-instruct-2507",
-                Some("cerebras"),
-                "cerebras:qwen-3-235b-a22b-instruct-2507",
-            ),
             ("openai-api:gpt-5.5", Some("openai"), "openai-api:gpt-5.5"),
         ] {
             assert_eq!(
@@ -738,23 +579,6 @@ mod tests {
                 "restore {model:?} with {provider_key:?}"
             );
         }
-
-        assert_eq!(
-            MultiProvider::model_switch_request_for_session_route(
-                "openrouter/owl-alpha",
-                Some("openrouter"),
-                Some("openrouter"),
-            ),
-            "openrouter:openrouter/owl-alpha"
-        );
-        assert_eq!(
-            MultiProvider::model_switch_request_for_session_route(
-                "nvidia/example",
-                Some("openai-compatible:nvidia-nim"),
-                Some("openai-compatible:nvidia-nim"),
-            ),
-            "nvidia-nim:nvidia/example"
-        );
     }
 
     #[test]
@@ -877,36 +701,6 @@ mod tests {
     }
 
     #[test]
-    fn route_defaults_are_derived_consistently() {
-        let profile = MultiProvider::default_model_selection_from_route(
-            "moonshot-v1-8k",
-            "openai-compatible:kimi",
-            "Kimi",
-        );
-        assert_eq!(profile.model_spec, "moonshot-v1-8k");
-        assert_eq!(profile.provider_key.as_deref(), Some("kimi"));
-
-        let openrouter = MultiProvider::default_model_selection_from_route(
-            "claude-sonnet-4-5",
-            "openrouter",
-            "anthropic",
-        );
-        assert_eq!(
-            openrouter.model_spec,
-            "anthropic/claude-sonnet-4-5@anthropic"
-        );
-        assert_eq!(openrouter.provider_key.as_deref(), Some("openrouter"));
-
-        let openrouter_openai =
-            MultiProvider::default_model_selection_from_route("gpt-5.5", "openrouter", "OpenAI");
-        assert_eq!(openrouter_openai.model_spec, "openai/gpt-5.5@OpenAI");
-        assert_eq!(
-            openrouter_openai.provider_key.as_deref(),
-            Some("openrouter")
-        );
-    }
-
-    #[test]
     fn config_provider_resolution_handles_all_config_namespaces() {
         let mut cfg = crate::config::Config::default();
         cfg.providers.insert(
@@ -920,14 +714,9 @@ mod tests {
             Some(ActiveProvider::Claude)
         );
         assert_eq!(
-            MultiProvider::resolve_config_provider_selection("kimi", &cfg)
-                .map(|selection| selection.active_provider()),
-            Some(ActiveProvider::OpenRouter)
-        );
-        assert_eq!(
             MultiProvider::resolve_config_provider_selection("my-api", &cfg)
                 .map(|selection| selection.active_provider()),
-            Some(ActiveProvider::OpenRouter)
+            Some(ActiveProvider::Claude)
         );
         assert!(MultiProvider::resolve_config_provider_selection("unknown", &cfg).is_none());
         // A `default_provider = "jcode"` left over from the removed

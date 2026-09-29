@@ -337,9 +337,9 @@ mod tests {
     /// #446: a bare no-argument object schema gains `properties`.
     #[test]
     fn issue_446_bare_object_schema_gains_properties() {
-        let out = dialect::apply(&json!({ "type": "object" }), &registry::OPENROUTER);
+        let out = dialect::apply(&json!({ "type": "object" }), &registry::ANTHROPIC);
         assert_eq!(out["properties"], json!({}));
-        let empty = dialect::apply(&json!({}), &registry::OPENROUTER);
+        let empty = dialect::apply(&json!({}), &registry::ANTHROPIC);
         assert_eq!(empty["type"], "object");
         assert_eq!(empty["properties"], json!({}));
     }
@@ -356,7 +356,7 @@ mod tests {
                 { "properties": { "target": { "type": "string" } } }
             ]
         });
-        let out = dialect::apply(&schema, &registry::OPENROUTER);
+        let out = dialect::apply(&schema, &registry::ANTHROPIC);
         assert!(out.get("anyOf").is_none());
         assert_eq!(out["properties"]["action"]["type"], "string");
         assert_eq!(out["properties"]["label"]["type"], "string");

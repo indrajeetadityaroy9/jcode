@@ -167,7 +167,6 @@ fn cold_cache_warning_is_persisted_when_starting_next_request() {
         completed_at: Instant::now() - Duration::from_secs(3723),
         provider: "anthropic".to_string(),
         model: "claude-opus-4-6".to_string(),
-        upstream_provider: None,
         signature: None,
     });
 
@@ -206,7 +205,6 @@ fn cold_cache_warning_fires_on_idle_tick_before_next_message() {
         completed_at: Instant::now() - Duration::from_secs(3700),
         provider: "anthropic".to_string(),
         model: "claude-opus-4-6".to_string(),
-        upstream_provider: None,
         signature: None,
     });
 
@@ -266,7 +264,6 @@ fn idle_cold_cache_warning_waits_for_ttl_and_rearms_after_new_cache_write() {
         completed_at: Instant::now() - Duration::from_secs(60),
         provider: "anthropic".to_string(),
         model: "claude-opus-4-6".to_string(),
-        upstream_provider: None,
         signature: None,
     });
 
@@ -329,7 +326,6 @@ fn harness_caused_kv_cache_miss_pushes_in_chat_alarm() {
         completed_at: Instant::now(),
         provider,
         model,
-        upstream_provider: None,
         signature: Some(baseline_signature),
     });
 
@@ -382,7 +378,6 @@ fn documented_invalidation_downgrades_kv_cache_alarm_to_attribution() {
         completed_at: Instant::now(),
         provider,
         model,
-        upstream_provider: None,
         signature: Some(baseline_signature),
     });
 
@@ -463,7 +458,6 @@ fn legitimate_model_switch_miss_does_not_push_in_chat_alarm() {
         provider: "anthropic".to_string(),
         // Different model than the current request -> ModelSwitch.
         model: "claude-opus-4-5".to_string(),
-        upstream_provider: None,
         signature: Some(baseline_signature),
     });
 
@@ -505,7 +499,6 @@ fn kv_cache_baseline_from_other_session_is_ignored() {
         completed_at: Instant::now(),
         provider: "anthropic".to_string(),
         model: "claude-opus-4-6".to_string(),
-        upstream_provider: None,
         signature: Some(big_signature),
     });
 
@@ -553,7 +546,6 @@ fn kv_cache_baseline_same_session_still_compares() {
         completed_at: Instant::now(),
         provider: "anthropic".to_string(),
         model: "claude-opus-4-6".to_string(),
-        upstream_provider: None,
         signature: Some(baseline_signature),
     });
 
@@ -596,7 +588,6 @@ fn compaction_invalidates_kv_cache_baseline_and_stale_completion_cannot_restore_
         completed_at: Instant::now(),
         provider: app.kv_cache_provider_name(),
         model: app.kv_cache_provider_model(),
-        upstream_provider: None,
         signature: Some(old_signature.clone()),
     });
 
@@ -674,7 +665,6 @@ fn native_compaction_application_invalidates_kv_cache_baseline_before_continuati
         completed_at: Instant::now(),
         provider: app.kv_cache_provider_name(),
         model: app.kv_cache_provider_model(),
-        upstream_provider: None,
         signature: Some(old_signature),
     });
     let old_generation = app.kv_cache.cache_generation;
@@ -1145,7 +1135,6 @@ fn stale_server_history_is_deferred_before_remote_state_is_applied() {
             was_interrupted: None,
             connection_type: Some("stale-connection".to_string()),
             status_detail: Some("stale-status".to_string()),
-            upstream_provider: Some("stale-upstream".to_string()),
             resolved_credential: None,
             reasoning_effort: Some("high".to_string()),
             service_tier: Some("stale-tier".to_string()),
@@ -1236,7 +1225,6 @@ fn deferred_stale_server_history_captures_session_id_for_reload_handoff() {
             was_interrupted: None,
             connection_type: None,
             status_detail: None,
-            upstream_provider: None,
             resolved_credential: None,
             reasoning_effort: None,
             service_tier: None,
@@ -1317,7 +1305,6 @@ fn ancient_server_history_is_deferred_via_client_side_release_check() {
             was_interrupted: None,
             connection_type: Some("ancient-connection".to_string()),
             status_detail: Some("ancient-status".to_string()),
-            upstream_provider: Some("ancient-upstream".to_string()),
             resolved_credential: None,
             reasoning_effort: Some("high".to_string()),
             service_tier: Some("ancient-tier".to_string()),
@@ -1398,7 +1385,6 @@ fn older_server_reporting_no_update_is_still_deferred_via_client_check() {
             was_interrupted: None,
             connection_type: Some("websocket".to_string()),
             status_detail: None,
-            upstream_provider: None,
             resolved_credential: None,
             reasoning_effort: None,
             service_tier: None,
@@ -1499,7 +1485,6 @@ fn older_server_history_repairs_stale_shared_server_channel_end_to_end() {
             was_interrupted: None,
             connection_type: Some("websocket".to_string()),
             status_detail: None,
-            upstream_provider: None,
             resolved_credential: None,
             reasoning_effort: None,
             service_tier: None,
@@ -1574,7 +1559,6 @@ fn current_release_server_history_is_not_deferred_by_client_check() {
             was_interrupted: None,
             connection_type: Some("websocket".to_string()),
             status_detail: None,
-            upstream_provider: None,
             resolved_credential: None,
             reasoning_effort: None,
             service_tier: None,

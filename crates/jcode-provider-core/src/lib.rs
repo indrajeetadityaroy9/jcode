@@ -46,8 +46,7 @@ pub use models::{
     provider_for_model_with_hint as core_provider_for_model_with_hint, provider_key_from_hint,
 };
 pub use reasoning::{
-    DEEPSEEK_SELECTABLE_EFFORTS, OPENAI_SELECTABLE_EFFORTS, OPENROUTER_SELECTABLE_EFFORTS,
-    canonical_reasoning_effort, inferred_reasoning_efforts,
+    OPENAI_SELECTABLE_EFFORTS, canonical_reasoning_effort, inferred_reasoning_efforts,
 };
 pub use selection::{
     ActiveProvider, ProviderAvailability, auto_default_provider, cli_provider_arg_for_session_key,
@@ -99,20 +98,17 @@ pub trait Provider: Send + Sync {
 
     /// Get the provider name.
     ///
-    /// This is the stable, machine-facing identifier (e.g. `"openrouter"`,
-    /// `"claude"`). Several surfaces key billing and routing decisions off this
-    /// value, so it must stay constant for a given provider class even when the
-    /// underlying runtime is a specific OpenAI-compatible profile. Use
+    /// This is the stable, machine-facing identifier (e.g. `"claude"`,
+    /// `"openai"`). Several surfaces key billing and routing decisions off this
+    /// value, so it must stay constant for a given provider class. Use
     /// [`Provider::display_name`] for anything shown to the user.
     fn name(&self) -> &str;
 
     /// Human-facing provider label for the *current runtime selection*.
     ///
     /// Defaults to [`Provider::name`]. Provider orchestrators that multiplex
-    /// several backends behind one `name()` (notably the OpenRouter slot, which
-    /// also serves direct OpenAI-compatible profiles such as NVIDIA NIM or
-    /// DeepSeek) override this so the UI reflects the profile the user actually
-    /// selected at runtime instead of a fixed aggregator label.
+    /// several backends behind one `name()` override this so the UI reflects
+    /// the runtime the user actually selected.
     fn display_name(&self) -> String {
         self.name().to_string()
     }
@@ -202,21 +198,6 @@ pub trait Provider: Send + Sync {
             .iter()
             .map(|m| (*m).to_string())
             .collect()
-    }
-
-    /// List known providers for a model (OpenRouter-style @provider autocomplete).
-    fn available_providers_for_model(&self, _model: &str) -> Vec<String> {
-        Vec::new()
-    }
-
-    /// Provider details for model picker: Vec<(provider_name, detail_string)>.
-    fn provider_details_for_model(&self, _model: &str) -> Vec<(String, String)> {
-        Vec::new()
-    }
-
-    /// Return the currently preferred upstream provider.
-    fn preferred_provider(&self) -> Option<String> {
-        None
     }
 
     /// Get all model routes for the unified picker.
@@ -334,51 +315,6 @@ pub trait Provider: Send + Sync {
     /// by another process). Providers with in-memory credential caches override
     /// this; the default is a no-op.
     fn reload_credentials(&self) {}
-
-    /// Human-facing label for the runtime backing this provider instance.
-    /// Unlike `display_name`, this reflects instance state (e.g. which
-    /// OpenAI-compatible profile an aggregator runtime currently serves).
-    fn runtime_display_name(&self) -> String {
-        self.display_name()
-    }
-
-    /// Whether this runtime speaks the real OpenRouter aggregator API with
-    /// provider-routing features (provider pins, per-provider endpoints), as
-    /// opposed to a plain OpenAI-compatible endpoint.
-    fn supports_provider_routing_features(&self) -> bool {
-        false
-    }
-
-    /// For direct OpenAI-compatible endpoints: the (provider label,
-    /// api_method, detail) triple used to build the route entry. `None` for
-    /// everything else (including the real OpenRouter aggregator).
-    fn direct_openai_compatible_route_parts(&self) -> Option<(String, String, String)> {
-        None
-    }
-
-    /// The explicit upstream-provider pin for the current model, when the
-    /// user pinned one on an aggregator runtime.
-    fn explicit_provider_pin_for_current_model(&self) -> Option<String> {
-        None
-    }
-
-    /// Give aggregator runtimes a chance to refresh per-model endpoint data
-    /// used by display surfaces. Returns true when a refresh was scheduled.
-    fn maybe_schedule_endpoint_refresh_for_display(
-        &self,
-        _model: &str,
-        _cache_age_secs: Option<u64>,
-        _context: &'static str,
-    ) -> bool {
-        false
-    }
-
-    /// Human-readable freshness note for this provider's model catalog, shown
-    /// as route detail in the model picker (e.g. "cached live catalog" or
-    /// "catalog still loading"). Empty when the catalog is live/authoritative.
-    fn model_catalog_detail(&self) -> String {
-        String::new()
-    }
 
     /// Returns true if jcode should use its own compaction for this provider.
     fn supports_compaction(&self) -> bool {
@@ -653,13 +589,17 @@ pub struct ModelRoute {
     pub cheapness: Option<RouteCheapnessEstimate>,
 }
 
+/// `api_method` prefix for routes served by a user-defined `[providers.<name>]`
+/// profile, e.g. `profile:corp-claude`.
+pub const NAMED_PROFILE_API_METHOD_PREFIX: &str = "profile:";
+
 /// Exact runtime identity for a selected model route.
 ///
 /// A runtime key identifies the concrete endpoint/auth/account slot that will
 /// send requests. It is intentionally more precise than a display provider
-/// label: for example, OpenRouter and NVIDIA NIM both speak an OpenAI-compatible
-/// protocol, but they must have different runtime keys because they use
-/// different endpoints, auth, catalogs, and routing semantics.
+/// label: for example, Claude OAuth and the Anthropic API key both reach
+/// Anthropic models, but they must have different runtime keys because they
+/// use different endpoints, auth, and billing semantics.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum RuntimeKey {
@@ -667,10 +607,9 @@ pub enum RuntimeKey {
     AnthropicApiKey,
     OpenAIOAuth,
     OpenAIApiKey,
-    OpenRouter,
-    OpenAiCompatible {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        profile_id: Option<String>,
+    /// A user-defined `[providers.<name>]` profile.
+    NamedProfile {
+        name: String,
     },
     Gemini,
     Antigravity,
@@ -687,10 +626,7 @@ impl RuntimeKey {
             ModelRouteApiMethod::AnthropicApiKey => Self::AnthropicApiKey,
             ModelRouteApiMethod::OpenAIOAuth => Self::OpenAIOAuth,
             ModelRouteApiMethod::OpenAIApiKey => Self::OpenAIApiKey,
-            ModelRouteApiMethod::OpenRouter => Self::OpenRouter,
-            ModelRouteApiMethod::OpenAiCompatible { profile_id } => Self::OpenAiCompatible {
-                profile_id: profile_id.clone(),
-            },
+            ModelRouteApiMethod::NamedProfile(name) => Self::NamedProfile { name: name.clone() },
             ModelRouteApiMethod::CodeAssistOAuth => Self::CodeAssistOAuth,
             ModelRouteApiMethod::AntigravityHttps => Self::Antigravity,
             ModelRouteApiMethod::RemoteCatalog => Self::RemoteCatalog,
@@ -705,11 +641,7 @@ impl RuntimeKey {
             Self::AnthropicApiKey => "anthropic-api-key".to_string(),
             Self::OpenAIOAuth => "openai-oauth".to_string(),
             Self::OpenAIApiKey => "openai-api-key".to_string(),
-            Self::OpenRouter => "openrouter".to_string(),
-            Self::OpenAiCompatible { profile_id } => profile_id
-                .as_deref()
-                .map(|profile_id| format!("openai-compatible:{profile_id}"))
-                .unwrap_or_else(|| "openai-compatible".to_string()),
+            Self::NamedProfile { name } => format!("{NAMED_PROFILE_API_METHOD_PREFIX}{name}"),
             Self::Gemini => "gemini".to_string(),
             Self::Antigravity => "antigravity".to_string(),
             Self::CodeAssistOAuth => "code-assist-oauth".to_string(),
@@ -748,8 +680,8 @@ impl RouteSelection {
     }
 
     /// The string model spec that applies this route selection, including any
-    /// provider routing prefix/suffix (`openai-oauth:`, `claude-api:`,
-    /// `openai/gpt-5@OpenAI`, `antigravity:`, ...).
+    /// provider routing prefix (`openai-oauth:`, `claude-api:`,
+    /// `antigravity:`, ...).
     ///
     /// This is the single source of truth for translating a structured
     /// [`RouteSelection`] back into the `set_model` spec string. Both the
@@ -763,22 +695,7 @@ impl RouteSelection {
             RuntimeKey::AnthropicApiKey => format!("claude-api:{model}"),
             RuntimeKey::OpenAIOAuth => format!("openai-oauth:{model}"),
             RuntimeKey::OpenAIApiKey => format!("openai-api:{model}"),
-            RuntimeKey::OpenAiCompatible {
-                profile_id: Some(profile_id),
-            } => format!("{}:{model}", profile_id.trim()),
-            RuntimeKey::OpenAiCompatible { profile_id: None } => model.to_string(),
-            RuntimeKey::OpenRouter => {
-                let provider = self.provider_label.trim();
-                let catalog_id = openrouter_catalog_model_id(model);
-                if provider.is_empty()
-                    || provider.eq_ignore_ascii_case("auto")
-                    || model.contains('@')
-                {
-                    catalog_id
-                } else {
-                    format!("{catalog_id}@{provider}")
-                }
-            }
+            RuntimeKey::NamedProfile { name } => format!("{}:{model}", name.trim()),
             RuntimeKey::Antigravity => format!("antigravity:{model}"),
             RuntimeKey::Gemini
             | RuntimeKey::CodeAssistOAuth
@@ -786,19 +703,6 @@ impl RouteSelection {
             | RuntimeKey::Current
             | RuntimeKey::Other(_) => model.to_string(),
         }
-    }
-}
-
-/// OpenRouter catalog id for a bare model: claude models gain an `anthropic/`
-/// prefix, OpenAI models an `openai/` prefix, already-qualified ids pass
-/// through. Mirrors `jcode_base::provider::openrouter_catalog_model_id` but
-/// lives here so [`RouteSelection::routed_model_spec`] has no upward dep.
-fn openrouter_catalog_model_id(model: &str) -> String {
-    let trimmed = model.trim();
-    match crate::models::provider_for_model(trimmed) {
-        Some("claude") => format!("anthropic/{trimmed}"),
-        Some("openai") => format!("openai/{trimmed}"),
-        _ => trimmed.to_string(),
     }
 }
 
@@ -813,8 +717,9 @@ pub enum ModelRouteApiMethod {
     AnthropicApiKey,
     OpenAIOAuth,
     OpenAIApiKey,
-    OpenRouter,
-    OpenAiCompatible { profile_id: Option<String> },
+    /// Route served by a user-defined `[providers.<name>]` profile
+    /// (`profile:<name>` on the wire).
+    NamedProfile(String),
     CodeAssistOAuth,
     AntigravityHttps,
     RemoteCatalog,
@@ -844,45 +749,17 @@ impl ModelRouteApiMethod {
             return Self::from_auth_route(route);
         }
         match lower.as_str() {
-            "openrouter" => Self::OpenRouter,
-            "openai-compatible" => Self::OpenAiCompatible { profile_id: None },
             "code-assist-oauth" => Self::CodeAssistOAuth,
             "https" => Self::AntigravityHttps,
             "remote-catalog" => Self::RemoteCatalog,
             "current" => Self::Current,
-            _ => {
-                if let Some(("openai-compatible", profile_id)) = lower.split_once(':') {
-                    let profile_id = profile_id.trim();
-                    Self::OpenAiCompatible {
-                        profile_id: (!profile_id.is_empty()).then(|| profile_id.to_string()),
-                    }
-                } else {
-                    Self::Other(trimmed.to_string())
+            _ => match trimmed.strip_prefix(NAMED_PROFILE_API_METHOD_PREFIX) {
+                Some(name) if !name.trim().is_empty() => {
+                    Self::NamedProfile(name.trim().to_string())
                 }
-            }
+                _ => Self::Other(trimmed.to_string()),
+            },
         }
-    }
-
-    pub fn profile_id(&self) -> Option<&str> {
-        match self {
-            Self::OpenAiCompatible {
-                profile_id: Some(profile_id),
-            } => Some(profile_id.as_str()),
-            _ => None,
-        }
-    }
-
-    pub fn is_openai_compatible(&self) -> bool {
-        matches!(self, Self::OpenAiCompatible { .. })
-    }
-
-    pub fn is_openrouter(&self) -> bool {
-        matches!(self, Self::OpenRouter)
-    }
-
-    pub fn matches_openai_compatible_profile(&self, provider_id: &str) -> bool {
-        self.profile_id()
-            .is_some_and(|profile_id| profile_id.eq_ignore_ascii_case(provider_id))
     }
 
     pub fn is_anthropic_credential_route(&self) -> bool {
@@ -896,10 +773,9 @@ impl ModelRouteApiMethod {
     pub fn display_label(&self) -> String {
         match self {
             Self::ClaudeOAuth | Self::OpenAIOAuth | Self::CodeAssistOAuth => "oauth".to_string(),
-            Self::AnthropicApiKey | Self::OpenAIApiKey | Self::OpenAiCompatible { .. } => {
+            Self::AnthropicApiKey | Self::OpenAIApiKey | Self::NamedProfile(_) => {
                 "api key".to_string()
             }
-            Self::OpenRouter => "openrouter".to_string(),
             Self::AntigravityHttps => "https".to_string(),
             Self::RemoteCatalog => "remote-catalog".to_string(),
             Self::Current => "current".to_string(),
@@ -935,7 +811,6 @@ pub fn model_route_provider_labels_match(route_provider: &str, current_provider:
             | ("openai", "openai")
             | ("gemini" | "google", "gemini" | "google")
             | ("antigravity", "antigravity")
-            | ("openrouter", "openrouter" | "auto")
     )
 }
 
@@ -1131,8 +1006,6 @@ pub enum RouteCostSource {
     PublicApiPricing,
     PublicPlanPricing,
     RuntimePlan,
-    OpenRouterEndpoint,
-    OpenRouterCatalog,
     /// Live models.dev pricing catalog (https://models.dev/api.json).
     ModelsDevCatalog,
     Heuristic,
@@ -1295,36 +1168,8 @@ mod tests {
     }
 
     #[test]
-    fn model_route_api_method_parser_keeps_profile_identity() {
-        assert_eq!(
-            ModelRouteApiMethod::parse("openai-compatible:cerebras"),
-            ModelRouteApiMethod::OpenAiCompatible {
-                profile_id: Some("cerebras".to_string())
-            }
-        );
-        assert!(
-            ModelRouteApiMethod::parse("openai-compatible:cerebras")
-                .matches_openai_compatible_profile("CEREBRAS")
-        );
-        assert_eq!(
-            ModelRouteApiMethod::parse("openai-api"),
-            ModelRouteApiMethod::OpenAIApiKey
-        );
-        assert_eq!(
-            ModelRouteApiMethod::parse("claude-api"),
-            ModelRouteApiMethod::AnthropicApiKey
-        );
-    }
-
-    #[test]
     fn model_route_provider_label_matching_uses_aliases_without_substring_false_positives() {
         assert!(model_route_provider_labels_match("Anthropic", "Claude"));
-        assert!(model_route_provider_labels_match("auto", "OpenRouter"));
-        assert!(!model_route_provider_labels_match(
-            "OpenRouter/OpenAI",
-            "OpenAI"
-        ));
-        assert!(!model_route_provider_labels_match("OpenAI", "OpenRouter"));
         assert!(!model_route_provider_labels_match("", ""));
         assert!(!model_route_provider_labels_related("OpenAI", ""));
     }
@@ -1444,18 +1289,6 @@ mod tests {
             "claude-api",
             true
         ));
-        assert!(!model_route_metadata_is_recommended(
-            "claude-opus-4-8",
-            "Anthropic",
-            "openrouter",
-            true
-        ));
-        assert!(!model_route_metadata_is_recommended(
-            "deepseek/deepseek-v4-pro",
-            "auto",
-            "openrouter",
-            true
-        ));
     }
 
     struct SnapshotTestProvider;
@@ -1512,50 +1345,26 @@ mod tests {
     }
 
     #[test]
-    fn runtime_key_distinguishes_openrouter_from_direct_compatible_profile() {
-        assert_eq!(
-            RuntimeKey::from_api_method(&ModelRouteApiMethod::parse("openrouter"), "auto"),
-            RuntimeKey::OpenRouter
-        );
-        assert_eq!(
-            RuntimeKey::from_api_method(
-                &ModelRouteApiMethod::parse("openai-compatible:nvidia-nim"),
-                "NVIDIA NIM",
-            ),
-            RuntimeKey::OpenAiCompatible {
-                profile_id: Some("nvidia-nim".to_string())
-            }
-        );
-    }
-
-    #[test]
-    fn route_selection_preserves_runtime_identity_from_model_route() {
+    fn named_profile_route_selection_routes_back_to_its_profile() {
         let selection = RouteSelection::from_model_route(&ModelRoute {
-            model: "openrouter/owl-alpha".to_string(),
-            provider: "OpenRouter".to_string(),
-            api_method: "openrouter".to_string(),
+            model: "claude-custom".to_string(),
+            provider: "corp-claude".to_string(),
+            api_method: "profile:corp-claude".to_string(),
             available: true,
-            detail: "https://openrouter.ai/api/v1".to_string(),
-            cheapness: None,
-        });
-        assert_eq!(selection.model, "openrouter/owl-alpha");
-        assert_eq!(selection.runtime_key, RuntimeKey::OpenRouter);
-        assert_eq!(selection.api_method, "openrouter");
-
-        let selection = RouteSelection::from_model_route(&ModelRoute {
-            model: "nvidia/example".to_string(),
-            provider: "NVIDIA NIM".to_string(),
-            api_method: "openai-compatible:nvidia-nim".to_string(),
-            available: true,
-            detail: "https://integrate.api.nvidia.com/v1".to_string(),
+            detail: String::new(),
             cheapness: None,
         });
         assert_eq!(
             selection.runtime_key,
-            RuntimeKey::OpenAiCompatible {
-                profile_id: Some("nvidia-nim".to_string())
+            RuntimeKey::NamedProfile {
+                name: "corp-claude".to_string()
             }
         );
-        assert_eq!(selection.provider_label, "NVIDIA NIM");
+        assert_eq!(selection.runtime_key.stable_id(), "profile:corp-claude");
+        assert_eq!(selection.routed_model_spec(), "corp-claude:claude-custom");
+        assert_eq!(
+            ModelRouteApiMethod::parse("profile:"),
+            ModelRouteApiMethod::Other("profile:".to_string())
+        );
     }
 }

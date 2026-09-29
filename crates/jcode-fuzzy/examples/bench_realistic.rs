@@ -3,7 +3,7 @@ fn main() {
     let names: Vec<String> = (0..9000)
         .map(|i| {
             format!(
-                "provider-{}/model-name-v{}-instruct-{}k OpenRouter openrouter → SomeProvider ctx 200k · in $1.25/M out $10/M · cached 3h ago",
+                "provider-{}/model-name-v{}-instruct-{}k Anthropic claude-api → SomeProvider ctx 200k · in $1.25/M out $10/M · cached 3h ago",
                 i % 400, i % 9, i % 128
             )
         })
@@ -17,7 +17,7 @@ fn main() {
         "claude sonnet",
         "opsu",
         "codxe",
-        "openrouter",
+        "anthropic",
     ] {
         let prepared = jcode_fuzzy::PreparedTokenQuery::new(q);
         let start = std::time::Instant::now();

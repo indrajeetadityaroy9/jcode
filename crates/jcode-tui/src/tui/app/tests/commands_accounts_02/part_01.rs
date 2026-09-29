@@ -534,22 +534,6 @@ fn test_login_command_opens_inline_login_picker() {
 }
 
 #[test]
-fn test_account_openai_compatible_settings_renders_provider_settings() {
-    let mut app = create_test_app();
-    app.input = "/account openai-compatible settings".to_string();
-    app.submit_input();
-
-    let msg = app
-        .display_messages()
-        .last()
-        .expect("missing settings output");
-    assert_eq!(msg.role, "system");
-    assert!(msg.content.contains("OpenAI-compatible"));
-    assert!(msg.content.contains("API base"));
-    assert!(msg.content.contains("default-model"));
-}
-
-#[test]
 fn test_account_default_provider_command_saves_config() {
     let _guard = crate::storage::lock_test_env();
     let mut app = create_test_app();

@@ -76,22 +76,23 @@ fn direct_api_key_login_does_not_advertise_a_static_model_default() {
 /// deliberately contains `k`, `n`, `l` and `y` — characters that a competing
 /// key handler is most likely to claim as navigation.
 #[test]
-fn openrouter_key_typed_through_the_full_key_path_is_saved_and_exported() {
+fn api_key_typed_through_the_full_key_path_is_saved_and_exported() {
     use crossterm::event::{KeyCode, KeyModifiers};
 
     with_temp_jcode_home(|| {
+        let prev_key = std::env::var_os("OPENAI_API_KEY");
         let mut app = create_test_app();
 
-        // Simulate having chosen OpenRouter from the picker: the picker is
+        // Simulate having chosen OpenAI API from the picker: the picker is
         // closed and a pending API-key login prompt is active.
         app.inline_interactive_state = None;
         app.start_login_provider(
-            crate::provider_catalog::resolve_login_provider("openrouter").unwrap(),
+            crate::provider_catalog::resolve_login_provider("openai-api").unwrap(),
         );
         assert!(app.pending_login.is_some());
         assert!(app.inline_interactive_state.is_none());
 
-        let key = "sk-or-key-no-loop";
+        let key = "sk-key-no-loop";
         for ch in key.chars() {
             app.handle_key(KeyCode::Char(ch), KeyModifiers::NONE)
                 .unwrap();
@@ -120,21 +121,25 @@ fn openrouter_key_typed_through_the_full_key_path_is_saved_and_exported() {
         );
 
         // The key must actually be persisted, not merely accepted: it is
-        // written to $JCODE_HOME/config/jcode/openrouter.env and exported to
-        // OPENROUTER_API_KEY so the provider can authenticate immediately.
+        // written to $JCODE_HOME/config/jcode/openai.env and exported to
+        // OPENAI_API_KEY so the provider can authenticate immediately.
         let env_file = crate::storage::app_config_dir()
             .unwrap()
-            .join("openrouter.env");
+            .join("openai.env");
         let contents = std::fs::read_to_string(&env_file)
-            .unwrap_or_else(|e| panic!("openrouter.env should exist at {env_file:?}: {e}"));
+            .unwrap_or_else(|e| panic!("openai.env should exist at {env_file:?}: {e}"));
         assert!(
-            contents.contains(&format!("OPENROUTER_API_KEY={key}")),
+            contents.contains(&format!("OPENAI_API_KEY={key}")),
             "saved env file must contain the typed key, got:\n{contents}"
         );
         assert_eq!(
-            std::env::var("OPENROUTER_API_KEY").ok().as_deref(),
+            std::env::var("OPENAI_API_KEY").ok().as_deref(),
             Some(key),
             "key must be exported to the process env for immediate use"
         );
+        match prev_key {
+            Some(value) => crate::env::set_var("OPENAI_API_KEY", value),
+            None => crate::env::remove_var("OPENAI_API_KEY"),
+        }
     });
 }

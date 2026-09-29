@@ -5,8 +5,8 @@ edition = "2024"
 publish = false
 
 # Provider diagnostics that sit downstream of jcode-base: the strict
-# `jcode provider-doctor` end-to-end runner (provider_e2e), the live provider
-# probes it drives, and the auth-lifecycle contract driver. Split out of
+# `jcode provider-doctor` end-to-end runner (provider_e2e) and the live
+# provider probes it drives. Split out of
 # jcode-base so edits to the doctor cluster no longer rebuild the
 # base -> app-core -> tui spine, and base compiles faster with lower peak
 # memory.
@@ -18,8 +18,6 @@ path = "src/lib.rs"
 [dependencies]
 anyhow = "1"
 futures = "0.3"
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["time"] }
 
@@ -30,11 +28,4 @@ jcode-base = { path = "../jcode-base", default-features = false }
 jcode-provider-gemini-runtime = { path = "../jcode-provider-gemini-runtime" }
 jcode-provider-anthropic-runtime = { path = "../jcode-provider-anthropic-runtime" }
 jcode-provider-openai-runtime = { path = "../jcode-provider-openai-runtime" }
-jcode-provider-openrouter-runtime = { path = "../jcode-provider-openrouter-runtime" }
 jcode-provider-antigravity-runtime = { path = "../jcode-provider-antigravity-runtime" }
-
-[dev-dependencies]
-# The auth-lifecycle driver tests run inside jcode-base's auth test sandbox.
-jcode-base = { path = "../jcode-base", default-features = false, features = ["test-support"] }
-jcode-provider-metadata = { path = "../jcode-provider-metadata" }
-tokio = { version = "1", features = ["macros", "rt"] }

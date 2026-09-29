@@ -1,8 +1,8 @@
 //! Is the dialect engine actually the code path each provider uses?
 //!
 //! The registry sweep proves every dialect *would* produce a sendable schema.
-//! It says nothing about whether the provider's request builder calls it. Three
-//! providers (OpenAI, OpenRouter, Anthropic) have dialects in the registry and
+//! It says nothing about whether the provider's request builder calls it. Two
+//! providers (OpenAI, Anthropic) have dialects in the registry and
 //! still ship their own older sanitizers, so the sweep was passing for code
 //! nothing executes. This makes that gap explicit and bounded.
 //!
@@ -144,44 +144,10 @@ fn openai_sends_a_clean_schema_and_does_not_overclaim_strict() {
     assert_descriptions_survive(&wire, "openai");
 }
 
-/// OpenRouter forwards to whichever upstream serves the model, so it must
-/// satisfy the strictest: no top-level combiner and `properties` present on
-/// object schemas (#446, #495).
-#[test]
-fn openrouter_sends_a_schema_its_strictest_upstream_accepts() {
-    let combiner_schema = serde_json::json!({
-        "type": "object",
-        "properties": { "action": { "type": "string", "description": "what" } },
-        "anyOf": [
-            { "properties": { "label": { "type": "string" } }, "required": ["label"] },
-            { "properties": { "target": { "type": "string" } } }
-        ]
-    });
-    let normalized =
-        jcode_provider_openrouter::request::sanitize_tool_parameters_schema(&combiner_schema);
-
-    assert!(
-        normalized.get("anyOf").is_none(),
-        "openrouter kept a top-level combiner: {normalized}"
-    );
-    for name in ["action", "label", "target"] {
-        assert!(
-            normalized["properties"].get(name).is_some(),
-            "openrouter lost property `{name}`: {normalized}"
-        );
-    }
-    // #446: a bare no-argument object schema must gain `properties`.
-    let bare =
-        jcode_provider_openrouter::request::sanitize_tool_parameters_schema(&serde_json::json!({
-            "type": "object"
-        }));
-    assert_eq!(bare["properties"], serde_json::json!({}));
-}
-
 /// Which provider request builders reach the dialect engine.
 ///
 /// A dialect in the registry that no provider executes is a sweep passing over
-/// dead code, which is how OpenAI, OpenRouter and Anthropic ended up with
+/// dead code, which is how OpenAI and Anthropic ended up with
 /// registry entries while still shipping their own older sanitizers. Pinning the
 /// set turns the remaining migration into bounded, visible work: a provider
 /// moving onto the engine fails this until the list is updated, and a provider
@@ -192,7 +158,6 @@ fn provider_request_builders_that_reach_the_dialect_engine_are_pinned() {
     const BUILDERS: &[(&str, bool)] = &[
         ("../jcode-provider-gemini/src/lib.rs", true),
         ("../jcode-provider-antigravity/src/lib.rs", true),
-        ("../jcode-provider-openrouter/src/request.rs", true),
         ("../jcode-provider-anthropic/src/lib.rs", true),
         // OpenAI's keyword subset now comes from the engine too. Strict
         // eligibility and strict normalization stay in jcode-provider-core
@@ -341,13 +306,6 @@ fn a_keyword_no_deny_list_has_ever_heard_of_reaches_no_provider() {
     assert!(
         !contains_key(&anthropic, NOVEL),
         "anthropic forwarded it: {anthropic}"
-    );
-
-    let openrouter =
-        jcode_provider_openrouter::request::sanitize_tool_parameters_schema(&novel[0].input_schema);
-    assert!(
-        !contains_key(&openrouter, NOVEL),
-        "openrouter forwarded it: {openrouter}"
     );
 
     for model in ["gemini-3-flash", "claude-sonnet-4-5", "gpt-oss-120b"] {

@@ -3,8 +3,8 @@
 //! OAuth subscriptions expose rich usage endpoints, but plain API keys mostly
 //! do not, so this module gathers the best available picture per key:
 //!   - Key validity (cheap, free endpoint probes such as `GET /v1/models`).
-//!   - Real balance / spend APIs where they exist (DeepSeek, Moonshot,
-//!     Anthropic/OpenAI admin cost reports when an admin key is configured).
+//!   - Real spend APIs where they exist (Anthropic/OpenAI admin cost reports
+//!     when an admin key is configured).
 //!   - Locally tracked spend from [`crate::provider_activity`] (jcode prices
 //!     every API-key call it makes, so this is a per-machine estimate).
 //!   - Last-used recency from the activity ledger.
@@ -43,27 +43,6 @@ fn key_status_from_response(status: reqwest::StatusCode) -> String {
     }
 }
 
-/// Free `GET {base}/models` probe used for OpenAI-compatible profiles that do
-/// not expose a balance API. Returns a human-readable key status.
-async fn probe_openai_compatible_key(api_base: &str, api_key: &str) -> String {
-    let base = api_base.trim_end_matches('/');
-    if base.is_empty() {
-        return "configured (no endpoint to probe)".to_string();
-    }
-    let client = crate::provider::shared_http_client();
-    let response = client
-        .get(format!("{}/models", base))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Accept", "application/json")
-        .timeout(HTTP_TIMEOUT)
-        .send()
-        .await;
-    match response {
-        Ok(response) => key_status_from_response(response.status()),
-        Err(e) => format!("check failed ({})", e),
-    }
-}
-
 fn month_start_utc() -> chrono::DateTime<chrono::Utc> {
     use chrono::Datelike;
     let now = chrono::Utc::now();
@@ -88,28 +67,6 @@ pub(super) fn enqueue_api_key_usage_tasks(
 
     if configured_key("OPENAI_API_KEY", "openai.env").is_some() {
         tasks.spawn(async { Some(fetch_openai_api_key_report().await) });
-        total += 1;
-    }
-
-    for profile in crate::provider_catalog::openai_compatible_profiles() {
-        if !profile.requires_api_key
-            || configured_key(profile.api_key_env, profile.env_file).is_none()
-        {
-            continue;
-        }
-
-        let source_key = format!("openai-compatible:{}", profile.id);
-        let has_balance_api = matches!(profile.id, "deepseek" | "moonshotai");
-        // Only surface profiles jcode has actually used (or that expose a real
-        // balance API); listing every configured-but-idle key is noise.
-        let used_before = provider_activity::last_used_unix_secs(&source_key).is_some()
-            || provider_activity::spend_snapshot(&source_key).is_some();
-        if !has_balance_api && !used_before {
-            continue;
-        }
-
-        let profile = *profile;
-        tasks.spawn(async move { Some(fetch_compatible_profile_report(profile).await) });
         total += 1;
     }
 
@@ -195,161 +152,6 @@ async fn fetch_openai_api_key_report() -> ProviderUsage {
     };
     attach_activity(&mut report, source_key);
     report
-}
-
-async fn fetch_compatible_profile_report(
-    profile: crate::provider_catalog::OpenAiCompatibleProfile,
-) -> ProviderUsage {
-    let source_key = format!("openai-compatible:{}", profile.id);
-    let mut extra_info = Vec::new();
-
-    match profile.id {
-        "deepseek" => {
-            if let Some(api_key) = configured_key(profile.api_key_env, profile.env_file) {
-                match fetch_deepseek_balance(&api_key).await {
-                    Ok(lines) => extra_info.extend(lines),
-                    Err(e) => {
-                        extra_info.push(("Balance".to_string(), format!("unavailable ({})", e)))
-                    }
-                }
-            }
-        }
-        "moonshotai" => {
-            if let Some(api_key) = configured_key(profile.api_key_env, profile.env_file) {
-                let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-                match fetch_moonshot_balance(&api_key, &resolved.api_base).await {
-                    Ok(lines) => extra_info.extend(lines),
-                    Err(e) => {
-                        extra_info.push(("Balance".to_string(), format!("unavailable ({})", e)))
-                    }
-                }
-            }
-        }
-        _ => {
-            // No provider-specific balance API: do a free `GET /models` probe
-            // against the profile's own endpoint so the key status is real
-            // rather than just "configured".
-            if let Some(api_key) = configured_key(profile.api_key_env, profile.env_file) {
-                let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-                let status = probe_openai_compatible_key(&resolved.api_base, &api_key).await;
-                extra_info.push(("Key status".to_string(), status));
-            }
-        }
-    }
-
-    push_local_spend(&mut extra_info, &source_key);
-
-    let mut report = ProviderUsage {
-        provider_name: format!("{} (API key)", profile.display_name),
-        extra_info,
-        ..Default::default()
-    };
-    attach_activity(&mut report, &source_key);
-    report
-}
-
-/// DeepSeek exposes a real balance endpoint for plain API keys.
-async fn fetch_deepseek_balance(api_key: &str) -> Result<Vec<(String, String)>> {
-    let client = crate::provider::shared_http_client();
-    let response = client
-        .get("https://api.deepseek.com/user/balance")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Accept", "application/json")
-        .timeout(HTTP_TIMEOUT)
-        .send()
-        .await
-        .context("balance request failed")?;
-    if !response.status().is_success() {
-        anyhow::bail!("HTTP {}", response.status());
-    }
-    let json: serde_json::Value = response.json().await.context("invalid balance response")?;
-
-    let mut lines = Vec::new();
-    if let Some(available) = json.get("is_available").and_then(|v| v.as_bool()) {
-        lines.push((
-            "Key status".to_string(),
-            if available {
-                "valid (balance available)".to_string()
-            } else {
-                "balance exhausted".to_string()
-            },
-        ));
-    }
-    if let Some(infos) = json.get("balance_infos").and_then(|v| v.as_array()) {
-        for info in infos {
-            let currency = info.get("currency").and_then(|v| v.as_str()).unwrap_or("?");
-            let total = info
-                .get("total_balance")
-                .and_then(|v| v.as_str())
-                .unwrap_or("?");
-            let mut detail = format!("{} {}", total, currency);
-            let topped_up = info.get("topped_up_balance").and_then(|v| v.as_str());
-            let granted = info.get("granted_balance").and_then(|v| v.as_str());
-            if let (Some(topped_up), Some(granted)) = (topped_up, granted) {
-                detail.push_str(&format!(" ({} paid + {} granted)", topped_up, granted));
-            }
-            lines.push(("Balance".to_string(), detail));
-        }
-    }
-    if lines.is_empty() {
-        anyhow::bail!("no balance info in response");
-    }
-    Ok(lines)
-}
-
-/// Moonshot exposes `GET /v1/users/me/balance` for plain API keys.
-async fn fetch_moonshot_balance(api_key: &str, api_base: &str) -> Result<Vec<(String, String)>> {
-    let base = api_base.trim_end_matches('/');
-    let currency = if base.contains("moonshot.cn") {
-        "CNY"
-    } else {
-        "USD"
-    };
-    let client = crate::provider::shared_http_client();
-    let response = client
-        .get(format!("{}/users/me/balance", base))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Accept", "application/json")
-        .timeout(HTTP_TIMEOUT)
-        .send()
-        .await
-        .context("balance request failed")?;
-    if !response.status().is_success() {
-        anyhow::bail!("HTTP {}", response.status());
-    }
-    let json: serde_json::Value = response.json().await.context("invalid balance response")?;
-    let data = json
-        .get("data")
-        .ok_or_else(|| anyhow::anyhow!("no balance data in response"))?;
-
-    let mut lines = Vec::new();
-    if let Some(available) = data.get("available_balance").and_then(|v| v.as_f64()) {
-        lines.push((
-            "Balance".to_string(),
-            format!("{:.2} {} available", available, currency),
-        ));
-        lines.push((
-            "Key status".to_string(),
-            if available > 0.0 {
-                "valid (balance available)".to_string()
-            } else {
-                "balance exhausted".to_string()
-            },
-        ));
-    }
-    if let (Some(cash), Some(voucher)) = (
-        data.get("cash_balance").and_then(|v| v.as_f64()),
-        data.get("voucher_balance").and_then(|v| v.as_f64()),
-    ) {
-        lines.push((
-            "Balance breakdown".to_string(),
-            format!("{:.2} cash + {:.2} voucher {}", cash, voucher, currency),
-        ));
-    }
-    if lines.is_empty() {
-        anyhow::bail!("no balance fields in response");
-    }
-    Ok(lines)
 }
 
 /// Anthropic org-wide cost for the current month. Requires an *admin* API key

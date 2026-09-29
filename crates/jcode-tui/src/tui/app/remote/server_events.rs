@@ -601,7 +601,6 @@ pub(in crate::tui::app) fn handle_server_event(
             | ServerEvent::StatusDetail { .. }
             | ServerEvent::MessageEnd { .. }
             | ServerEvent::RetryRollback { .. }
-            | ServerEvent::UpstreamProvider { .. }
             | ServerEvent::Interrupted
             | ServerEvent::Done { .. }
             | ServerEvent::Error { .. }
@@ -992,10 +991,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 max,
             });
             true
-        }
-        ServerEvent::UpstreamProvider { provider } => {
-            app.upstream_provider = Some(provider);
-            false
         }
         ServerEvent::Ack { id } => {
             let _ = app.acknowledge_pending_soft_interrupt(id);
@@ -1519,7 +1514,6 @@ pub(in crate::tui::app) fn handle_server_event(
             reload_recovery,
             connection_type,
             status_detail,
-            upstream_provider,
             resolved_credential,
             reasoning_effort,
             service_tier,
@@ -1682,9 +1676,6 @@ pub(in crate::tui::app) fn handle_server_event(
                 autoreview_enabled.unwrap_or(crate::config::config().autoreview.enabled);
             app.autojudge_enabled =
                 autojudge_enabled.unwrap_or(crate::config::config().autojudge.enabled);
-            if upstream_provider.is_some() {
-                app.upstream_provider = upstream_provider;
-            }
             if session_changed || resolved_credential.is_some() {
                 app.remote_resolved_credential = resolved_credential;
             }

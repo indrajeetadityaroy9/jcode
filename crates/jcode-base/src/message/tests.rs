@@ -271,29 +271,24 @@ fn redact_secrets_redacts_known_direct_token_formats() {
 
 #[test]
 fn redact_secrets_redacts_env_style_assignments() {
-    let input = "OPENROUTER_API_KEY=sk-or-v1-abc123abc123abc123abc123\nOPENCODE_API_KEY=oc_test_secret\nOPENCODE_GO_API_KEY=ocgo_test_secret\nZAI_API_KEY=zai_secret\nCHUTES_API_KEY=chutes_secret\nCEREBRAS_API_KEY=cerebras_secret\nOPENAI_COMPAT_API_KEY=compat_secret\nXAI_API_KEY='my_quoted_secret_value'\nOPENAI_API_KEY=sk-test-openai-example\n";
+    let input = "ANTHROPIC_API_KEY=sk-ant-api03-abc123abc123abc123abc123\nGEMINI_API_KEY=gemini_secret\nGOOGLE_API_KEY='my_quoted_secret_value'\nOPENAI_API_KEY=sk-test-openai-example\n";
     let out = redact_secrets(input);
-    assert!(out.contains("OPENROUTER_API_KEY=[REDACTED_SECRET]"));
-    assert!(out.contains("OPENCODE_API_KEY=[REDACTED_SECRET]"));
-    assert!(out.contains("OPENCODE_GO_API_KEY=[REDACTED_SECRET]"));
-    assert!(out.contains("ZAI_API_KEY=[REDACTED_SECRET]"));
-    assert!(out.contains("CHUTES_API_KEY=[REDACTED_SECRET]"));
-    assert!(out.contains("CEREBRAS_API_KEY=[REDACTED_SECRET]"));
-    assert!(out.contains("OPENAI_COMPAT_API_KEY=[REDACTED_SECRET]"));
-    assert!(out.contains("XAI_API_KEY=[REDACTED_SECRET]"));
+    assert!(out.contains("ANTHROPIC_API_KEY=[REDACTED_SECRET]"));
+    assert!(out.contains("GEMINI_API_KEY=[REDACTED_SECRET]"));
+    assert!(out.contains("GOOGLE_API_KEY=[REDACTED_SECRET]"));
     assert!(out.contains("OPENAI_API_KEY=[REDACTED_SECRET]"));
     assert!(!out.contains("my_quoted_secret_value"));
 }
 
 #[test]
 fn redact_secrets_redacts_runtime_key_assignment() {
-    let key_var = "JCODE_OPENAI_COMPAT_API_KEY_NAME";
+    let key_var = "JCODE_ANTHROPIC_API_KEY_NAME";
     let prev = std::env::var(key_var).ok();
-    crate::env::set_var(key_var, "GROQ_API_KEY");
+    crate::env::set_var(key_var, "CORP_GATEWAY_CREDENTIAL");
 
-    let input = "GROQ_API_KEY=my_secret_token_value";
+    let input = "CORP_GATEWAY_CREDENTIAL=my_secret_value";
     let out = redact_secrets(input);
-    assert_eq!(out, "GROQ_API_KEY=[REDACTED_SECRET]");
+    assert_eq!(out, "CORP_GATEWAY_CREDENTIAL=[REDACTED_SECRET]");
 
     if let Some(v) = prev {
         crate::env::set_var(key_var, v);
@@ -824,10 +819,11 @@ fn push_reasoning_blocks_openai_keeps_readable_trace() {
 }
 
 #[test]
-fn push_reasoning_blocks_openrouter_replay_is_readable() {
+fn push_reasoning_blocks_generic_provider_replay_is_readable() {
     let mut blocks = Vec::new();
-    push_reasoning_blocks(&mut blocks, "openrouter", "or reasoning", None, true);
-    // OpenRouter stores a readable Reasoning block, which doubles as history.
+    push_reasoning_blocks(&mut blocks, "gemini", "gemini reasoning", None, true);
+    // Providers without a native replay format store a readable Reasoning
+    // block, which doubles as history.
     assert_eq!(blocks.len(), 1);
     assert!(matches!(blocks[0], ContentBlock::Reasoning { .. }));
 }

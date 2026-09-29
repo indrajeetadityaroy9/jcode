@@ -14,7 +14,7 @@ fn resolve_swarm_spawn_model_does_not_inherit_a_route_that_cannot_serve_the_mode
         &coordinator_identity(
             Some("claude-opus-5"),
             Some("gemini-api"),
-            Some("openai-compatible:gemini-api"),
+            Some("gemini-api"),
         ),
     );
 
@@ -26,22 +26,19 @@ fn resolve_swarm_spawn_model_does_not_inherit_a_route_that_cannot_serve_the_mode
 
 #[test]
 fn resolve_swarm_spawn_model_keeps_a_custom_profile_key_for_an_unknown_model_id() {
-    // The guard must only fire on a confident first-party disagreement: an
-    // OpenAI-compatible profile legitimately serves model ids the built-in
+    // The guard must only fire on a confident first-party disagreement: a
+    // named provider profile legitimately serves model ids the built-in
     // tables know nothing about.
     let selection = resolve_swarm_spawn_selection(
         None,
         None,
         &coordinator_identity(
-            Some("nvidia/llama-3.3-nemotron-super-49b-v1"),
-            Some("nvidia"),
-            Some("openai-compatible:nvidia-nim"),
+            Some("my-model-v1"),
+            Some("my-proxy"),
+            Some("my-proxy"),
         ),
     );
 
-    assert_eq!(selection.provider_key.as_deref(), Some("nvidia"));
-    assert_eq!(
-        selection.route_api_method.as_deref(),
-        Some("openai-compatible:nvidia-nim")
-    );
+    assert_eq!(selection.provider_key.as_deref(), Some("my-proxy"));
+    assert_eq!(selection.route_api_method.as_deref(), Some("my-proxy"));
 }

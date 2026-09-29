@@ -235,7 +235,6 @@ impl Agent {
             "provider": self.provider.name(),
             "model": self.provider.model(),
             "provider_session_id": self.provider_session_id,
-            "last_upstream_provider": self.last_upstream_provider,
             "last_connection_type": self.last_connection_type,
             "active_skill": self.active_skill,
             "allowed_tools": self.allowed_tools,

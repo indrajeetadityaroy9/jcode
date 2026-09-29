@@ -35,12 +35,11 @@ impl App {
     /// and persist the session. Returns the active model after the switch.
     ///
     /// `model_request` is the original request string (it may carry an
-    /// explicit provider prefix like `openrouter:`); for provider-level
+    /// explicit provider prefix like `claude-api:`); for provider-level
     /// switches without a model request, pass the active model name.
     pub(super) fn finalize_model_switch(&mut self, model_request: &str) -> String {
         self.provider_session_id = None;
         self.session.provider_session_id = None;
-        self.upstream_provider = None;
         self.status_detail = None;
         self.invalidate_model_picker_cache();
         let active_model = self.provider.model();
@@ -464,7 +463,6 @@ impl App {
         };
 
         if self.is_remote {
-            self.upstream_provider = None;
             self.status_detail = None;
             // Track the method we are switching to so subsequent fallback picks
             // know the active credential path (remote sessions have no other
@@ -485,7 +483,6 @@ impl App {
                 let spec = offer.selection.routed_model_spec();
                 self.provider_session_id = None;
                 self.session.provider_session_id = None;
-                self.upstream_provider = None;
                 self.status_detail = None;
                 self.invalidate_model_picker_cache();
                 let active_model = self.provider.model();
@@ -691,7 +688,7 @@ impl App {
     ///
     /// Providers merge `Option` cache counters across repeated snapshots of
     /// the *same* call, but the first report of a *new* call must replace the
-    /// counters wholesale: some gateways (e.g. deepseek via opencode-go) only
+    /// counters wholesale: some providers only
     /// report `cache_read_input_tokens` on some calls, and a stale cache-read
     /// figure from a previous call would otherwise be added on top of the new
     /// call's input tokens, inflating the context display (issue #441).

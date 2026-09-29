@@ -36,18 +36,6 @@ impl MultiProvider {
             .clone()
     }
 
-    pub(super) fn openrouter_provider(&self) -> Option<Arc<dyn Provider>> {
-        ProviderRegistry::new(self).real_openrouter()
-    }
-
-    pub(super) fn active_openrouter_execution_provider(&self) -> Option<Arc<dyn Provider>> {
-        ProviderRegistry::new(self).active_openrouter_execution()
-    }
-
-    pub(super) fn clear_active_openai_compatible_profile(&self) {
-        ProviderRegistry::new(self).clear_active_compatible_profile();
-    }
-
     pub(super) fn has_claude_runtime(&self) -> bool {
         self.anthropic_provider().is_some() || self.claude_provider().is_some()
     }
@@ -58,14 +46,6 @@ impl MultiProvider {
             ActiveProvider::OpenAI => self.openai_provider().is_some(),
             ActiveProvider::Antigravity => self.antigravity_provider().is_some(),
             ActiveProvider::Gemini => self.gemini_provider().is_some(),
-            // The OpenRouter slot executes through the *active* runtime: a
-            // direct OpenAI-compatible profile when one is active, else real
-            // OpenRouter. Checking only the real slot here made dispatch treat
-            // an active compat profile (e.g. minimax) as "not configured"
-            // whenever no OPENROUTER_API_KEY existed, and the failover loop
-            // then silently rerouted the request to another provider such as
-            // OpenAI (issue #358).
-            ActiveProvider::OpenRouter => self.active_openrouter_execution_provider().is_some(),
         }
     }
 

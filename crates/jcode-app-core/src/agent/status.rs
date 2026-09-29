@@ -137,12 +137,6 @@ impl Agent {
             })
     }
 
-    pub fn last_upstream_provider(&self) -> Option<String> {
-        self.last_upstream_provider
-            .clone()
-            .or_else(|| self.provider.preferred_provider())
-    }
-
     pub fn last_connection_type(&self) -> Option<String> {
         self.last_connection_type.clone()
     }
@@ -152,47 +146,15 @@ impl Agent {
     }
 
     pub fn provider_name(&self) -> String {
-        // `display_name()` resolves the active runtime profile (e.g. NVIDIA NIM)
-        // for the OpenRouter slot; for all other providers it equals `name()`.
         self.provider.display_name()
     }
 
     pub fn provider_model(&self) -> String {
-        let model = self.provider.model();
-        self.provider
-            .explicit_provider_pin_for_current_model()
-            .map(|pin| format!("{model}@{pin}"))
-            .unwrap_or(model)
+        self.provider.model()
     }
 
     pub(super) fn provider_key_for_new_session(&self) -> Option<String> {
-        if self
-            .provider
-            .explicit_provider_pin_for_current_model()
-            .is_some()
-        {
-            // Provider pins are explicit OpenRouter route identity. Prefer that
-            // over ambient runtime env state when a CLI-created Agent snapshots
-            // a provider that was configured before the Agent existed.
-            return crate::provider::MultiProvider::session_provider_key_for_model_request(
-                &self.provider_model(),
-                self.provider.name(),
-            );
-        }
-
         crate::session::derive_session_provider_key(self.provider.name())
-    }
-
-    pub(super) fn reconcile_explicit_provider_pin_route(&mut self) {
-        if self
-            .provider
-            .explicit_provider_pin_for_current_model()
-            .is_some()
-        {
-            self.session.model = Some(self.provider_model());
-            self.session.provider_key = Some("openrouter".to_string());
-            self.session.route_api_method = Some("openrouter".to_string());
-        }
     }
 
     /// Get the short/friendly name for this session (e.g., "fox")

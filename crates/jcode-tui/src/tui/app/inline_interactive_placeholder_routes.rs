@@ -3,7 +3,7 @@
 //!
 //! "remote-catalog"/"current" are placeholder methods from names-only catalog
 //! downgrades, not real provider routes. A model covered only by placeholders
-//! still needs its actual routes (OpenAI OAuth/API key, OpenRouter, ...)
+//! still needs its actual routes (OpenAI OAuth/API key, Anthropic, ...)
 //! synthesized, and placeholder routes must never be persisted to the catalog
 //! cache: they describe a catalog that is still refreshing, and persisting
 //! them would resurrect useless rows on the next cold start.
@@ -30,20 +30,18 @@ where
 
 /// Whether a picker route's runtime can apply a per-request reasoning effort.
 /// Effort rows are only rendered for these routes; other routes (named
-/// OpenAI-compatible profiles, Antigravity CLI, remote-catalog placeholders, ...) get one plain
-/// row per model because a picked effort could not actually be applied.
+/// provider profiles, Antigravity CLI, remote-catalog placeholders, ...) get
+/// one plain row per model because a picked effort could not actually be
+/// applied.
 pub(super) fn route_supports_reasoning_effort(api_method: &str) -> bool {
     use crate::provider::ModelRouteApiMethod as Method;
     match Method::parse(api_method) {
         Method::ClaudeOAuth
         | Method::AnthropicApiKey
         | Method::OpenAIOAuth
-        | Method::OpenAIApiKey
-        | Method::OpenRouter => true,
-        // Named OpenAI-compatible profiles expose effort through `/effort`.
-        // Expanding them here creates one duplicate picker row per effort.
-        Method::OpenAiCompatible { .. } => false,
-        Method::CodeAssistOAuth
+        | Method::OpenAIApiKey => true,
+        Method::NamedProfile(_)
+        | Method::CodeAssistOAuth
         | Method::AntigravityHttps
         | Method::RemoteCatalog
         | Method::Current

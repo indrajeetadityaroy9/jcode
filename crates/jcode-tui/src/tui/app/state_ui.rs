@@ -952,11 +952,6 @@ fn push_cache_baseline(lines: &mut Vec<String>, label: &str, baseline: Option<&K
         ));
         lines.push(format!("- {}.provider: {}", label, baseline.provider));
         lines.push(format!("- {}.model: {}", label, baseline.model));
-        lines.push(format!(
-            "- {}.upstream_provider: {}",
-            label,
-            opt_string(baseline.upstream_provider.as_deref())
-        ));
         push_cache_signature(
             lines,
             &format!("{}.signature", label),
@@ -1174,10 +1169,6 @@ fn format_cache_stats(app: &App) -> String {
     lines.push(format!("- is_replay: {}", app.is_replay));
     lines.push(format!("- current_provider: {}", current_provider));
     lines.push(format!("- current_model: {}", current_model));
-    lines.push(format!(
-        "- upstream_provider: {}",
-        opt_string(app.upstream_provider.as_deref())
-    ));
     lines.push(format!(
         "- connection_type: {}",
         opt_string(app.connection_type.as_deref())
@@ -1407,10 +1398,6 @@ fn format_cache_stats(app: &App) -> String {
         ));
         lines.push(format!("- pending_request.provider: {}", request.provider));
         lines.push(format!("- pending_request.model: {}", request.model));
-        lines.push(format!(
-            "- pending_request.upstream_provider: {}",
-            opt_string(request.upstream_provider.as_deref())
-        ));
         lines.push(format!(
             "- pending_request.baseline_messages_prefix_matches: {:?}",
             request.baseline_messages_prefix_matches

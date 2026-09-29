@@ -114,8 +114,8 @@ fn auto_scriptable_flow_reason_uses_no_browser_reason_when_requested() {
 
 #[test]
 fn auto_scriptable_flow_reason_skips_api_key_only_provider() {
-    let provider = crate::provider_catalog::resolve_login_provider("openrouter")
-        .expect("resolve openrouter provider");
+    let provider = crate::provider_catalog::resolve_login_provider("openai-api")
+        .expect("resolve openai-api provider");
     let reason = auto_scriptable_flow_reason(provider, &LoginOptions::default(), false);
     assert_eq!(reason, None);
 }

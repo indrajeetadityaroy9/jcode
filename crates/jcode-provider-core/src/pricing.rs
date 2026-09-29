@@ -4,13 +4,6 @@ fn usd_to_micros(usd: f64) -> u64 {
     (usd * 1_000_000.0).round() as u64
 }
 
-fn usd_per_token_str_to_micros_per_mtok(raw: &str) -> Option<u64> {
-    raw.trim()
-        .parse::<f64>()
-        .ok()
-        .map(|usd_per_token| (usd_per_token * 1_000_000_000_000.0).round() as u64)
-}
-
 /// Published Anthropic API pricing (docs.anthropic.com/en/docs/about-claude/pricing).
 ///
 /// `[1m]` long-context variants bill at standard per-token rates: Anthropic
@@ -200,22 +193,6 @@ pub fn openai_oauth_pricing(model: &str) -> RouteCheapnessEstimate {
     )
 }
 
-pub fn openrouter_pricing_from_token_prices(
-    prompt: Option<&str>,
-    completion: Option<&str>,
-    input_cache_read: Option<&str>,
-    source: RouteCostSource,
-    confidence: RouteCostConfidence,
-    note: Option<String>,
-) -> Option<RouteCheapnessEstimate> {
-    let input = prompt.and_then(usd_per_token_str_to_micros_per_mtok)?;
-    let output = completion.and_then(usd_per_token_str_to_micros_per_mtok)?;
-    let cache = input_cache_read.and_then(usd_per_token_str_to_micros_per_mtok);
-    Some(RouteCheapnessEstimate::metered(
-        source, confidence, input, output, cache, note,
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,23 +235,6 @@ mod tests {
         assert_eq!(haiku.input_price_per_mtok_micros, Some(1_000_000));
         assert_eq!(haiku.output_price_per_mtok_micros, Some(5_000_000));
         assert_eq!(haiku.cache_read_price_per_mtok_micros, Some(100_000));
-    }
-
-    #[test]
-    fn openrouter_token_pricing_parses_token_prices() {
-        let estimate = openrouter_pricing_from_token_prices(
-            Some("0.0000025"),
-            Some("0.000015"),
-            Some("0.00000025"),
-            RouteCostSource::OpenRouterCatalog,
-            RouteCostConfidence::Medium,
-            Some("test".to_string()),
-        )
-        .expect("parsed pricing");
-
-        assert_eq!(estimate.input_price_per_mtok_micros, Some(2_500_000));
-        assert_eq!(estimate.output_price_per_mtok_micros, Some(15_000_000));
-        assert_eq!(estimate.cache_read_price_per_mtok_micros, Some(250_000));
     }
 
     #[test]

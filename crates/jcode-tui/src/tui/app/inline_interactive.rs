@@ -18,9 +18,8 @@ mod preview;
 mod preview_request;
 use helpers::{
     agent_model_default_summary, agent_model_target_label, catchup_candidates,
-    catchup_queue_position, model_entry_base_name, model_entry_saved_spec,
-    openrouter_route_model_id, picker_route_model_spec, picker_route_selection,
-    save_agent_model_override,
+    catchup_queue_position, model_entry_base_name, model_entry_saved_spec, picker_route_model_spec,
+    picker_route_selection, save_agent_model_override,
 };
 
 const REMOTE_MODEL_CATALOG_CACHE_FILE: &str = "remote_model_catalog_cache.json";
@@ -92,12 +91,10 @@ use placeholder_routes::route_supports_reasoning_effort;
 
 /// Apply the `provider.model_picker_providers` allowlist (issue #460).
 ///
-/// Each allowlist entry can name a provider label ("openai", "llama.cpp",
-/// "anthropic"), a route api method ("claude-oauth", "openrouter",
-/// "openai-compatible:myprofile"), or a bare openai-compatible profile id
-/// ("myprofile"). Matching is case/format-insensitive via the shared provider
-/// label normalizer. Routes for the active model are always kept so the
-/// current selection never disappears from the picker, but only when their
+/// Each allowlist entry can name a provider label ("openai", "anthropic") or a
+/// route api method ("claude-oauth"). Matching is case/format-insensitive via
+/// the shared provider label normalizer. Routes for the active model are always
+/// kept so the current selection never disappears from the picker, but only when their
 /// provider and API method match the active route. A filter that
 /// matches nothing falls back to the unfiltered list instead of an empty
 /// picker.
@@ -125,17 +122,9 @@ fn filter_routes_by_provider_allowlist(
     let route_matches = |route: &crate::provider::ModelRoute| -> bool {
         let provider = normalize(&route.provider);
         let api_method = normalize(&route.api_method);
-        // "openai-compatible:myprofile" normalizes to "openaicompatible:myprofile";
-        // also expose the bare profile id for convenience.
-        let profile_id = route
-            .api_method
-            .split_once(':')
-            .map(|(_, profile)| normalize(profile))
-            .unwrap_or_default();
         allowed.iter().any(|entry| {
             *entry == provider
                 || *entry == api_method
-                || (!profile_id.is_empty() && *entry == profile_id)
                 || crate::provider::model_route_provider_labels_match(&route.provider, entry)
         })
     };
@@ -332,11 +321,9 @@ fn remote_catalog_api_method_is_safe(api_method: &str) -> bool {
     use crate::provider::ModelRouteApiMethod as Method;
     match Method::parse(api_method) {
         Method::Other(_) | Method::Current => false,
-        Method::OpenAiCompatible {
-            profile_id: Some(profile_id),
-        } => {
-            profile_id.len() <= 128
-                && profile_id
+        Method::NamedProfile(name) => {
+            name.len() <= 128
+                && name
                     .bytes()
                     .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
         }
@@ -449,9 +436,8 @@ fn model_picker_provider_hint_from_model_spec(model_spec: &str) -> Option<(&str,
     let normalized = provider_hint.to_ascii_lowercase();
     if matches!(
         normalized.as_str(),
-        "claude" | "anthropic" | "openai" | "antigravity" | "openrouter" | "gemini"
-    ) || crate::provider_catalog::openai_compatible_profile_by_id(provider_hint).is_some()
-    {
+        "claude" | "anthropic" | "openai" | "antigravity" | "gemini"
+    ) {
         Some((provider_hint, bare_model))
     } else {
         None
@@ -639,7 +625,6 @@ impl App {
             return;
         }
         Self::extend_remote_routes_for_uncovered_models_static(
-            self.remote_provider_name.as_deref(),
             &self.remote_available_entries,
             routes,
         );
@@ -648,7 +633,6 @@ impl App {
     /// Self-free variant of the route extension so the background picker
     /// loader can run it off the UI thread with cloned catalog state.
     fn extend_remote_routes_for_uncovered_models_static(
-        remote_provider_name: Option<&str>,
         remote_available_entries: &[String],
         routes: &mut Vec<crate::provider::ModelRoute>,
     ) {
@@ -694,9 +678,7 @@ impl App {
                     )
                 })
                 .collect();
-            for route in
-                crate::provider::remote_model_routes_fallback(remote_provider_name, &missing)
-            {
+            for route in crate::provider::remote_model_routes_fallback(&missing) {
                 if !existing.contains(&(
                     route.model.clone(),
                     route.provider.clone(),
@@ -1066,7 +1048,7 @@ impl App {
                 return;
             }
             // Names-only remote catalog: synthesize properly classified
-            // provider routes (Comtegra/Gemini/OpenRouter/…)
+            // provider routes (Anthropic/OpenAI/Gemini/…)
             // rather than a generic "remote-catalog" placeholder. The full
             // fallback reads per-model disk caches and auth state, which can
             // take seconds on a large catalog, so for big catalogs open
@@ -1092,18 +1074,15 @@ impl App {
                 } else {
                     self.open_loading_model_picker(&current_model);
                 }
-                let remote_provider_name = self.remote_provider_name.clone();
                 let remote_available_entries = self.remote_available_entries.clone();
                 self.start_model_picker_route_load_with(
                     cache_signature,
                     picker_started,
                     move || {
                         let mut routes = crate::provider::remote_model_routes_fallback(
-                            remote_provider_name.as_deref(),
                             &remote_available_entries,
                         );
                         Self::extend_remote_routes_for_uncovered_models_static(
-                            remote_provider_name.as_deref(),
                             &remote_available_entries,
                             &mut routes,
                         );
@@ -1154,8 +1133,6 @@ impl App {
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
-                old: false,
-                created_date: None,
                 effort: None,
             }],
             selected: 0,
@@ -1405,9 +1382,7 @@ impl App {
                 crate::provider::ModelRouteApiMethod::ClaudeOAuth
                 | crate::provider::ModelRouteApiMethod::OpenAIOAuth
                 | crate::provider::ModelRouteApiMethod::OpenAIApiKey => 0,
-                crate::provider::ModelRouteApiMethod::AnthropicApiKey
-                | crate::provider::ModelRouteApiMethod::OpenAiCompatible { .. } => 1,
-                crate::provider::ModelRouteApiMethod::OpenRouter => 4,
+                crate::provider::ModelRouteApiMethod::AnthropicApiKey => 1,
                 _ => 5,
             };
             let cheapness = r.estimated_reference_cost_micros.unwrap_or(u64::MAX);
@@ -1416,34 +1391,6 @@ impl App {
 
         fn route_matches_recent_auth(route_provider: &str, login_provider: &str) -> bool {
             jcode_provider_core::model_route_provider_labels_related(route_provider, login_provider)
-        }
-
-        let timestamp_started = std::time::Instant::now();
-        let openrouter_created_timestamps =
-            crate::provider::openrouter::load_model_timestamp_index();
-        let timestamp_ms = timestamp_started.elapsed().as_millis();
-        let openrouter_created_timestamp = |model: &str| {
-            crate::provider::openrouter::model_created_timestamp_from_index(
-                model,
-                &openrouter_created_timestamps,
-            )
-        };
-
-        let latest_recommended_ts: Option<u64> = RECOMMENDED_MODELS
-            .iter()
-            .filter_map(|m| openrouter_created_timestamp(m))
-            .max();
-        let old_threshold_secs = latest_recommended_ts
-            .map(|ts| ts.saturating_sub(30 * 86400))
-            .unwrap_or(0);
-
-        fn format_created(ts: u64) -> String {
-            use chrono::{TimeZone, Utc};
-            if let Some(dt) = Utc.timestamp_opt(ts as i64, 0).single() {
-                dt.format("%b %Y").to_string()
-            } else {
-                String::new()
-            }
         }
 
         let recent_auth_provider = self
@@ -1482,9 +1429,8 @@ impl App {
             }
 
             // Expand each route only across the effort ladder its runtime can
-            // actually apply. The same model can be reachable through native
-            // OpenAI (where `max` is real) and OpenRouter (where `max` aliases
-            // `xhigh`), so model-id-only inference over-advertises values.
+            // actually apply, so model-id-only inference never over-advertises
+            // values a route cannot honor.
             let mut effort_routes = Vec::new();
             let mut plain_routes = Vec::new();
             let mut model_efforts = Vec::new();
@@ -1526,7 +1472,6 @@ impl App {
                     let display_name = format!("{} ({})", name, effort_label);
                     let effort_matches_current =
                         *name == current_model && current_effort.as_deref() == Some(*effort);
-                    let or_created = openrouter_created_timestamp(name);
                     for (route, route_efforts) in &effort_routes {
                         if !route_efforts.contains(effort) {
                             continue;
@@ -1553,9 +1498,6 @@ impl App {
                                 route,
                                 Some(effort),
                             ),
-                            old: old_threshold_secs > 0
-                                && or_created.map(|t| t < old_threshold_secs).unwrap_or(false),
-                            created_date: or_created.map(format_created),
                             effort: Some(effort.to_string()),
                             is_default: is_config_default(name, route, Some(effort)),
                             is_favorite: model_picker_is_favorite(
@@ -1569,9 +1511,6 @@ impl App {
                 }
             }
             {
-                let or_created = openrouter_created_timestamp(name);
-                let is_old = old_threshold_secs > 0
-                    && or_created.map(|t| t < old_threshold_secs).unwrap_or(false);
                 for route in plain_routes {
                     let is_recommended = model_picker_route_is_recommended(name, &route);
                     let is_current = model_picker_route_is_current(
@@ -1590,8 +1529,6 @@ impl App {
                         recommended: is_recommended,
                         recommendation_rank: model_picker_recommendation_rank(name),
                         usage_score: model_picker_usage_score(&usage_store, name, &route, None),
-                        old: is_old,
-                        created_date: or_created.map(format_created),
                         effort: None,
                         is_default,
                         is_favorite: model_picker_is_favorite(&favorites_store, name, &route, None),
@@ -1647,8 +1584,6 @@ impl App {
             } else {
                 1
             };
-            let a_old = if a.old { 1u8 } else { 0 };
-            let b_old = if b.old { 1u8 } else { 0 };
             a_current
                 .cmp(&b_current)
                 .then(a_favorite.cmp(&b_favorite))
@@ -1657,7 +1592,6 @@ impl App {
                 .then(a_rec.cmp(&b_rec))
                 .then(a_rec_rank.cmp(&b_rec_rank))
                 .then(a_avail.cmp(&b_avail))
-                .then(a_old.cmp(&b_old))
                 .then(a.name.cmp(&b.name))
                 .then_with(|| {
                     a.active_option()
@@ -1675,7 +1609,7 @@ impl App {
 
         if total_ms >= 250 || std::env::var("JCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
             crate::logging::info(&format!(
-                "[TIMING] model_picker_open: remote={}, simplified={}, routes={}, models={}, entries={}, routes={}ms, grouping={}ms, timestamps={}ms, entries_sort={}ms, total={}ms",
+                "[TIMING] model_picker_open: remote={}, simplified={}, routes={}, models={}, entries={}, routes={}ms, grouping={}ms, entries_sort={}ms, total={}ms",
                 self.is_remote,
                 crate::perf::tui_policy().simplified_model_picker,
                 routes.len(),
@@ -1683,7 +1617,6 @@ impl App {
                 entries.len(),
                 routes_ms,
                 grouping_ms,
-                timestamp_ms,
                 entries_ms,
                 total_ms,
             ));
@@ -1958,10 +1891,7 @@ impl App {
     }
 
     pub(super) fn build_remote_model_routes_fallback(&self) -> Vec<crate::provider::ModelRoute> {
-        crate::provider::remote_model_routes_fallback(
-            self.remote_provider_name.as_deref(),
-            &self.remote_available_entries,
-        )
+        crate::provider::remote_model_routes_fallback(&self.remote_available_entries)
     }
 
     fn build_remote_model_routes_lightweight_fallback(
@@ -3265,14 +3195,7 @@ impl App {
                         }
 
                         let bare_name = model_entry_base_name(&entry);
-                        let spec = if crate::provider::ModelRouteApiMethod::parse(&route.api_method)
-                            .is_openrouter()
-                            && route.provider == "auto"
-                        {
-                            openrouter_route_model_id(&bare_name)
-                        } else {
-                            picker_route_model_spec(&entry, route)
-                        };
+                        let spec = picker_route_model_spec(&entry, route);
                         let route_selection = picker_route_selection(&entry, route);
 
                         let effort = entry.effort.clone();
@@ -3327,7 +3250,6 @@ impl App {
 
                         if self.is_remote {
                             self.inline_interactive_state = None;
-                            self.upstream_provider = None;
                             self.status_detail = None;
                             // Track the chosen method client-side so post-error
                             // fallback picks know which credential path the
@@ -3351,7 +3273,6 @@ impl App {
                                     self.inline_interactive_state = None;
                                     self.provider_session_id = None;
                                     self.session.provider_session_id = None;
-                                    self.upstream_provider = None;
                                     self.status_detail = None;
                                     self.invalidate_model_picker_cache();
                                     let active_model = self.provider.model();
@@ -3550,8 +3471,6 @@ mod tests {
             recommended: false,
             recommendation_rank: usize::MAX,
             usage_score,
-            old: false,
-            created_date: None,
             effort: None,
         }
     }
@@ -3754,21 +3673,13 @@ mod tests {
             "Anthropic",
             "Claude"
         ));
-        assert!(jcode_provider_core::model_route_provider_labels_match(
-            "auto",
-            "OpenRouter"
-        ));
     }
 
     #[test]
     fn model_picker_provider_match_does_not_use_substring_false_positives() {
         assert!(!jcode_provider_core::model_route_provider_labels_match(
-            "OpenRouter/OpenAI",
+            "Anthropic/OpenAI",
             "OpenAI"
-        ));
-        assert!(!jcode_provider_core::model_route_provider_labels_match(
-            "OpenAI",
-            "OpenRouter"
         ));
     }
 
@@ -3867,7 +3778,7 @@ mod tests {
         ));
         // Unknown provider families ignore stored efforts.
         assert!(model_picker_effort_matches_default(
-            Some("openrouter"),
+            Some("gemini"),
             Some("high"),
             Some("low"),
             Some("low"),
@@ -3894,33 +3805,10 @@ mod tests {
     }
 
     #[test]
-    fn model_picker_default_route_matches_openrouter_endpoint_specs() {
-        let openrouter_openai_route = picker_option_with_method("OpenAI", "openrouter");
-
-        assert!(model_picker_route_is_default(
-            "gpt-5.5",
-            &openrouter_openai_route,
-            Some("openai/gpt-5.5@OpenAI"),
-            Some("openrouter"),
-        ));
-        assert!(!model_picker_route_is_default(
-            "gpt-5.5",
-            &openrouter_openai_route,
-            Some("anthropic/gpt-5.5@OpenAI"),
-            Some("openrouter"),
-        ));
-    }
-
-    #[test]
     fn model_picker_recommended_route_is_provider_aware() {
         let openai_oauth_route = picker_option_with_method("OpenAI", "openai-oauth");
         let openai_api_key_route = picker_option_with_method("OpenAI", "openai-api-key");
         let claude_oauth_route = picker_option_with_method("Anthropic", "claude-oauth");
-        let claude_openrouter_route = picker_option_with_method("Anthropic", "openrouter");
-        let openrouter_auto_route = picker_option_with_method("auto", "openrouter");
-        let openrouter_provider_route = picker_option_with_method("DeepSeek", "openrouter");
-        let deepseek_direct_route =
-            picker_option_with_method("DeepSeek", "openai-compatible:deepseek");
         let unavailable_openai_oauth_route = PickerOption {
             available: false,
             ..openai_oauth_route.clone()
@@ -3940,8 +3828,8 @@ mod tests {
         ));
 
         // Current policy (see jcode-provider-core): claude-opus-4-8 is the
-        // recommended Anthropic flagship; older Opus and OpenRouter
-        // routes are not recommended.
+        // recommended Anthropic flagship; older Opus routes are not
+        // recommended.
         assert!(model_picker_route_is_recommended(
             "claude-opus-4-8",
             &claude_oauth_route,
@@ -3949,24 +3837,6 @@ mod tests {
         assert!(!model_picker_route_is_recommended(
             "claude-opus-4-7",
             &claude_oauth_route,
-        ));
-        assert!(!model_picker_route_is_recommended(
-            "claude-opus-4-8",
-            &claude_openrouter_route,
-        ));
-
-        // DeepSeek routes are no longer in the recommended set at all.
-        assert!(!model_picker_route_is_recommended(
-            "deepseek/deepseek-v4-pro",
-            &openrouter_auto_route,
-        ));
-        assert!(!model_picker_route_is_recommended(
-            "deepseek/deepseek-v4-pro",
-            &deepseek_direct_route,
-        ));
-        assert!(!model_picker_route_is_recommended(
-            "deepseek/deepseek-v4-pro",
-            &openrouter_provider_route,
         ));
     }
 
@@ -4066,77 +3936,59 @@ mod tests {
         assert!(route_supports_reasoning_effort("claude-api"));
         assert!(route_supports_reasoning_effort("openai-oauth"));
         assert!(route_supports_reasoning_effort("openai-api-key"));
-        assert!(route_supports_reasoning_effort("openrouter"));
-        assert!(!route_supports_reasoning_effort(
-            "openai-compatible:llamacpp"
-        ));
-        assert!(!route_supports_reasoning_effort("openai-compatible:zai"));
         assert!(!route_supports_reasoning_effort("https"));
-        assert!(!route_supports_reasoning_effort("openai-compatible"));
         assert!(!route_supports_reasoning_effort("remote-catalog"));
         assert!(!route_supports_reasoning_effort("current"));
     }
 
     #[test]
-    fn provider_allowlist_filters_routes_by_label_method_and_profile() {
+    fn provider_allowlist_filters_routes_by_label_and_method() {
         let routes = vec![
             model_route("gpt-5.5", "OpenAI", "openai-oauth"),
             model_route("claude-fable-5", "Anthropic", "claude-oauth"),
-            model_route("qwen3-coder", "llama.cpp", "openai-compatible:llamacpp"),
-            model_route("deepseek/deepseek-v4-pro", "auto", "openrouter"),
+            model_route("gemini-3-pro", "Gemini", "gemini"),
         ];
 
         // Provider label match (normalized: case/dots/spaces insensitive).
         let filtered = filter_routes_by_provider_allowlist(
             routes.clone(),
-            Some(&["Llama.CPP".to_string()]),
+            Some(&["GEMINI".to_string()]),
             "unrelated-current",
             "OpenAI",
             None,
         );
         assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].model, "qwen3-coder");
+        assert_eq!(filtered[0].model, "gemini-3-pro");
 
-        // Bare openai-compatible profile id match.
+        // Api-method match plus provider label match.
         let filtered = filter_routes_by_provider_allowlist(
             routes.clone(),
-            Some(&["llamacpp".to_string()]),
-            "unrelated-current",
-            "OpenAI",
-            None,
-        );
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].provider, "llama.cpp");
-
-        // Api-method match plus alias-aware provider label match.
-        let filtered = filter_routes_by_provider_allowlist(
-            routes.clone(),
-            Some(&["claude-oauth".to_string(), "openrouter".to_string()]),
+            Some(&["claude-oauth".to_string(), "gemini".to_string()]),
             "unrelated-current",
             "OpenAI",
             None,
         );
         let models: Vec<&str> = filtered.iter().map(|r| r.model.as_str()).collect();
-        assert_eq!(models, ["claude-fable-5", "deepseek/deepseek-v4-pro"]);
+        assert_eq!(models, ["claude-fable-5", "gemini-3-pro"]);
     }
 
     #[test]
     fn provider_allowlist_keeps_current_model_and_never_empties_picker() {
         let routes = vec![
             model_route("gpt-5.5", "OpenAI", "openai-oauth"),
-            model_route("qwen3-coder", "llama.cpp", "openai-compatible:llamacpp"),
+            model_route("gemini-3-pro", "Gemini", "gemini"),
         ];
 
         // Current model's route survives even when its provider is filtered out.
         let filtered = filter_routes_by_provider_allowlist(
             routes.clone(),
-            Some(&["llamacpp".to_string()]),
+            Some(&["gemini".to_string()]),
             "gpt-5.5",
             "OpenAI",
             Some("openai-oauth"),
         );
         let models: Vec<&str> = filtered.iter().map(|r| r.model.as_str()).collect();
-        assert_eq!(models, ["gpt-5.5", "qwen3-coder"]);
+        assert_eq!(models, ["gpt-5.5", "gemini-3-pro"]);
 
         // A filter matching nothing falls back to the full list.
         let filtered = filter_routes_by_provider_allowlist(
@@ -4174,24 +4026,20 @@ mod tests {
     #[test]
     fn provider_allowlist_does_not_keep_disallowed_route_sharing_current_model() {
         let routes = vec![
-            model_route(
-                "moonshotai/Kimi-K3",
-                "my-provider",
-                "openai-compatible:my-provider",
-            ),
-            model_route("moonshotai/Kimi-K3", "Gemini", "gemini"),
+            model_route("gpt-5.5", "OpenAI", "openai-oauth"),
+            model_route("gpt-5.5", "Gemini", "gemini"),
         ];
 
         let filtered = filter_routes_by_provider_allowlist(
             routes,
-            Some(&["my-provider".to_string()]),
-            "moonshotai/Kimi-K3",
-            "my-provider",
-            Some("openai-compatible:my-provider"),
+            Some(&["gemini".to_string()]),
+            "gpt-5.5",
+            "Gemini",
+            Some("gemini"),
         );
 
         assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].provider, "my-provider");
+        assert_eq!(filtered[0].provider, "Gemini");
     }
 
     #[test]
@@ -4199,13 +4047,12 @@ mod tests {
         let routes = vec![
             model_route("gpt-5.5", "OpenAI", "openai-oauth"),
             model_route("gpt-5.5", "OpenAI", "openai-api-key"),
-            model_route("gpt-5.5", "Gemini", "gemini"),
-            model_route("qwen3-coder", "llama.cpp", "openai-compatible:llamacpp"),
+            model_route("gemini-3-pro", "Gemini", "gemini"),
         ];
 
         let filtered = filter_routes_by_provider_allowlist(
             routes,
-            Some(&["llamacpp".to_string()]),
+            Some(&["gemini".to_string()]),
             "gpt-5.5",
             "OpenAI",
             Some("openai-oauth"),
@@ -4225,7 +4072,7 @@ mod tests {
             routes,
             [
                 ("gpt-5.5", "OpenAI", "openai-oauth"),
-                ("qwen3-coder", "llama.cpp", "openai-compatible:llamacpp"),
+                ("gemini-3-pro", "Gemini", "gemini"),
             ]
         );
     }

@@ -41,40 +41,25 @@ async fn maybe_run_auth_test_smoke_for_choice(
     prompt: &str,
 ) {
     if enabled && report.success {
-        match auth_test_choice_plan(choice, model).await {
-            Ok(AuthTestChoicePlan::Run { model }) => {
-                if matches!(kind, AuthTestSmokeKind::Tool)
-                    && let Some(detail) =
-                        tool_smoke_skip_detail_for_choice(choice, model.as_deref())
-                {
-                    report.push_step(kind.step_name(), true, detail);
-                    return;
-                }
-                match kind.run_for_choice(choice, model.as_deref(), prompt).await {
-                    Ok(output) => {
-                        let ok = output.contains("AUTH_TEST_OK");
-                        kind.set_output(report, output.clone());
-                        report.push_step(
-                            kind.step_name(),
-                            ok,
-                            if ok {
-                                kind.success_detail().to_string()
-                            } else {
-                                kind.failure_detail(&output)
-                            },
-                        );
-                    }
-                    Err(err) => {
-                        let detail = format!("{err:#}");
-                        kind.set_output(report, detail.clone());
-                        report.push_step(kind.step_name(), false, detail);
-                    }
-                }
+        match kind.run_for_choice(choice, model, prompt).await {
+            Ok(output) => {
+                let ok = output.contains("AUTH_TEST_OK");
+                kind.set_output(report, output.clone());
+                report.push_step(
+                    kind.step_name(),
+                    ok,
+                    if ok {
+                        kind.success_detail().to_string()
+                    } else {
+                        kind.failure_detail(&output)
+                    },
+                );
             }
-            Ok(AuthTestChoicePlan::Skip(detail)) => {
-                report.push_step(kind.step_name(), true, detail);
+            Err(err) => {
+                let detail = format!("{err:#}");
+                kind.set_output(report, detail.clone());
+                report.push_step(kind.step_name(), false, detail);
             }
-            Err(err) => report.push_step(kind.step_name(), false, format!("{err:#}")),
         }
     } else if !enabled {
         report.push_step(kind.step_name(), true, kind.skipped_by_flag_detail());
@@ -112,7 +97,6 @@ async fn run_post_login_validation_inner(
         return Ok(());
     };
 
-    super::provider_init::apply_login_provider_profile_env(provider);
     crate::logging::auth_event(
         "post_login_validation_started",
         provider.id,
@@ -183,194 +167,6 @@ async fn run_post_login_validation_inner(
             provider.display_name,
             choice.as_arg_value()
         )
-    }
-}
-
-pub async fn run_auth_test_context_audit_command(
-    choice: &super::provider_init::ProviderChoice,
-    all_configured: bool,
-    emit_json: bool,
-    output_path: Option<&str>,
-) -> Result<()> {
-    let targets = resolve_auth_test_targets(choice, all_configured)?;
-    let mut reports = Vec::new();
-
-    for target in targets {
-        reports.push(run_context_audit_for_target(target).await);
-    }
-
-    let report_json = (emit_json || output_path.is_some())
-        .then(|| serde_json::to_string_pretty(&reports))
-        .transpose()?;
-
-    if let Some(path) = output_path {
-        std::fs::write(path, report_json.as_deref().unwrap_or("[]"))
-            .with_context(|| format!("failed to write auth-test context audit report to {path}"))?;
-    }
-
-    if emit_json {
-        println!("{}", report_json.as_deref().unwrap_or("[]"));
-    } else {
-        print_context_audit_reports(&reports);
-    }
-
-    if reports.iter().all(|report| report.success) {
-        Ok(())
-    } else {
-        anyhow::bail!("One or more live context audits failed")
-    }
-}
-
-async fn run_context_audit_for_target(
-    target: ResolvedAuthTestTarget,
-) -> AuthTestContextAuditReport {
-    let (provider_id, display_name, supports_openrouter_catalog) = match target {
-        ResolvedAuthTestTarget::Generic { provider, choice } => {
-            super::provider_init::apply_login_provider_profile_env(provider);
-            let supports_openrouter_catalog = matches!(
-                provider.target,
-                crate::provider_catalog::LoginProviderTarget::OpenRouter
-                    | crate::provider_catalog::LoginProviderTarget::OpenAiCompatible(_)
-            );
-            (
-                choice.as_arg_value().to_string(),
-                provider.display_name.to_string(),
-                supports_openrouter_catalog,
-            )
-        }
-        ResolvedAuthTestTarget::Detailed(target) => (
-            target.label().to_string(),
-            target.label().to_string(),
-            false,
-        ),
-    };
-
-    if !supports_openrouter_catalog {
-        return AuthTestContextAuditReport {
-            provider: provider_id,
-            display_name,
-            checked_models: 0,
-            skipped_models_without_context: 0,
-            mismatches: Vec::new(),
-            success: true,
-            detail:
-                "Skipped: provider does not use the OpenRouter/OpenAI-compatible live catalog path."
-                    .to_string(),
-        };
-    }
-
-    audit_openrouter_context_windows(provider_id, display_name).await
-}
-
-async fn audit_openrouter_context_windows(
-    provider_id: String,
-    display_name: String,
-) -> AuthTestContextAuditReport {
-    use crate::provider::Provider as _;
-
-    let provider = match jcode_provider_openrouter_runtime::OpenRouterProvider::new() {
-        Ok(provider) => provider,
-        Err(err) => {
-            return AuthTestContextAuditReport {
-                provider: provider_id,
-                display_name,
-                checked_models: 0,
-                skipped_models_without_context: 0,
-                mismatches: Vec::new(),
-                success: false,
-                detail: format!("Failed to initialize provider: {err:#}"),
-            };
-        }
-    };
-
-    let models = match provider.refresh_models().await {
-        Ok(models) => models,
-        Err(err) => {
-            return AuthTestContextAuditReport {
-                provider: provider_id,
-                display_name,
-                checked_models: 0,
-                skipped_models_without_context: 0,
-                mismatches: Vec::new(),
-                success: false,
-                detail: format!("Failed to fetch live model catalog: {err:#}"),
-            };
-        }
-    };
-
-    let mut checked_models = 0usize;
-    let mut skipped_models_without_context = 0usize;
-    let mut mismatches = Vec::new();
-
-    for model in models {
-        let Some(catalog_context_window) = model.context_length.map(|value| value as usize) else {
-            skipped_models_without_context += 1;
-            continue;
-        };
-        checked_models += 1;
-
-        if let Err(err) = provider.set_model(&model.id) {
-            mismatches.push(AuthTestContextModelReport {
-                model: model.id,
-                catalog_context_window,
-                resolved_context_window: 0,
-                ok: false,
-            });
-            crate::logging::info(&format!(
-                "live context audit could not switch model for {}: {err:#}",
-                provider_id
-            ));
-            continue;
-        }
-
-        let resolved_context_window = provider.context_window();
-        if resolved_context_window != catalog_context_window {
-            mismatches.push(AuthTestContextModelReport {
-                model: model.id,
-                catalog_context_window,
-                resolved_context_window,
-                ok: false,
-            });
-        }
-    }
-
-    let success = mismatches.is_empty();
-    let detail = if success {
-        format!(
-            "Checked {checked_models} live catalog models with context metadata; skipped {skipped_models_without_context} without context metadata."
-        )
-    } else {
-        format!(
-            "Found {} context-window mismatches across {checked_models} live catalog models with context metadata; skipped {skipped_models_without_context} without context metadata.",
-            mismatches.len()
-        )
-    };
-
-    AuthTestContextAuditReport {
-        provider: provider_id,
-        display_name,
-        checked_models,
-        skipped_models_without_context,
-        mismatches,
-        success,
-        detail,
-    }
-}
-
-fn print_context_audit_reports(reports: &[AuthTestContextAuditReport]) {
-    for report in reports {
-        println!("{} ({})", report.display_name, report.provider);
-        println!("  success: {}", report.success);
-        println!("  {}", report.detail);
-        for mismatch in report.mismatches.iter().take(20) {
-            println!(
-                "  mismatch: {} catalog={} resolved={}",
-                mismatch.model, mismatch.catalog_context_window, mismatch.resolved_context_window
-            );
-        }
-        if report.mismatches.len() > 20 {
-            println!("  ... {} more mismatches", report.mismatches.len() - 20);
-        }
     }
 }
 
@@ -470,8 +266,8 @@ pub(crate) fn resolve_auth_test_targets(
 ) -> Result<Vec<ResolvedAuthTestTarget>> {
     if all_configured || matches!(choice, super::provider_init::ProviderChoice::Auto) {
         // Auth-test discovery must not run slow or blocking provider-global probes.
-        // Generic OpenAI-compatible providers only need local env/config detection,
-        // and detailed providers perform their own provider-specific checks later.
+        // Generic API-key providers only need local env/config detection, and
+        // detailed providers perform their own provider-specific checks later.
         let status = crate::auth::AuthStatus::check_fast();
         let targets = configured_auth_test_targets(&status);
         if targets.is_empty() {
@@ -591,7 +387,6 @@ async fn populate_generic_auth_test_report(
     tool_smoke_prompt: &str,
     mut report: AuthTestProviderReport,
 ) -> AuthTestProviderReport {
-    super::provider_init::apply_login_provider_profile_env(provider);
     probe_generic_provider_auth(provider, &mut report);
 
     maybe_run_auth_test_smoke_for_choice(
@@ -727,12 +522,10 @@ fn persist_auth_test_live_verification_event(
     } else {
         crate::live_tests::LiveVerificationResult::Failed
     };
-    let (coverage_provider_id, coverage_provider_label) =
-        auth_test_coverage_provider_identity(report);
     let mut event = crate::live_tests::LiveVerificationEvent::new(
         "auth_test_real_jcode_runtime",
-        coverage_provider_id,
-        coverage_provider_label,
+        report.provider.clone(),
+        report.provider.clone(),
         crate::live_tests::LiveVerificationAuth::non_secret("auth-test", None::<String>),
         result,
     )
@@ -749,29 +542,6 @@ fn persist_auth_test_live_verification_event(
     }
     crate::live_tests::append_event(&event)?;
     Ok(())
-}
-
-fn auth_test_coverage_provider_identity(report: &AuthTestProviderReport) -> (String, String) {
-    if report.provider == "openai-compatible"
-        && let Ok(profile_name) = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
-    {
-        let profile_name = profile_name.trim();
-        if !profile_name.is_empty() {
-            let label = crate::config::config()
-                .providers
-                .get(profile_name)
-                .map(|profile| {
-                    format!(
-                        "{} (custom OpenAI-compatible: {})",
-                        profile_name, profile.base_url
-                    )
-                })
-                .unwrap_or_else(|| format!("{} (custom OpenAI-compatible)", profile_name));
-            return (profile_name.to_string(), label);
-        }
-    }
-
-    (report.provider.clone(), report.provider.clone())
 }
 
 fn auth_test_step_stage(

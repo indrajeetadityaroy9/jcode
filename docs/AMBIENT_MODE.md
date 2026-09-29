@@ -774,8 +774,8 @@ graph TD
     CHECK1 -->|yes| OAI[Use OpenAI<br/>strongest available]
     CHECK1 -->|no| CHECK2{Anthropic OAuth<br/>available?}
     CHECK2 -->|yes| ANT[Use Anthropic<br/>strongest available]
-    CHECK2 -->|no| CHECK3{API key or OpenRouter +<br/>config opt-in?}
-    CHECK3 -->|yes| API[Use API/OpenRouter<br/>with budget cap]
+    CHECK2 -->|no| CHECK3{API key +<br/>config opt-in?}
+    CHECK3 -->|yes| API[Use API key<br/>with budget cap]
     CHECK3 -->|no| DISABLED[Ambient mode disabled<br/>no provider available]
 
     style OAI fill:#e8f5e9

@@ -207,71 +207,6 @@ impl App {
             .collect()
     }
 
-    fn model_provider_suggestion_candidates(&self, model: &str) -> Vec<(String, &'static str)> {
-        fn push_unique(
-            seen: &mut std::collections::HashSet<String>,
-            entries: &mut Vec<(String, &'static str)>,
-            command: String,
-            help: &'static str,
-        ) {
-            if !command.is_empty() && seen.insert(command.clone()) {
-                entries.push((command, help));
-            }
-        }
-
-        let model = model.trim();
-        if model.is_empty() {
-            return Vec::new();
-        }
-        let Some(openrouter_model) = crate::provider::openrouter_catalog_model_id(model) else {
-            return Vec::new();
-        };
-
-        let mut seen = std::collections::HashSet::new();
-        let mut suggestions = Vec::new();
-        push_unique(
-            &mut seen,
-            &mut suggestions,
-            format!("/model {}@auto", openrouter_model),
-            "Use automatic OpenRouter provider routing",
-        );
-
-        if self.is_remote {
-            let routes = if !self.remote_model_options.is_empty() {
-                self.remote_model_options.clone()
-            } else {
-                self.build_remote_model_routes_fallback()
-            };
-
-            for route in routes {
-                if route.model == model && route.api_method == "openrouter" {
-                    let help = if route.provider == "auto" {
-                        "Use automatic OpenRouter provider routing"
-                    } else {
-                        "Pin OpenRouter provider"
-                    };
-                    push_unique(
-                        &mut seen,
-                        &mut suggestions,
-                        format!("/model {}@{}", openrouter_model, route.provider),
-                        help,
-                    );
-                }
-            }
-        } else {
-            for provider in self.provider.available_providers_for_model(model) {
-                push_unique(
-                    &mut seen,
-                    &mut suggestions,
-                    format!("/model {}@{}", openrouter_model, provider),
-                    "Pin OpenRouter provider",
-                );
-            }
-        }
-
-        suggestions
-    }
-
     /// Get command suggestions based on current input (or base input for cycling)
     pub(super) fn get_suggestions_for(&self, input: &str) -> Vec<(String, &'static str)> {
         let input = input.trim_start();
@@ -285,17 +220,6 @@ impl App {
         let prefix_trimmed = prefix.trim_end();
 
         if prefix.starts_with("/model ") || prefix.starts_with("/models ") {
-            if let Some(model_spec) = input
-                .strip_prefix("/model ")
-                .or_else(|| input.strip_prefix("/models "))
-                && let Some((model, _provider_prefix)) = model_spec.rsplit_once('@')
-            {
-                let suggestions = self.model_provider_suggestion_candidates(model);
-                if !suggestions.is_empty() {
-                    return self.rank_suggestions(input, suggestions);
-                }
-            }
-
             let suggestions = self.model_suggestion_candidates();
             if suggestions.is_empty() {
                 return vec![("/model".into(), "Open model picker")];
@@ -595,14 +519,6 @@ impl App {
                 (
                     "/account default-model".into(),
                     "Set preferred default model",
-                ),
-                (
-                    "/account openai-compatible settings".into(),
-                    "Inspect custom OpenAI-compatible settings",
-                ),
-                (
-                    "/account openai-compatible api-base".into(),
-                    "Set custom OpenAI-compatible API base",
                 ),
             ];
             for provider in crate::provider_catalog::login_providers() {
@@ -1172,7 +1088,6 @@ impl App {
                 | "/account claude"
                 | "/account switch"
                 | "/account openai"
-                | "/account openai-compatible"
                 | "/account default-provider"
                 | "/account default-model"
                 | "/account claude switch"

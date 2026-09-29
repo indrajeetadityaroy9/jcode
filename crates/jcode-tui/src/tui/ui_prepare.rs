@@ -1065,7 +1065,6 @@ fn header_prep_signature(app: &dyn TuiState, width: u16) -> u64 {
     app.server_display_version().hash(&mut hasher);
     app.server_display_icon().hash(&mut hasher);
     app.connection_type().hash(&mut hasher);
-    app.upstream_provider().hash(&mut hasher);
     app.is_replay().hash(&mut hasher);
     app.is_remote_mode().hash(&mut hasher);
     app.server_update_available().hash(&mut hasher);

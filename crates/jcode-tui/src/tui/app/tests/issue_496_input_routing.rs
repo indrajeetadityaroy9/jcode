@@ -90,16 +90,13 @@ fn test_cancel_clears_pending_rate_limit_retry() {
 
 fn pending_api_key_login() -> crate::tui::app::PendingLogin {
     crate::tui::app::PendingLogin::ApiKeyProfile {
-        provider_id: "openrouter".to_string(),
-        provider: "OpenRouter".to_string(),
+        provider_id: "openai-api".to_string(),
+        provider: "OpenAI API".to_string(),
         auth_method: "api_key".to_string(),
-        docs_url: "https://openrouter.ai/keys".to_string(),
-        env_file: "openrouter.env".to_string(),
-        key_name: "OPENROUTER_API_KEY".to_string(),
-        default_model: None,
+        docs_url: "https://platform.openai.com/api-keys".to_string(),
+        env_file: "openai.env".to_string(),
+        key_name: "OPENAI_API_KEY".to_string(),
         endpoint: None,
-        api_key_optional: false,
-        openai_compatible_profile: None,
     }
 }
 
@@ -118,7 +115,7 @@ fn test_command_palette_suppressed_while_api_key_prompt_pending() {
     );
 
     // Non-slash input (the key itself) gets no suggestions at all.
-    app.set_input_for_test("sk-or-abc");
+    app.set_input_for_test("sk-abc");
     assert!(app.command_suggestions().is_empty());
 
     // Prefixes of /cancel keep the single suggestion; other commands do not.
@@ -155,7 +152,7 @@ fn test_menu_number_rejected_as_api_key() {
         "API key prompt must remain pending after rejecting menu-number input"
     );
     // Nothing was persisted.
-    assert!(std::env::var("OPENROUTER_API_KEY").map_or(true, |v| v != "1"));
+    assert!(std::env::var("OPENAI_API_KEY").map_or(true, |v| v != "1"));
 }
 
 #[test]

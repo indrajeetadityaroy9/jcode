@@ -44,8 +44,6 @@ impl App {
                 recommended: false,
                 recommendation_rank: usize::MAX,
                 usage_score: 0,
-                old: false,
-                created_date: None,
                 effort: None,
             }
         })
@@ -125,8 +123,6 @@ impl App {
                     recommended: provider.recommended,
                     recommendation_rank: usize::MAX,
                     usage_score: 0,
-                    old: false,
-                    created_date: None,
                     effort: None,
                 }
             })
@@ -153,8 +149,6 @@ impl App {
                     recommended: false,
                     recommendation_rank: usize::MAX,
                     usage_score: 0,
-                    old: false,
-                    created_date: None,
                     effort: None,
                 },
             );
@@ -238,8 +232,6 @@ impl App {
                             recommended: false,
                             recommendation_rank: usize::MAX,
                             usage_score: 0,
-                            old: false,
-                            created_date: None,
                             effort: None,
                         },
                     );
@@ -268,8 +260,6 @@ impl App {
                     recommended: false,
                     recommendation_rank: usize::MAX,
                     usage_score: 0,
-                    old: false,
-                    created_date: None,
                     effort: None,
                 },
             );

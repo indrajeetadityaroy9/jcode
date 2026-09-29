@@ -80,16 +80,6 @@ impl ResolvedTokenPricing {
     }
 }
 
-fn remote_provider_is_inherently_billed(provider_name: &str) -> bool {
-    provider_name.contains("opencode")
-        || provider_name.contains("openrouter")
-        || provider_name.contains("cerebras")
-        || provider_name.contains("compatible")
-        || crate::provider_catalog::openai_compatible_profile_id_for_display_name(provider_name)
-            .and_then(crate::provider_catalog::openai_compatible_profile_by_id)
-            .is_some_and(|profile| profile.requires_api_key)
-}
-
 /// Update cost calculation based on token usage (for API-key providers)
 impl App {
     pub(super) fn current_streaming_tps_elapsed(&self) -> Duration {
@@ -193,12 +183,7 @@ impl App {
         let is_openai = provider_name.contains("openai");
 
         // Whether the user is billed per token for this turn (direct API key).
-        let billed_per_token = if provider_name.contains("openrouter") {
-            crate::provider::openrouter::OpenRouterTransportState::from_current_env(
-                runtime_provider.as_deref(),
-            )
-            .accrues_user_api_key_cost()
-        } else if is_anthropic {
+        let billed_per_token = if is_anthropic {
             // Anthropic Auto prefers OAuth (Claude subscription, no per-token
             // user cost) when OAuth credentials exist, so only accrue API-key
             // cost when the API key is the credential that will actually be used.
@@ -212,8 +197,7 @@ impl App {
                     && auth_status.openai_has_api_key
                     && !auth_status.openai_has_oauth)
         } else {
-            crate::provider_catalog::openai_compatible_profile_by_id(provider_name.trim())
-                .is_some_and(|profile| profile.requires_api_key)
+            false
         };
 
         if !billed_per_token {
@@ -327,9 +311,7 @@ impl App {
         }
         use crate::tui::TuiState;
         let label = <Self as TuiState>::provider_name(self);
-        let runtime = active_runtime_provider_key();
-        let source_key =
-            crate::provider_activity::source_key_for_provider_label(&label, runtime.as_deref());
+        let source_key = crate::provider_activity::source_key_for_provider_label(&label);
         let cost = call_cost as f64;
         // Ledger writes hit the filesystem; never block the render/input loop.
         std::thread::spawn(move || {
@@ -359,15 +341,9 @@ impl App {
             Some(jcode_provider_core::ResolvedCredential::ApiKey)
         );
 
-        // For dual-auth providers (Anthropic/OpenAI) we require an API-key
-        // credential. Other cost-based providers (OpenCode, OpenRouter direct,
-        // API-key profiles) always meter per token when remote.
-        let billed = if is_anthropic || is_openai {
-            api_key_billed
-        } else {
-            // Providers that are inherently cost-based when proxied remotely.
-            remote_provider_is_inherently_billed(&provider_name)
-        };
+        // Only the dual-auth providers (Anthropic/OpenAI) meter per token, and
+        // only when the resolved credential is an API key.
+        let billed = (is_anthropic || is_openai) && api_key_billed;
         if !billed {
             return None;
         }
@@ -382,8 +358,8 @@ impl App {
     }
 
     /// Resolve and cache per-model pricing for the active provider. Uses the
-    /// unified resolver (curated static tables, then the OpenRouter caches,
-    /// then the live models.dev catalog) so any metered provider gets real
+    /// unified resolver (curated static tables, then the live models.dev
+    /// catalog) so any metered provider gets real
     /// per-model prices instead of the generic defaults. Honors the configured
     /// OpenAI service tier (`flex`/`priority`), which changes per-token rates
     /// on premium models. Re-resolves when the model or tier changes.
@@ -406,8 +382,7 @@ impl App {
         } else {
             use crate::tui::TuiState;
             let label = <Self as TuiState>::provider_name(self);
-            let runtime = active_runtime_provider_key();
-            crate::provider_activity::source_key_for_provider_label(&label, runtime.as_deref())
+            crate::provider_activity::source_key_for_provider_label(&label)
         };
         let estimate = crate::provider::pricing::metered_pricing_for_source_with_tier(
             &source_key,
@@ -498,25 +473,5 @@ impl App {
             _ => {}
         }
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::remote_provider_is_inherently_billed;
-
-    #[test]
-    fn remote_billing_recognizes_deepseek_display_name() {
-        assert!(remote_provider_is_inherently_billed("DeepSeek"));
-    }
-
-    #[test]
-    fn remote_billing_does_not_meter_no_auth_compatible_profiles() {
-        for provider_name in ["LM Studio", "Ollama"] {
-            assert!(
-                !remote_provider_is_inherently_billed(provider_name),
-                "{provider_name} should not be billed per token"
-            );
-        }
     }
 }

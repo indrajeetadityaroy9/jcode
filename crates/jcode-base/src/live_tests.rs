@@ -244,64 +244,14 @@ struct IssueDrivenLiveProviderTarget {
     issue_refs: &'static [&'static str],
 }
 
-const ISSUE_DRIVEN_LIVE_PROVIDER_TARGETS: &[IssueDrivenLiveProviderTarget] = &[
-    IssueDrivenLiveProviderTarget {
-        provider_id: "opencode-go",
-        provider_label: "OpenCode Go",
-        model: Some("kimi-k2.5"),
-        reason: "OpenCode Go auth/server bootstrap regression and post-auth model routing",
-        issue_refs: &["#234"],
-    },
-    IssueDrivenLiveProviderTarget {
-        provider_id: "nvidia-nim",
-        provider_label: "NVIDIA NIM",
-        model: Some("nvidia/llama-3.1-nemotron-ultra-253b-v1"),
-        reason: "NVIDIA NIM provider auth and tool-smoke readiness",
-        issue_refs: &["#164", "#197"],
-    },
-    IssueDrivenLiveProviderTarget {
-        provider_id: "ollama",
-        provider_label: "Ollama",
-        model: None,
-        reason: "Ollama local/LAN setup, model catalog, and model switching regressions",
-        issue_refs: &["#155", "#157"],
-    },
-    IssueDrivenLiveProviderTarget {
-        provider_id: "minimax",
-        provider_label: "MiniMax",
-        model: Some("MiniMax-M2.7"),
-        reason: "MiniMax endpoint/key-region selection and live balance/readiness",
-        issue_refs: &["#110", "#131", "#189"],
-    },
-    IssueDrivenLiveProviderTarget {
-        provider_id: "xiaomi-mimo",
-        provider_label: "Xiaomi MiMo",
-        model: Some("mimo-v2.5"),
-        reason: "Xiaomi MiMo provider configuration and live model/tool support",
-        issue_refs: &["#223"],
-    },
-    IssueDrivenLiveProviderTarget {
-        provider_id: "zai",
-        provider_label: "Z.AI",
-        model: Some("glm-4.5"),
-        reason: "Z.AI and Zhipu BigModel regional endpoint compatibility",
-        issue_refs: &["#156", "#161", "#177"],
-    },
-    IssueDrivenLiveProviderTarget {
+const ISSUE_DRIVEN_LIVE_PROVIDER_TARGETS: &[IssueDrivenLiveProviderTarget] =
+    &[IssueDrivenLiveProviderTarget {
         provider_id: "gemini",
         provider_label: "Google Gemini",
         model: Some("gemini-2.5-pro"),
         reason: "Gemini catalog/picker regression and tool-call live readiness",
         issue_refs: &["#111", "#132"],
-    },
-    IssueDrivenLiveProviderTarget {
-        provider_id: "openai-compatible",
-        provider_label: "OpenAI-compatible",
-        model: None,
-        reason: "Generic OpenAI-compatible custom provider setup, default routing, and local endpoint support",
-        issue_refs: &["#82", "#100", "#177", "#204"],
-    },
-];
+    }];
 
 pub fn checkpoint_catalog_metadata() -> Value {
     json!({
@@ -847,8 +797,8 @@ pub struct LiveProviderModelCoverageSummary {
     /// ledger (e.g. provider-doctor full-tier runs).
     #[serde(default)]
     pub recorded_spend: LiveCoverageRecordedSpend,
-    /// Full monitoring roster: every provider jcode knows about (OpenAI-compatible
-    /// profiles + login providers), whether `provider-doctor` can drive it, whether
+    /// Full monitoring roster: every provider jcode knows about (login
+    /// providers), whether `provider-doctor` can drive it, whether
     /// a credential is present, and how much live READY evidence exists. Lets the
     /// report enumerate *every* provider, not just ones with ledger evidence.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -867,7 +817,7 @@ pub struct ProviderMonitorEntry {
     #[serde(default)]
     pub auth_method: String,
     /// True when `jcode provider-doctor <id>` can drive this provider today
-    /// (OpenAI-compatible profile exists for the id).
+    /// (a native-runtime driver exists for the id).
     pub doctor_drivable: bool,
     /// True when an API key is present in env or the provider's `.env` file.
     pub has_credential: bool,
@@ -1018,7 +968,6 @@ pub fn format_provider_test_coverage_report(
     };
 
     let provider_norm = normalize_provider_test_coverage_key(provider_query);
-    let provider_aliases = provider_test_coverage_lookup_aliases(&provider_norm);
     let model_norm = normalize_provider_test_coverage_key(model_query);
     let mut matches = coverage
         .latest
@@ -1031,7 +980,7 @@ pub fn format_provider_test_coverage_report(
                 .as_deref()
                 .map(normalize_provider_test_coverage_key)
                 .unwrap_or_else(|| "*".to_string());
-            (provider_aliases.contains(&entry_provider) || provider_aliases.contains(&entry_label))
+            (entry_provider == provider_norm || entry_label == provider_norm)
                 && (entry_model == model_norm || model_norm == "*")
         })
         .collect::<Vec<_>>();
@@ -1146,16 +1095,6 @@ pub fn format_provider_test_coverage_report(
 
 fn normalize_provider_test_coverage_key(value: &str) -> String {
     value.trim().to_ascii_lowercase().replace(['_', ' '], "-")
-}
-
-fn provider_test_coverage_lookup_aliases(provider_norm: &str) -> Vec<String> {
-    let mut aliases = vec![provider_norm.to_string()];
-    match provider_norm {
-        "opencode" => aliases.push("opencode-zen".to_string()),
-        "opencode-zen" => aliases.push("opencode".to_string()),
-        _ => {}
-    }
-    aliases
 }
 
 fn provider_test_coverage_icon(status: &LiveVerificationStageStatus) -> &'static str {
@@ -1692,36 +1631,24 @@ fn doctor_tier_for_stage(stage_id: &str) -> &'static str {
     }
 }
 
-/// True when `provider-doctor` can drive `provider_id` end-to-end, either via
-/// the generic OpenAI-compatible driver (any compat profile) or a native-runtime
-/// driver (Claude OAuth, Antigravity). Used to annotate the monitoring roster so
-/// native providers are not perpetually marked "needs native suite".
+/// True when `provider-doctor` can drive `provider_id` end-to-end through a
+/// native-runtime driver. Used to annotate the monitoring roster so native
+/// providers are not perpetually marked "needs native suite".
 fn doctor_supports_provider(provider_id: &str) -> bool {
-    crate::provider_catalog::openai_compatible_profile_by_id(provider_id).is_some()
-        || crate::auth::doctor::native_doctor_supports_provider(provider_id)
+    crate::auth::doctor::native_doctor_supports_provider(provider_id)
 }
 
-/// True when a credential for `provider_id` is reachable, either via an
-/// OpenAI-compatible profile's env var/`.env` file or (for native login
-/// providers) a best-effort env-var probe. Used only to annotate the monitoring
-/// roster; never logs or surfaces the key itself.
+/// True when a credential for `provider_id` is reachable via a best-effort
+/// env-var probe. Used only to annotate the monitoring roster; never logs or
+/// surfaces the key itself.
 fn provider_has_credential(provider_id: &str) -> bool {
-    if let Some(profile) = crate::provider_catalog::openai_compatible_profile_by_id(provider_id) {
-        let resolved = crate::provider_catalog::resolve_openai_compatible_profile(profile);
-        return crate::provider_catalog::load_api_key_from_env_or_config(
-            &resolved.api_key_env,
-            &resolved.env_file,
-        )
-        .is_some();
-    }
     // Native login providers: probe their conventional env var names.
     let env_candidates: &[&str] = match provider_id {
         "claude" | "anthropic" | "anthropic-api" | "claude-api" => {
             &["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"]
         }
         "openai" | "openai-api" => &["OPENAI_API_KEY"],
-        "openrouter" => &["OPENROUTER_API_KEY"],
-        "gemini" | "google" => &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+        "gemini" | "google" | "gemini-api" => &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
         // Antigravity authenticates only via cached Google OAuth tokens, not an
         // env var; report a credential when those tokens are present on disk.
         "antigravity" => return crate::auth::antigravity::has_cached_auth(),
@@ -1734,8 +1661,8 @@ fn provider_has_credential(provider_id: &str) -> bool {
     })
 }
 
-/// Build the full provider-monitoring roster: union of every OpenAI-compatible
-/// profile id and every login-provider id, annotated with doctor-drivability,
+/// Build the full provider-monitoring roster: every login-provider id,
+/// annotated with doctor-drivability,
 /// credential presence, and the READY/observed pair tallies already computed for
 /// the report. Lets `provider-test-coverage` enumerate *every* provider jcode
 /// knows about, not just ones that already have ledger evidence.
@@ -1752,11 +1679,6 @@ fn build_provider_roster(providers: &[LiveProviderCoverageSummary]) -> Vec<Provi
 
     // Union of provider ids and display labels.
     let mut labels: BTreeMap<String, String> = BTreeMap::new();
-    for profile in crate::provider_catalog::openai_compatible_profiles() {
-        labels
-            .entry(profile.id.to_string())
-            .or_insert_with(|| profile.display_name.to_string());
-    }
     for provider in crate::provider_catalog::login_providers() {
         // Skip non-model login providers: `AutoImport` is a credential-import
         // pseudo-provider with no LLM catalog, so it does not belong in the
@@ -1771,7 +1693,7 @@ fn build_provider_roster(providers: &[LiveProviderCoverageSummary]) -> Vec<Provi
             .entry(provider.id.to_string())
             .or_insert_with(|| provider.display_name.to_string());
     }
-    // Include any ledger-observed provider ids not in either static catalog.
+    // Include any ledger-observed provider ids not in the static catalog.
     for provider in providers {
         labels
             .entry(provider.provider_id.clone())
@@ -1813,19 +1735,12 @@ fn build_provider_roster(providers: &[LiveProviderCoverageSummary]) -> Vec<Provi
 }
 
 /// Human-readable label for how a provider authenticates, used to disambiguate
-/// sibling providers that share a backend but differ by credential path. Falls
-/// back to the login-provider catalog's `auth_kind`, and finally to a generic
-/// "API key" for OpenAI-compatible profiles (which are all key-based).
+/// sibling providers that share a backend but differ by credential path, from
+/// the login-provider catalog's `auth_kind`.
 fn provider_auth_method_label(provider_id: &str) -> String {
-    if let Some(provider) = crate::provider_catalog::resolve_login_provider(provider_id) {
-        return provider.auth_kind.label().to_string();
-    }
-    if crate::provider_catalog::openai_compatible_profile_by_id(provider_id).is_some() {
-        return crate::provider_catalog::LoginProviderAuthKind::ApiKey
-            .label()
-            .to_string();
-    }
-    String::new()
+    crate::provider_catalog::resolve_login_provider(provider_id)
+        .map(|provider| provider.auth_kind.label().to_string())
+        .unwrap_or_default()
 }
 
 pub fn format_strict_live_provider_model_coverage_summary(
@@ -2126,7 +2041,7 @@ pub fn format_strict_live_provider_model_coverage_summary(
 
     // -- Footer: how to act on this report. ------------------------------------
     out.push_str("Next steps:\n");
-    out.push_str("  Drive any OpenAI-compatible pair through the pipeline (records evidence):\n");
+    out.push_str("  Drive any native provider pair through the pipeline (records evidence):\n");
     out.push_str("    jcode provider-doctor <provider> --tier full   # spends balance\n");
     out.push_str(
         "    jcode provider-doctor <provider> --tier offline # wiring only, no key/spend\n",
@@ -2211,8 +2126,8 @@ fn pair_fix_hint(provider_id: &str, model: &str, stage_id: &str) -> String {
         let tier = doctor_tier_for_stage(stage_id);
         format!("run `jcode provider-doctor {provider_id} --model {model} --tier {tier}`")
     } else {
-        // opencode and other non-OpenAI-compatible providers are recorded by their
-        // own live suites, not provider-doctor.
+        // Providers without a native doctor driver are recorded by their own
+        // live suites, not provider-doctor.
         format!("re-run the {provider_id} live suite (provider-doctor does not cover it yet)")
     }
 }
@@ -2700,14 +2615,19 @@ mod tests {
         let mut missing_tool_result = strict_statuses(&[]);
         missing_tool_result.remove(checkpoints::TOOL_RESULT_FOLLOWUP);
         latest.insert(
-            "opencode-zen::model-a::partial".to_string(),
-            coverage_entry("opencode", "OpenCode", Some("model-a"), missing_tool_result),
+            "claude-api::model-a::partial".to_string(),
+            coverage_entry(
+                "anthropic-api",
+                "Anthropic API",
+                Some("model-a"),
+                missing_tool_result,
+            ),
         );
         latest.insert(
-            "opencode::model-a::tool-followup".to_string(),
+            "anthropic-api::model-a::tool-followup".to_string(),
             coverage_entry(
-                "opencode-zen",
-                "OpenCode Zen",
+                "claude-api",
+                "Anthropic API",
                 Some("model-a"),
                 BTreeMap::from([(
                     checkpoints::TOOL_RESULT_FOLLOWUP.to_string(),
@@ -2716,10 +2636,10 @@ mod tests {
             ),
         );
         latest.insert(
-            "opencode::model-b::failed-stream".to_string(),
+            "anthropic-api::model-b::failed-stream".to_string(),
             coverage_entry(
-                "opencode",
-                "OpenCode",
+                "anthropic-api",
+                "Anthropic API",
                 Some("model-b"),
                 strict_statuses(&[(
                     checkpoints::STREAMING_CHAT_COMPLETION,
@@ -2728,8 +2648,8 @@ mod tests {
             ),
         );
         latest.insert(
-            "opencode::*::catalog".to_string(),
-            coverage_entry("opencode", "OpenCode", None, strict_statuses(&[])),
+            "anthropic-api::*::catalog".to_string(),
+            coverage_entry("anthropic-api", "Anthropic API", None, strict_statuses(&[])),
         );
         let coverage = LiveVerificationCoverage {
             schema_version: SCHEMA_VERSION,
@@ -2743,11 +2663,11 @@ mod tests {
         assert_eq!(summary.total_provider_model_pairs, 2);
         assert_eq!(summary.covered_provider_model_pairs, 1);
         assert_eq!(summary.coverage_percent, 50.0);
-        assert_eq!(summary.covered_pairs[0].provider_id, "opencode");
+        assert_eq!(summary.covered_pairs[0].provider_id, "anthropic-api");
         assert_eq!(summary.covered_pairs[0].model, "model-a");
         assert_eq!(
             summary.covered_pairs[0].source_provider_ids,
-            vec!["opencode".to_string(), "opencode-zen".to_string()]
+            vec!["anthropic-api".to_string(), "claude-api".to_string()]
         );
         assert_eq!(summary.uncovered_pairs[0].model, "model-b");
         assert_eq!(
@@ -2756,11 +2676,11 @@ mod tests {
                 .get(checkpoints::STREAMING_CHAT_COMPLETION),
             Some(&LiveVerificationStageStatus::Failed)
         );
-        assert_eq!(summary.provider_only_entries, vec!["opencode::*::catalog"]);
+        assert_eq!(summary.provider_only_entries, vec!["anthropic-api::*::catalog"]);
         assert!(
             !summary
                 .known_provider_ids_without_live_model_coverage
-                .contains(&"opencode".to_string()),
+                .contains(&"anthropic-api".to_string()),
             "observed providers should not be reported as having no live model evidence"
         );
     }
@@ -2890,15 +2810,6 @@ mod tests {
     fn issue_driven_live_provider_targets_report_covered_partial_and_missing_evidence() {
         let mut latest = BTreeMap::new();
         latest.insert(
-            "xiaomi-mimo::mimo-v2.5::strict".to_string(),
-            coverage_entry(
-                "xiaomi-mimo",
-                "Xiaomi MiMo",
-                Some("mimo-v2.5"),
-                strict_statuses(&[]),
-            ),
-        );
-        latest.insert(
             "gemini::gemini-2.5-pro::partial".to_string(),
             coverage_entry(
                 "gemini",
@@ -2919,15 +2830,6 @@ mod tests {
         };
 
         let summary = strict_live_provider_model_coverage_summary(&coverage, "unit");
-        let xiaomi = summary
-            .issue_driven_targets
-            .iter()
-            .find(|target| target.provider_id == "xiaomi-mimo")
-            .expect("xiaomi target should be tracked");
-        assert_eq!(xiaomi.status, "strict_covered");
-        assert_eq!(xiaomi.covered_models, vec!["mimo-v2.5"]);
-        assert_eq!(xiaomi.issue_refs, vec!["#223"]);
-
         let gemini = summary
             .issue_driven_targets
             .iter()
@@ -2943,16 +2845,8 @@ mod tests {
                     .contains(&checkpoints::MODEL_CATALOG_LIVE_ENDPOINT.to_string()))
         );
 
-        let nvidia = summary
-            .issue_driven_targets
-            .iter()
-            .find(|target| target.provider_id == "nvidia-nim")
-            .expect("nvidia target should be tracked");
-        assert_eq!(nvidia.status, "no_model_specific_live_evidence");
-
         let report = format_strict_live_provider_model_coverage_summary(&summary, 10);
         assert!(report.contains("Issue-tracked targets"));
-        assert!(report.contains("[#223] xiaomi-mimo / mimo-v2.5: READY"));
     }
 
     #[test]
@@ -3045,7 +2939,7 @@ mod tests {
                 Warn,
             ),
             (
-                "  openai-compatible    API key  untested            yes      yes   0/0",
+                "  gemini-api           API key  untested            yes      yes   0/0",
                 Dim,
             ),
             ("  [#223] xiaomi-mimo / mimo-v2.5: READY", Pass),

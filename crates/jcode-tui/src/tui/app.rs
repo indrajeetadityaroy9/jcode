@@ -200,7 +200,6 @@ struct KvCacheBaseline {
     completed_at: Instant,
     provider: String,
     model: String,
-    upstream_provider: Option<String>,
     signature: Option<KvCacheRequestSignature>,
 }
 
@@ -210,7 +209,6 @@ struct PendingKvCacheRequest {
     call_index: u16,
     provider: String,
     model: String,
-    upstream_provider: Option<String>,
     signature: Option<KvCacheRequestSignature>,
     baseline_messages_prefix_matches: Option<bool>,
     baseline: Option<KvCacheBaseline>,
@@ -221,7 +219,6 @@ struct PendingKvCacheRequest {
 enum KvCacheMissReason {
     ProviderSwitch,
     ModelSwitch,
-    UpstreamSwitch,
     Expired,
     HarnessSystemChanged,
     HarnessToolsChanged,
@@ -236,7 +233,6 @@ impl KvCacheMissReason {
         match self {
             Self::ProviderSwitch => "provider switch",
             Self::ModelSwitch => "model switch",
-            Self::UpstreamSwitch => "upstream switch",
             Self::Expired => "expired",
             Self::HarnessSystemChanged => "harness: system changed",
             Self::HarnessToolsChanged => "harness: tools changed",
@@ -834,8 +830,6 @@ pub struct App {
     queued_messages: Vec<String>,
     hidden_queued_system_messages: Vec<String>,
     current_turn_system_reminder: Option<String>,
-    // Upstream provider (e.g., which provider OpenRouter routed to)
-    upstream_provider: Option<String>,
     // Active stream connection type (websocket/https/etc.)
     connection_type: Option<String>,
     // Provider-supplied human-readable transport detail for the current stream
@@ -1650,7 +1644,6 @@ impl App {
             call_index: self.kv_cache.kv_cache_turn_call_index,
             provider: self.kv_cache_provider_name(),
             model: self.kv_cache_provider_model(),
-            upstream_provider: self.upstream_provider.clone(),
             signature: Some(signature),
             baseline_messages_prefix_matches,
             baseline,
@@ -1697,7 +1690,6 @@ impl App {
             call_index: self.kv_cache.kv_cache_turn_call_index,
             provider: self.kv_cache_provider_name(),
             model: self.kv_cache_provider_model(),
-            upstream_provider: self.upstream_provider.clone(),
             signature: Some(signature),
             baseline_messages_prefix_matches,
             baseline,
@@ -1889,7 +1881,6 @@ impl App {
                 completed_at: Instant::now(),
                 provider: request.provider,
                 model: request.model,
-                upstream_provider: request.upstream_provider,
                 signature: request.signature,
             });
             return true;
@@ -1930,7 +1921,6 @@ impl App {
             completed_at: Instant::now(),
             provider: request.provider,
             model: request.model,
-            upstream_provider: request.upstream_provider,
             signature: request.signature,
         });
         true
@@ -2053,7 +2043,7 @@ impl App {
             .unwrap_or(false);
 
         crate::logging::info(&format!(
-            "KV_CACHE_USAGE: turn={} call={} provider={} upstream={:?} model={} \
+            "KV_CACHE_USAGE: turn={} call={} provider={} model={} \
              input={} cache_read={} cache_write={} read_pct={} write_pct={} \
              optimal_input={:?} optimal_read_pct={:?} missed_tokens={:?} miss={} \
              session_input={} session_read={} session_write={} session_read_pct={} \
@@ -2069,7 +2059,6 @@ impl App {
             request.turn_number,
             request.call_index,
             request.provider,
-            request.upstream_provider,
             request.model,
             input_tokens,
             read_tokens,
@@ -2130,7 +2119,6 @@ impl App {
             call_index: 1,
             provider: self.kv_cache_provider_name(),
             model: self.kv_cache_provider_model(),
-            upstream_provider: self.upstream_provider.clone(),
             signature: None,
             baseline_messages_prefix_matches: None,
             baseline: self.kv_cache_baseline_for_current_session(),
@@ -2161,7 +2149,6 @@ impl App {
                 reason,
                 KvCacheMissReason::ProviderSwitch
                     | KvCacheMissReason::ModelSwitch
-                    | KvCacheMissReason::UpstreamSwitch
                     | KvCacheMissReason::Expired
                     | KvCacheMissReason::HarnessSystemChanged
                     | KvCacheMissReason::HarnessToolsChanged
@@ -2261,12 +2248,6 @@ impl App {
         }
         if baseline.model != request.model {
             return KvCacheMissReason::ModelSwitch;
-        }
-        if baseline.upstream_provider.is_some()
-            && request.upstream_provider.is_some()
-            && baseline.upstream_provider != request.upstream_provider
-        {
-            return KvCacheMissReason::UpstreamSwitch;
         }
 
         if let Some(ttl_secs) =

@@ -13,8 +13,8 @@ use crate::protocol::ServerEvent;
 #[test]
 fn relative_age_text_is_normalized_out_of_the_catalog_dedup_key() {
     assert_eq!(
-        strip_relative_age_text("openrouter · cached 12m ago · $3/M"),
-        "openrouter · cached <age> · $3/M"
+        strip_relative_age_text("claude-api · cached 12m ago · $3/M"),
+        "claude-api · cached <age> · $3/M"
     );
     assert_eq!(
         strip_relative_age_text("a 5s ago b 3h ago c 2d ago"),
@@ -26,14 +26,14 @@ fn relative_age_text_is_normalized_out_of_the_catalog_dedup_key() {
 fn catalog_dedup_key_ignores_age_drift_but_keeps_real_changes() {
     let route = |detail: &str| crate::provider::ModelRoute {
         model: "claude-opus-4.6".to_string(),
-        provider: "OpenRouter".to_string(),
-        api_method: "openrouter".to_string(),
+        provider: "Anthropic".to_string(),
+        api_method: "claude-api".to_string(),
         available: true,
         detail: detail.to_string(),
         cheapness: None,
     };
     let event = |detail: &str| ServerEvent::AvailableModelsUpdated {
-        provider_name: Some("OpenRouter".to_string()),
+        provider_name: Some("Anthropic".to_string()),
         provider_model: Some("claude-opus-4.6".to_string()),
         available_models: vec!["claude-opus-4.6".to_string()],
         available_model_routes: vec![route(detail)],
@@ -63,7 +63,7 @@ fn age_normalization_handles_trailing_digits_and_unicode() {
     );
 }
 
-/// Real route detail strings captured from a production OpenRouter catalog
+/// Real route detail strings captured from a production catalog
 /// cache. These carry both self-ticking cache ages and endpoint stats
 /// (`p50`, `tps`) that only move when the endpoint cache genuinely refreshes.
 /// Ages must normalize away; stats must not, since a stats change means the

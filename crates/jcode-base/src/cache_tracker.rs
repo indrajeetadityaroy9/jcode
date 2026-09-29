@@ -4,8 +4,8 @@
 //! by tracking the message prefix ourselves. If the prefix changes between requests,
 //! we know the cache was invalidated.
 //!
-//! This is a fallback mechanism for providers like Fireworks (via OpenRouter) that
-//! have automatic caching but don't report cache hit/miss metrics.
+//! This is a fallback mechanism for providers that have automatic caching but
+//! don't report cache hit/miss metrics.
 
 use jcode_message_types::{Message, stable_message_hash};
 use std::collections::VecDeque;

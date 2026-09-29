@@ -86,25 +86,13 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        let mut provider_spans = vec![
+        let provider_spans = vec![
             Span::styled("☁ ", Style::default().fg(rgb(140, 180, 255))),
             Span::styled(
                 provider.to_lowercase(),
                 Style::default().fg(rgb(140, 180, 255)),
             ),
         ];
-        if let Some(upstream) = data.upstream_provider.as_deref().map(str::trim)
-            && !upstream.is_empty()
-        {
-            provider_spans.push(Span::styled(
-                " -> ",
-                Style::default().fg(rgb(100, 100, 110)),
-            ));
-            provider_spans.push(Span::styled(
-                upstream.to_string(),
-                Style::default().fg(rgb(220, 190, 120)),
-            ));
-        }
         lines.push(Line::from(provider_spans));
     }
 
@@ -125,30 +113,18 @@ pub(super) fn render_model_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
 
     if data.auth_method != AuthMethod::Unknown {
         let (icon, label, color) = match data.auth_method {
-            AuthMethod::ApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
             AuthMethod::AnthropicOAuth => ("🔐", "OAuth", rgb(255, 160, 100)),
             AuthMethod::AnthropicApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
             AuthMethod::OpenAIOAuth => ("🔐", "OAuth", rgb(100, 200, 180)),
             AuthMethod::OpenAIApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
-            AuthMethod::OpenRouterApiKey => ("🔑", "API Key", rgb(140, 180, 255)),
-            AuthMethod::OpenCodeApiKey => ("🔑", "API Key", rgb(140, 180, 255)),
             AuthMethod::GeminiOAuth => ("🔐", "OAuth", rgb(120, 190, 255)),
             AuthMethod::Unknown => unreachable!(),
         };
 
-        if let Some(ref upstream) = data.upstream_provider {
-            lines.push(Line::from(vec![
-                Span::styled(format!("{} ", icon), Style::default().fg(color)),
-                Span::styled(label, Style::default().fg(rgb(140, 140, 150))),
-                Span::styled(" via ", Style::default().fg(rgb(100, 100, 110))),
-                Span::styled(upstream.clone(), Style::default().fg(rgb(200, 180, 100))),
-            ]));
-        } else {
-            lines.push(Line::from(vec![
-                Span::styled(format!("{} ", icon), Style::default().fg(color)),
-                Span::styled(label, Style::default().fg(rgb(140, 140, 150))),
-            ]));
-        }
+        lines.push(Line::from(vec![
+            Span::styled(format!("{} ", icon), Style::default().fg(color)),
+            Span::styled(label, Style::default().fg(rgb(140, 140, 150))),
+        ]));
     }
 
     if let Some(tps) = data.tokens_per_second
@@ -226,13 +202,10 @@ pub(super) fn render_model_info(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
 
         if has_auth {
             let (icon, label, _color) = match data.auth_method {
-                AuthMethod::ApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
                 AuthMethod::AnthropicOAuth => ("🔐", "OAuth", rgb(255, 160, 100)),
                 AuthMethod::AnthropicApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
                 AuthMethod::OpenAIOAuth => ("🔐", "OAuth", rgb(100, 200, 180)),
                 AuthMethod::OpenAIApiKey => ("🔑", "API Key", rgb(180, 180, 190)),
-                AuthMethod::OpenRouterApiKey => ("🔑", "API Key", rgb(140, 180, 255)),
-                AuthMethod::OpenCodeApiKey => ("🔑", "API Key", rgb(140, 180, 255)),
                 AuthMethod::GeminiOAuth => ("🔐", "OAuth", rgb(120, 190, 255)),
                 AuthMethod::Unknown => unreachable!(),
             };
@@ -371,7 +344,6 @@ mod tests {
             tokens_per_second: None,
             provider_name: None,
             auth_method: crate::tui::info_widget::AuthMethod::Unknown,
-            upstream_provider: None,
             connection_type: None,
             diagrams: Vec::new(),
             workspace_rows: Vec::new(),

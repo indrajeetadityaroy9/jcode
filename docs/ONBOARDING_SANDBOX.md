@@ -127,7 +127,6 @@ Suggested fixture names:
 - `normal-openai`
 - `normal-claude`
 - `expired-openai`
-- `api-key-openrouter`
 - `external-opencode-approved`
 
 ## Headless screenshots

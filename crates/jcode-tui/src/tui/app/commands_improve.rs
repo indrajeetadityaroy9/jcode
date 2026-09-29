@@ -424,7 +424,6 @@ pub(super) fn start_synthetic_user_turn(app: &mut App, content: String) {
     app.streaming.streaming_cache_read_tokens = None;
     app.streaming.streaming_cache_creation_tokens = None;
     app.kv_cache.current_api_usage_recorded = false;
-    app.upstream_provider = None;
     app.status_detail = None;
     app.streaming.streaming_tps_start = None;
     app.streaming.streaming_tps_elapsed = std::time::Duration::ZERO;

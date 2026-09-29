@@ -497,7 +497,6 @@ pub(super) async fn execute_debug_command(
             "messages": agent.message_count(),
             "provider": agent.provider_name(),
             "model": agent.provider_model(),
-            "upstream_provider": agent.last_upstream_provider(),
         });
         if let Some(identity) = server_identity {
             payload["server_name"] = serde_json::json!(identity.name);
@@ -551,12 +550,11 @@ pub(super) async fn execute_debug_command(
                 }
             }
             "openai" | "codex" => jcode_provider_core::DEFAULT_OPENAI_MODEL,
-            "openrouter" => "anthropic/claude-sonnet-4",
             "gemini" => "gemini-2.5-pro",
             "antigravity" => "default",
             _ => {
                 return Err(anyhow::anyhow!(
-                    "Unknown provider '{}'. Use: claude, openai, openrouter, gemini, antigravity",
+                    "Unknown provider '{}'. Use: claude, openai, gemini, antigravity",
                     provider
                 ));
             }

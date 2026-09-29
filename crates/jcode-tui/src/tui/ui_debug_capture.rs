@@ -70,7 +70,6 @@ pub(super) fn build_info_widget_summary(data: &info_widget::InfoWidgetData) -> I
         usage_provider,
         tokens_per_second: data.tokens_per_second,
         auth_method: Some(format!("{:?}", data.auth_method)),
-        upstream_provider: data.upstream_provider.clone(),
     }
 }
 

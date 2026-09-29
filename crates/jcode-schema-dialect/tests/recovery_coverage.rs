@@ -31,7 +31,7 @@ const DIALECTS_WITH_RUNTIME_RECOVERY: &[&str] = &[
 /// rather than by retrying. Wiring recovery there is still worthwhile, but it
 /// is a separate change with its own live verification, so it is recorded as a
 /// known gap instead of being silently absent.
-const DIALECTS_WITHOUT_RUNTIME_RECOVERY: &[&str] = &["openrouter", "anthropic"];
+const DIALECTS_WITHOUT_RUNTIME_RECOVERY: &[&str] = &["anthropic"];
 
 #[test]
 fn every_dialect_is_accounted_for_as_having_recovery_or_not() {
@@ -171,12 +171,11 @@ const RUNTIME_RECOVERY_EXPECTATIONS: &[(&str, bool)] = &[
         "../jcode-provider-openai-runtime/src/openai_provider_impl.rs",
         true,
     ),
-    // Still unhandled. Both forward to upstreams whose rejection texts jcode has
+    // Still unhandled. It forwards to upstreams whose rejection texts jcode has
     // never captured, so there is nothing to write a classifier against yet;
     // inventing patterns would produce a check that cannot fail. Prevention
-    // covers them (their wire output is pinned by
+    // covers it (its wire output is pinned by
     // `every_provider_sends_clean_schemas`), so this is a real but bounded gap.
-    ("../jcode-provider-openrouter-runtime/src/lib.rs", false),
     ("../jcode-provider-anthropic-runtime/src/lib.rs", false),
 ];
 

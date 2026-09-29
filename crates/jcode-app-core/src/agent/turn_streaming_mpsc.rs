@@ -881,10 +881,6 @@ impl Agent {
                             let _ = sender.send(native_result).await;
                         }
                     }
-                    StreamEvent::UpstreamProvider { provider } => {
-                        self.last_upstream_provider = Some(provider.clone());
-                        let _ = event_tx.send(ServerEvent::UpstreamProvider { provider });
-                    }
                     StreamEvent::Error {
                         message,
                         retry_after_secs,

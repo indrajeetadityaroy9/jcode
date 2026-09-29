@@ -19,7 +19,6 @@ fn auth_state_default_is_not_configured() {
 fn auth_status_default_all_not_configured() {
     let status = AuthStatus::default();
     assert_eq!(status.anthropic.state, AuthState::NotConfigured);
-    assert_eq!(status.openrouter, AuthState::NotConfigured);
     assert_eq!(status.openai, AuthState::NotConfigured);
     assert_eq!(status.antigravity, AuthState::NotConfigured);
     assert!(!status.openai_has_oauth);
@@ -42,17 +41,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
         "HOME",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
-        "OPENROUTER_API_KEY",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_OPENROUTER_MODEL_CATALOG",
-        "JCODE_OPENROUTER_STATIC_MODELS",
-        "JCODE_OPENROUTER_MODEL",
     ]
     .into_iter()
     .map(|key| (key, std::env::var_os(key)))
@@ -63,21 +51,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
     crate::env::set_var("HOME", &home);
     crate::env::set_var("ANTHROPIC_API_KEY", "anthropic-test-key");
     crate::env::set_var("OPENAI_API_KEY", "openai-test-key");
-    crate::env::set_var("OPENROUTER_API_KEY", "openrouter-test-key");
-    for key in [
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_OPENROUTER_MODEL_CATALOG",
-        "JCODE_OPENROUTER_STATIC_MODELS",
-        "JCODE_OPENROUTER_MODEL",
-    ] {
-        crate::env::remove_var(key);
-    }
     AuthStatus::invalidate_cache();
 
     let (full, _) = build_auth_status_uncached(AuthProbeMode::Full);
@@ -86,7 +59,6 @@ fn full_and_fast_auth_status_match_for_shared_probe_fields() {
     assert_auth_status_shared_fields_match(&full, &fast);
     assert_eq!(full.anthropic.state, AuthState::Available);
     assert_eq!(full.openai, AuthState::Available);
-    assert_eq!(full.openrouter, AuthState::Available);
 
     for (key, value) in saved {
         restore_env_var(key, value);
@@ -107,7 +79,6 @@ fn assert_auth_status_shared_fields_match(full: &AuthStatus, fast: &AuthStatus) 
         full.anthropic.has_api_key, fast.anthropic.has_api_key,
         "anthropic.has_api_key"
     );
-    assert_eq!(full.openrouter, fast.openrouter, "openrouter");
     assert_eq!(full.openai, fast.openai, "openai");
     assert_eq!(full.openai_has_oauth, fast.openai_has_oauth, "openai oauth");
     assert_eq!(
@@ -252,7 +223,7 @@ fn auth_status_check_fast_ignores_expired_full_cache() {
     AuthStatus::invalidate_cache();
 
     let stale_status = AuthStatus {
-        openrouter: AuthState::Expired,
+        gemini: AuthState::Expired,
         ..Default::default()
     };
     let stale_when = std::time::Instant::now()
@@ -269,161 +240,12 @@ fn auth_status_check_fast_ignores_expired_full_cache() {
 
     let status = AuthStatus::check_fast();
     assert_ne!(
-        status.openrouter,
+        status.gemini,
         AuthState::Expired,
         "check_fast must not reuse an expired full auth cache forever"
     );
 
     AuthStatus::invalidate_cache();
-}
-
-#[test]
-fn openrouter_like_status_is_provider_specific() {
-    let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().expect("create temp dir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let prev_chutes = std::env::var_os("CHUTES_API_KEY");
-    let prev_opencode = std::env::var_os("OPENCODE_API_KEY");
-
-    crate::env::set_var("JCODE_HOME", temp.path());
-    crate::env::set_var("CHUTES_API_KEY", "chutes-test-key");
-    crate::env::remove_var("OPENCODE_API_KEY");
-    AuthStatus::invalidate_cache();
-
-    let status = AuthStatus::check_fast();
-    let chutes_assessment =
-        status.assessment_for_provider(crate::provider_catalog::CHUTES_LOGIN_PROVIDER);
-    let opencode_assessment =
-        status.assessment_for_provider(crate::provider_catalog::OPENCODE_LOGIN_PROVIDER);
-    assert!(chutes_assessment.is_available());
-    assert_eq!(opencode_assessment.state, AuthState::NotConfigured);
-    assert_eq!(
-        chutes_assessment.method_detail,
-        "API key (`CHUTES_API_KEY`)".to_string()
-    );
-
-    restore_env_var("JCODE_HOME", prev_home);
-    restore_env_var("CHUTES_API_KEY", prev_chutes);
-    restore_env_var("OPENCODE_API_KEY", prev_opencode);
-    AuthStatus::invalidate_cache();
-}
-
-#[test]
-fn openrouter_status_excludes_shared_compatible_transport() {
-    let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().expect("create temp dir");
-    let keys = [
-        "JCODE_HOME",
-        "OPENAI_API_KEY",
-        "OPENROUTER_API_KEY",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-    ];
-    let saved = keys
-        .into_iter()
-        .map(|key| (key, std::env::var_os(key)))
-        .collect::<Vec<_>>();
-
-    for key in keys {
-        crate::env::remove_var(key);
-    }
-    crate::env::set_var("JCODE_HOME", temp.path());
-
-    crate::env::set_var("OPENAI_API_KEY", "openai-test-key");
-    assert!(!crate::provider::openrouter::has_openrouter_credentials());
-    AuthStatus::invalidate_cache();
-    assert_eq!(
-        AuthStatus::check_fast().openrouter,
-        AuthState::NotConfigured
-    );
-
-    crate::env::set_var("JCODE_OPENROUTER_API_BASE", "https://example.test/v1");
-    crate::env::set_var("JCODE_OPENROUTER_API_KEY_NAME", "OPENAI_API_KEY");
-    assert!(crate::provider::openrouter::has_credentials());
-    assert!(!crate::provider::openrouter::has_openrouter_credentials());
-
-    crate::env::remove_var("JCODE_OPENROUTER_API_BASE");
-    crate::env::remove_var("JCODE_OPENROUTER_API_KEY_NAME");
-    crate::env::remove_var("OPENAI_API_KEY");
-    crate::env::set_var("OPENROUTER_API_KEY", "openrouter-test-key");
-    assert!(crate::provider::openrouter::has_openrouter_credentials());
-    AuthStatus::invalidate_cache();
-    assert_eq!(AuthStatus::check_fast().openrouter, AuthState::Available);
-
-    for (key, value) in saved {
-        restore_env_var(key, value);
-    }
-    AuthStatus::invalidate_cache();
-}
-
-#[test]
-fn configured_api_key_source_uses_valid_overrides() {
-    let _lock = crate::storage::lock_test_env();
-    let key_var = "JCODE_OPENAI_COMPAT_API_KEY_NAME";
-    let file_var = "JCODE_OPENAI_COMPAT_ENV_FILE";
-    let prev_key = std::env::var(key_var).ok();
-    let prev_file = std::env::var(file_var).ok();
-
-    crate::env::set_var(key_var, "GROQ_API_KEY");
-    crate::env::set_var(file_var, "groq.env");
-
-    let source = crate::provider_catalog::configured_api_key_source(
-        key_var,
-        file_var,
-        "OPENAI_COMPAT_API_KEY",
-        "compat.env",
-    );
-    assert_eq!(
-        source,
-        Some(("GROQ_API_KEY".to_string(), "groq.env".to_string()))
-    );
-
-    if let Some(v) = prev_key {
-        crate::env::set_var(key_var, v);
-    } else {
-        crate::env::remove_var(key_var);
-    }
-    if let Some(v) = prev_file {
-        crate::env::set_var(file_var, v);
-    } else {
-        crate::env::remove_var(file_var);
-    }
-}
-
-#[test]
-fn configured_api_key_source_rejects_invalid_values() {
-    let _lock = crate::storage::lock_test_env();
-    let key_var = "JCODE_OPENAI_COMPAT_API_KEY_NAME";
-    let file_var = "JCODE_OPENAI_COMPAT_ENV_FILE";
-    let prev_key = std::env::var(key_var).ok();
-    let prev_file = std::env::var(file_var).ok();
-
-    crate::env::set_var(key_var, "bad-key");
-    crate::env::set_var(file_var, "../bad.env");
-
-    let source = crate::provider_catalog::configured_api_key_source(
-        key_var,
-        file_var,
-        "OPENAI_COMPAT_API_KEY",
-        "compat.env",
-    );
-    assert!(source.is_none());
-
-    if let Some(v) = prev_key {
-        crate::env::set_var(key_var, v);
-    } else {
-        crate::env::remove_var(key_var);
-    }
-    if let Some(v) = prev_file {
-        crate::env::set_var(file_var, v);
-    } else {
-        crate::env::remove_var(file_var);
-    }
 }
 
 #[test]

@@ -50,32 +50,6 @@ fn server_promote_parses_default_and_explicit_version() {
 }
 
 #[test]
-fn test_provider_choice_aliases_parse() {
-    let args = Args::try_parse_from(["jcode", "--provider", "z.ai", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, ProviderChoice::Zai);
-
-    let args =
-        Args::try_parse_from(["jcode", "--provider", "kimi-for-coding", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, ProviderChoice::Kimi);
-
-    let args =
-        Args::try_parse_from(["jcode", "--provider", "cerebrascode", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, ProviderChoice::Cerebras);
-
-    let args = Args::try_parse_from(["jcode", "--provider", "compat", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, ProviderChoice::OpenaiCompatible);
-
-    let args = Args::try_parse_from(["jcode", "--provider", "bailian", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, ProviderChoice::AlibabaCodingPlan);
-
-    let args = Args::try_parse_from(["jcode", "--provider", "together", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, ProviderChoice::TogetherAi);
-
-    let args = Args::try_parse_from(["jcode", "--provider", "cgc", "run", "smoke"]).unwrap();
-    assert_eq!(args.provider, ProviderChoice::Comtegra);
-}
-
-#[test]
 fn serve_server_name_option_parses() {
     let args =
         Args::try_parse_from(["jcode", "serve", "--server-name", "mount-cloud/fabian"]).unwrap();
@@ -171,9 +145,6 @@ fn login_no_browser_flag_parses() {
             callback_url,
             auth_code,
             json,
-            api_base,
-            api_key,
-            api_key_env,
             no_validate,
         }) => {
             assert!(provider.is_none());
@@ -183,9 +154,6 @@ fn login_no_browser_flag_parses() {
             assert!(callback_url.is_none());
             assert!(auth_code.is_none());
             assert!(!json);
-            assert!(api_base.is_none());
-            assert!(api_key.is_none());
-            assert!(api_key_env.is_none());
             assert!(!no_validate);
         }
         other => panic!("unexpected command: {:?}", other),
@@ -204,60 +172,6 @@ fn login_accepts_provider_positional() {
     match args.command {
         Some(Command::Login { provider, .. }) => {
             assert_eq!(provider, Some(ProviderChoice::Gemini));
-        }
-        other => panic!("unexpected command: {:?}", other),
-    }
-}
-
-#[test]
-fn login_openai_compatible_scriptable_flags_parse() {
-    let args = Args::try_parse_from([
-        "jcode",
-        "--provider",
-        "openai-compatible",
-        "--model",
-        "deepseek-v4-flash",
-        "login",
-        "--api-base",
-        "https://api.deepseek.com",
-        "--api-key-env",
-        "DEEPSEEK_API_KEY",
-    ])
-    .unwrap();
-    assert_eq!(args.provider, ProviderChoice::OpenaiCompatible);
-    assert_eq!(args.model.as_deref(), Some("deepseek-v4-flash"));
-    match args.command {
-        Some(Command::Login {
-            api_base,
-            api_key_env,
-            ..
-        }) => {
-            assert_eq!(api_base.as_deref(), Some("https://api.deepseek.com"));
-            assert_eq!(api_key_env.as_deref(), Some("DEEPSEEK_API_KEY"));
-        }
-        other => panic!("unexpected command: {:?}", other),
-    }
-}
-
-#[test]
-fn login_openai_compatible_accepts_global_provider_and_model_after_subcommand() {
-    let args = Args::try_parse_from([
-        "jcode",
-        "login",
-        "--provider",
-        "openai-compatible",
-        "--api-base",
-        "https://api.deepseek.com",
-        "--model",
-        "deepseek-v4-flash",
-    ])
-    .unwrap();
-
-    assert_eq!(args.provider, ProviderChoice::OpenaiCompatible);
-    assert_eq!(args.model.as_deref(), Some("deepseek-v4-flash"));
-    match args.command {
-        Some(Command::Login { api_base, .. }) => {
-            assert_eq!(api_base.as_deref(), Some("https://api.deepseek.com"));
         }
         other => panic!("unexpected command: {:?}", other),
     }
@@ -416,52 +330,6 @@ fn provider_current_subcommand_parses() {
     let args = Args::try_parse_from(["jcode", "provider", "current", "--json"]).unwrap();
     match args.command {
         Some(Command::Provider(ProviderCommand::Current { json })) => assert!(json),
-        other => panic!("unexpected command: {:?}", other),
-    }
-}
-
-#[test]
-fn provider_add_subcommand_parses_agent_friendly_flags() {
-    let args = Args::try_parse_from([
-        "jcode",
-        "provider",
-        "add",
-        "my-api",
-        "--base-url",
-        "https://llm.example.com/v1",
-        "--model",
-        "model-a",
-        "--context-window",
-        "128000",
-        "--api-key-stdin",
-        "--auth",
-        "bearer",
-        "--set-default",
-        "--json",
-    ])
-    .unwrap();
-
-    match args.command {
-        Some(Command::Provider(ProviderCommand::Add {
-            name,
-            base_url,
-            model,
-            context_window,
-            api_key_stdin,
-            auth,
-            set_default,
-            json,
-            ..
-        })) => {
-            assert_eq!(name, "my-api");
-            assert_eq!(base_url, "https://llm.example.com/v1");
-            assert_eq!(model, "model-a");
-            assert_eq!(context_window, Some(128000));
-            assert!(api_key_stdin);
-            assert_eq!(auth, Some(ProviderAuthArg::Bearer));
-            assert!(set_default);
-            assert!(json);
-        }
         other => panic!("unexpected command: {:?}", other),
     }
 }

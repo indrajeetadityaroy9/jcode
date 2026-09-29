@@ -2009,7 +2009,6 @@ dependencies = [
  "jcode-provider-doctor",
  "jcode-provider-gemini-runtime",
  "jcode-provider-openai-runtime",
- "jcode-provider-openrouter-runtime",
  "jcode-tui",
  "jcode-tui-session-picker",
  "jcode-tui-style",
@@ -2155,8 +2154,6 @@ dependencies = [
  "jcode-provider-gemini",
  "jcode-provider-metadata",
  "jcode-provider-openai",
- "jcode-provider-openrouter",
- "jcode-provider-openrouter-runtime",
  "jcode-render-core",
  "jcode-session-types",
  "jcode-side-panel-types",
@@ -2513,11 +2510,7 @@ dependencies = [
  "jcode-provider-anthropic-runtime",
  "jcode-provider-antigravity-runtime",
  "jcode-provider-gemini-runtime",
- "jcode-provider-metadata",
  "jcode-provider-openai-runtime",
- "jcode-provider-openrouter-runtime",
- "reqwest",
- "serde",
  "serde_json",
  "tokio",
 ]
@@ -2559,7 +2552,6 @@ dependencies = [
  "jcode-provider-core",
  "jcode-provider-gemini",
  "jcode-provider-openai",
- "jcode-provider-openrouter",
  "jcode-schema-dialect",
  "reqwest",
  "serde",
@@ -2615,45 +2607,6 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
-]
-
-[[package]]
-name = "jcode-provider-openrouter"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "dirs",
- "futures",
- "jcode-core",
- "jcode-logging",
- "jcode-message-types",
- "jcode-schema-dialect",
- "reqwest",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "jcode-provider-openrouter-runtime"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytes",
- "futures",
- "jcode-base",
- "jcode-message-types",
- "jcode-provider-core",
- "jcode-provider-metadata",
- "jcode-provider-openrouter",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-stream",
- "toml",
 ]
 
 [[package]]

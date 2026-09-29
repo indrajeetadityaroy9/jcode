@@ -14,8 +14,7 @@
 //! Source key conventions:
 //!   - `claude:oauth:<label>` / `claude:api-key`
 //!   - `openai:oauth:<label>` / `openai:api-key`
-//!   - `openai-compatible:<profile-id>` (DeepSeek, Moonshot, NVIDIA NIM, ...)
-//!   - `openrouter`, `jcode`, `gemini`, `antigravity`
+//!   - `gemini`, `antigravity`
 
 use chrono::{Datelike, Utc};
 use serde::{Deserialize, Serialize};
@@ -231,15 +230,8 @@ pub fn all_entries() -> Vec<(String, ProviderActivityEntry)> {
 }
 
 /// Human-facing display name for a ledger source key, e.g.
-/// `openai-compatible:deepseek` -> `DeepSeek (API key)`,
 /// `claude:oauth:claude-1` -> `Anthropic (Claude) [claude-1]`.
 pub fn display_name_for_source_key(source_key: &str) -> String {
-    if let Some(profile_id) = source_key.strip_prefix("openai-compatible:") {
-        let name = crate::provider_catalog::openai_compatible_profile_by_id(profile_id)
-            .map(|profile| profile.display_name.to_string())
-            .unwrap_or_else(|| profile_id.to_string());
-        return format!("{} (API key)", name);
-    }
     if let Some(label) = source_key.strip_prefix("claude:oauth:") {
         return format!("Anthropic (Claude) [{}]", label);
     }
@@ -249,7 +241,6 @@ pub fn display_name_for_source_key(source_key: &str) -> String {
     match source_key {
         "claude:api-key" => "Anthropic API key".to_string(),
         "openai:api-key" => "OpenAI API key".to_string(),
-        "openrouter" => "OpenRouter".to_string(),
         "gemini" => "Google Gemini".to_string(),
         "antigravity" => "Antigravity".to_string(),
         other => {
@@ -290,35 +281,10 @@ pub fn format_relative_age(unix_secs: u64) -> String {
     }
 }
 
-/// Map a human-facing provider label (e.g. `"DeepSeek"`, `"OpenRouter"`,
-/// `"NVIDIA NIM"`) plus the optional `JCODE_RUNTIME_PROVIDER` key onto a
+/// Map a human-facing provider label (e.g. `"Anthropic"`, `"OpenAI"`) onto a
 /// ledger source key. Used by spend recorders that only know display names.
-pub fn source_key_for_provider_label(label: &str, runtime_provider: Option<&str>) -> String {
+pub fn source_key_for_provider_label(label: &str) -> String {
     let normalized = label.trim().to_ascii_lowercase();
-    let runtime = runtime_provider
-        .map(|value| value.trim().to_ascii_lowercase())
-        .filter(|value| !value.is_empty());
-
-    // OpenRouter first: the catalog also carries an `openrouter` compatible
-    // profile, but the ledger treats the public aggregator as its own bucket.
-    if normalized.contains("openrouter") {
-        // The OpenRouter slot multiplexes direct profiles; prefer the runtime
-        // provider key when it names one.
-        if let Some(runtime) = runtime.as_deref()
-            && runtime != "openrouter"
-            && crate::provider_catalog::openai_compatible_profile_by_id(runtime).is_some()
-        {
-            return format!("openai-compatible:{}", runtime);
-        }
-        return "openrouter".to_string();
-    }
-
-    // Direct OpenAI-compatible profiles, matched by id or display name.
-    for profile in crate::provider_catalog::openai_compatible_profiles() {
-        if normalized == profile.id || normalized == profile.display_name.to_ascii_lowercase() {
-            return format!("openai-compatible:{}", profile.id);
-        }
-    }
 
     if normalized.contains("anthropic") || normalized.contains("claude") {
         return "claude:api-key".to_string();
@@ -426,32 +392,10 @@ mod tests {
 
     #[test]
     fn source_key_mapping_covers_known_providers() {
+        assert_eq!(source_key_for_provider_label("Anthropic"), "claude:api-key");
+        assert_eq!(source_key_for_provider_label("OpenAI"), "openai:api-key");
         assert_eq!(
-            source_key_for_provider_label("DeepSeek", None),
-            "openai-compatible:deepseek"
-        );
-        assert_eq!(
-            source_key_for_provider_label("Moonshot AI", None),
-            "openai-compatible:moonshotai"
-        );
-        assert_eq!(
-            source_key_for_provider_label("OpenRouter", None),
-            "openrouter"
-        );
-        assert_eq!(
-            source_key_for_provider_label("OpenRouter", Some("deepseek")),
-            "openai-compatible:deepseek"
-        );
-        assert_eq!(
-            source_key_for_provider_label("Anthropic", None),
-            "claude:api-key"
-        );
-        assert_eq!(
-            source_key_for_provider_label("OpenAI", None),
-            "openai:api-key"
-        );
-        assert_eq!(
-            source_key_for_provider_label("Some Custom Endpoint", None),
+            source_key_for_provider_label("Some Custom Endpoint"),
             "some-custom-endpoint"
         );
     }

@@ -9,26 +9,7 @@ fn with_clean_provider_test_env<T>(f: impl FnOnce() -> T) -> T {
     register_test_external_runtimes();
     let temp = tempfile::tempdir().expect("tempdir");
     let prev_home = std::env::var_os("JCODE_HOME");
-    let mut profile_env_keys = vec![
-        "OPENROUTER_API_KEY",
-        "DEEPSEEK_API_KEY",
-        "KIMI_API_KEY",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_OPENROUTER_MODEL_CATALOG",
-        "JCODE_OPENROUTER_MODEL",
-        "JCODE_OPENROUTER_STATIC_MODELS",
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
-        "JCODE_OPENAI_COMPAT_LOCAL_ENABLED",
-        "OPENAI_COMPAT_API_KEY",
+    let profile_env_keys = vec![
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
         "JCODE_RUNTIME_PROVIDER",
@@ -39,11 +20,6 @@ fn with_clean_provider_test_env<T>(f: impl FnOnce() -> T) -> T {
         "JCODE_PROVIDER_PROFILE_ACTIVE",
         "JCODE_PROVIDER_PROFILE_NAME",
     ];
-    for profile in crate::provider_catalog::openai_compatible_profiles() {
-        if !profile_env_keys.contains(&profile.api_key_env) {
-            profile_env_keys.push(profile.api_key_env);
-        }
-    }
     let saved_profile_env = profile_env_keys
         .into_iter()
         .map(|key| (key, std::env::var_os(key)))
@@ -87,99 +63,6 @@ fn enter_test_runtime() -> tokio::runtime::Runtime {
         .expect("build tokio runtime")
 }
 
-#[test]
-fn openai_compatible_profile_catalog_cache_is_fresh_before_soft_refresh_boundary() {
-    assert!(!openai_compatible_profile_catalog_cache_is_stale(
-        1_000,
-        1_000 + OPENAI_COMPATIBLE_PROFILE_CATALOG_SOFT_REFRESH_SECS - 1,
-    ));
-}
-
-#[test]
-fn openai_compatible_profile_catalog_cache_is_stale_at_soft_refresh_boundary() {
-    assert!(openai_compatible_profile_catalog_cache_is_stale(
-        1_000,
-        1_000 + OPENAI_COMPATIBLE_PROFILE_CATALOG_SOFT_REFRESH_SECS,
-    ));
-    assert!(!openai_compatible_profile_catalog_cache_is_stale(
-        2_000, 1_000
-    ));
-}
-
-fn with_env_var<T>(key: &str, value: &str, f: impl FnOnce() -> T) -> T {
-    let prev = std::env::var_os(key);
-    crate::env::set_var(key, value);
-    let result = f();
-    if let Some(prev) = prev {
-        crate::env::set_var(key, prev);
-    } else {
-        crate::env::remove_var(key);
-    }
-    result
-}
-
-fn save_test_openai_compatible_login_config(default_model: &str) {
-    let env_file = crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file;
-    crate::provider_catalog::save_env_value_to_env_file(
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        env_file,
-        Some("https://example-openai-compatible.test/v1"),
-    )
-    .expect("save api base");
-    crate::provider_catalog::save_env_value_to_env_file(
-        "OPENAI_COMPAT_API_KEY",
-        env_file,
-        Some("sk-test-openai-compatible"),
-    )
-    .expect("save api key");
-    crate::provider_catalog::save_env_value_to_env_file(
-        "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
-        env_file,
-        Some(default_model),
-    )
-    .expect("save default model");
-}
-
-fn save_test_openrouter_model_cache(namespace: &str, source_api_base: &str, model_ids: &[&str]) {
-    let jcode_home = std::env::var_os("JCODE_HOME").expect("test JCODE_HOME should be set");
-    let cache_dir = std::path::PathBuf::from(jcode_home).join("cache");
-    std::fs::create_dir_all(&cache_dir).expect("create model cache dir");
-    let cache = jcode_provider_openrouter::DiskCache {
-        cached_at: jcode_provider_openrouter::current_unix_secs().expect("current unix time"),
-        source_api_base: Some(source_api_base.to_string()),
-        models: model_ids
-            .iter()
-            .map(|id| jcode_provider_openrouter::ModelInfo {
-                id: (*id).to_string(),
-                name: String::new(),
-                context_length: None,
-                pricing: jcode_provider_openrouter::ModelPricing::default(),
-                created: None,
-            })
-            .collect(),
-    };
-    let path = cache_dir.join(format!("{namespace}_models.json"));
-    std::fs::write(
-        path,
-        serde_json::to_string(&cache).expect("serialize model cache"),
-    )
-    .expect("write model cache");
-}
-
-fn clear_openai_compatible_runtime_env() {
-    for key in [
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
-        "JCODE_OPENAI_COMPAT_LOCAL_ENABLED",
-        "OPENAI_COMPAT_API_KEY",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-    ] {
-        crate::env::remove_var(key);
-    }
-}
-
 fn save_test_openai_oauth_credentials() {
     crate::auth::codex::upsert_account_from_tokens(
         &crate::auth::codex::primary_account_label(),
@@ -200,9 +83,6 @@ fn test_multi_provider_with_openai() -> MultiProvider {
         openai: RwLock::new(Some(test_openai_runtime() as Arc<dyn Provider>)),
         antigravity: RwLock::new(None),
         gemini: RwLock::new(None),
-        openrouter: RwLock::new(None),
-        openai_compatible_profiles: RwLock::new(std::collections::HashMap::new()),
-        active_openai_compatible_profile: RwLock::new(None),
         active: RwLock::new(ActiveProvider::OpenAI),
         use_claude_cli: false,
         startup_notices: RwLock::new(Vec::new()),
@@ -555,215 +435,6 @@ fn model_routes_memo_serves_repeats_and_invalidates_on_auth_and_model_changes() 
     });
 }
 
-fn assert_openai_compatible_route_available(provider: &MultiProvider, model: &str) {
-    let routes = provider.model_routes();
-    assert!(
-        routes.iter().any(|route| {
-            route.provider == "OpenAI-compatible"
-                && matches!(
-                    route.api_method.as_str(),
-                    "openai-compatible" | "openai-compatible:openai-compatible"
-                )
-                && route.model == model
-                && route.available
-        }),
-        "configured OpenAI-compatible model should be immediately visible after API-key setup; routes: {routes:?}"
-    );
-}
-
-#[test]
-fn openai_compatible_api_key_setup_makes_configured_model_route_available() {
-    with_clean_provider_test_env(|| {
-        save_test_openai_compatible_login_config("glm-test-login-flow");
-
-        assert!(
-            crate::provider_catalog::openai_compatible_profile_is_configured(
-                crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-            )
-        );
-
-        let provider = MultiProvider::new();
-        assert_openai_compatible_route_available(&provider, "glm-test-login-flow");
-
-        provider
-            .set_model_on_openai_compatible_profile(
-                crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-                "glm-test-login-flow",
-            )
-            .expect("configured OpenAI-compatible model should select without requiring another provider login");
-
-        assert_eq!(provider.model(), "glm-test-login-flow");
-    });
-}
-
-#[test]
-fn openai_compatible_api_key_setup_survives_process_restart_without_relogin() {
-    with_clean_provider_test_env(|| {
-        save_test_openai_compatible_login_config("restart-visible-model");
-
-        // Simulate a fresh process: the login command wrote the config file, but
-        // none of the runtime env vars from the login process remain populated.
-        clear_openai_compatible_runtime_env();
-
-        let resolved = crate::provider_catalog::resolve_openai_compatible_profile(
-            crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-        );
-        assert_eq!(
-            resolved.api_base,
-            "https://example-openai-compatible.test/v1"
-        );
-        assert_eq!(
-            resolved.default_model.as_deref(),
-            Some("restart-visible-model")
-        );
-        assert!(
-            crate::provider_catalog::openai_compatible_profile_is_configured(
-                crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-            )
-        );
-
-        let provider = MultiProvider::new();
-        assert_openai_compatible_route_available(&provider, "restart-visible-model");
-        provider
-            .set_model_on_openai_compatible_profile(
-                crate::provider_catalog::OPENAI_COMPAT_PROFILE,
-                "restart-visible-model",
-            )
-            .expect("saved credentials should be selectable after a fresh process restart");
-        assert_eq!(provider.model(), "restart-visible-model");
-    });
-}
-
-#[test]
-fn configured_openai_compatible_profile_routes_use_live_cache_when_not_active_provider() {
-    with_clean_provider_test_env(|| {
-        crate::provider_catalog::save_env_value_to_env_file(
-            "OPENROUTER_API_KEY",
-            "openrouter.env",
-            Some("sk-test-openrouter"),
-        )
-        .expect("save openrouter key");
-        crate::provider_catalog::save_env_value_to_env_file(
-            "OPENCODE_API_KEY",
-            "opencode.env",
-            Some("oc-test-opencode"),
-        )
-        .expect("save opencode key");
-        save_test_openrouter_model_cache(
-            "opencode",
-            "https://opencode.ai/zen/v1",
-            &["kimi-k2.6", "zen-live-only-model"],
-        );
-
-        let provider = MultiProvider::new();
-        let routes = provider.model_routes();
-        let opencode_routes = routes
-            .iter()
-            .filter(|route| route.provider == "OpenCode Zen")
-            .collect::<Vec<_>>();
-
-        assert!(
-            opencode_routes
-                .iter()
-                .any(|route| route.model == "zen-live-only-model"
-                    && route.api_method == "openai-compatible:opencode"
-                    && !route
-                        .detail
-                        .contains("fallback: static provider model list")),
-            "non-active configured direct profile should expose its live /models cache, routes: {opencode_routes:?}"
-        );
-        assert!(
-            !opencode_routes.iter().any(|route| route.model == "glm-4.7"),
-            "static fallback models should drop out once a live profile catalog is available, routes: {opencode_routes:?}"
-        );
-    });
-}
-
-#[test]
-fn standard_openrouter_catalog_refresh_is_noop_when_cache_fresh() {
-    with_clean_provider_test_env(|| {
-        let runtime = enter_test_runtime();
-        runtime.block_on(async {
-            crate::provider_catalog::save_env_value_to_env_file(
-                "OPENROUTER_API_KEY",
-                "openrouter.env",
-                Some("sk-test-openrouter"),
-            )
-            .expect("save openrouter key");
-            // A fresh, non-empty standard OpenRouter cache should suppress the
-            // background refresh entirely so we never fire a needless network
-            // request on every picker render.
-            save_test_openrouter_model_cache(
-                "openrouter",
-                "https://openrouter.ai/api/v1",
-                &["openrouter/owl-alpha"],
-            );
-
-            assert!(
-                !openrouter::maybe_schedule_standard_openrouter_catalog_refresh(
-                    "unit test fresh cache"
-                ),
-                "a fresh non-empty standard OpenRouter cache must not trigger a refresh"
-            );
-        });
-    });
-}
-
-#[test]
-fn standard_openrouter_catalog_refresh_skips_without_key() {
-    with_clean_provider_test_env(|| {
-        let runtime = enter_test_runtime();
-        runtime.block_on(async {
-            // No OPENROUTER_API_KEY configured: the refresh must not be
-            // scheduled regardless of cache state.
-            assert!(
-                !openrouter::maybe_schedule_standard_openrouter_catalog_refresh(
-                    "unit test missing key"
-                ),
-                "standard OpenRouter refresh must be skipped when no key is configured"
-            );
-        });
-    });
-}
-
-#[test]
-fn standard_openrouter_catalog_refresh_fires_when_named_profile_owns_slot() {
-    with_clean_provider_test_env(|| {
-        let runtime = enter_test_runtime();
-        runtime.block_on(async {
-            crate::provider_catalog::save_env_value_to_env_file(
-                "OPENROUTER_API_KEY",
-                "openrouter.env",
-                Some("sk-test-openrouter"),
-            )
-            .expect("save openrouter key");
-            // Simulate an active named profile (e.g. NVIDIA NIM) occupying the
-            // shared OpenRouter/OpenAI-compatible slot: it sets the runtime env
-            // vars to point at a non-openrouter.ai endpoint. The standard
-            // OpenRouter catalog refresh must STILL fire so `/model` can list
-            // openrouter.ai models (issue #292). Cache is missing -> not fresh.
-            crate::env::set_var(
-                "JCODE_OPENROUTER_API_BASE",
-                "https://integrate.api.nvidia.com/v1",
-            );
-            crate::env::set_var("JCODE_OPENROUTER_CACHE_NAMESPACE", "mynvidia");
-
-            // Other tests in this process may already have attempted (or be
-            // running) an `openrouter` catalog refresh; clear the process-wide
-            // backoff/in-flight tracker or this assertion is flaky under
-            // parallel test execution.
-            jcode_provider_openrouter_runtime::reset_profile_catalog_refresh_tracker_for_tests();
-
-            assert!(
-                openrouter::maybe_schedule_standard_openrouter_catalog_refresh(
-                    "unit test named profile owns slot"
-                ),
-                "standard OpenRouter refresh must fire even when a named profile sets JCODE_OPENROUTER_* env"
-            );
-        });
-    });
-}
-
 /// Parameterized test stand-in for provider runtimes that live downstream
 /// (jcode-provider-{gemini,antigravity}-runtime) and therefore cannot
 /// be constructed from base tests. Mirrors each runtime's catalog surface
@@ -928,38 +599,6 @@ fn register_test_external_runtimes() {
         test_openai_runtime() as Arc<dyn Provider>
     });
     external::register_external_provider(external::ANTIGRAVITY_RUNTIME, test_antigravity_runtime);
-    // OpenRouter tests exercise the real runtime (profile-scoped catalogs,
-    // transport identities), so register the real factory like the binary's
-    // composition root does. The dev-dependency cycle is test-only.
-    external::register_openrouter_factory(|spec| {
-        use external::OpenRouterRuntimeSpec;
-        use jcode_provider_openrouter_runtime::OpenRouterProvider;
-        let provider: Arc<dyn Provider> = match spec {
-            OpenRouterRuntimeSpec::Default => Arc::new(OpenRouterProvider::new()?),
-            OpenRouterRuntimeSpec::OpenRouterApiKey => {
-                Arc::new(OpenRouterProvider::new_openrouter_api_key_runtime()?)
-            }
-            OpenRouterRuntimeSpec::CompatibleProfile(profile) => Arc::new(
-                OpenRouterProvider::new_openai_compatible_profile_runtime(profile)?,
-            ),
-            OpenRouterRuntimeSpec::NamedProfile { name, config } => Arc::new(
-                OpenRouterProvider::new_named_openai_compatible(&name, &config)?,
-            ),
-        };
-        Ok(provider)
-    });
-    external::register_profile_catalog_refresh(
-        jcode_provider_openrouter_runtime::maybe_schedule_openai_compatible_profile_catalog_refresh,
-    );
-    external::register_standard_openrouter_catalog_refresh(
-        jcode_provider_openrouter_runtime::maybe_schedule_standard_openrouter_catalog_refresh,
-    );
-}
-
-/// Construct a real OpenRouter/OpenAI-compatible runtime for tests through
-/// the registry, mirroring production construction.
-fn test_openrouter_runtime() -> anyhow::Result<Arc<dyn Provider>> {
-    external::instantiate_openrouter_runtime(external::OpenRouterRuntimeSpec::Default)
 }
 
 #[test]
@@ -997,66 +636,5 @@ fn new_session_fork_reloads_changed_config_provider_and_model() {
 
 include!("tests/auth_refresh.rs");
 include!("tests/model_resolution.rs");
-include!("tests/issue_534_profile_preservation.rs");
 include!("tests/fallback_failover.rs");
 include!("tests/catalog_accounts.rs");
-
-/// Rendering the route catalog must never schedule network work.
-///
-/// Regression guard for the "spawning a session refetches every provider
-/// catalog" bug: route building used to schedule a background `/models` fetch
-/// for each stale or missing profile cache, so every session attach and picker
-/// open fanned out dozens of HTTP requests. Refresh cadence now belongs solely
-/// to the background catalog scheduler.
-#[test]
-fn building_direct_profile_routes_does_not_schedule_catalog_refreshes() {
-    with_clean_provider_test_env(|| {
-        let runtime = enter_test_runtime();
-        runtime.block_on(async {
-            crate::provider_catalog::save_env_value_to_env_file(
-                "OPENROUTER_API_KEY",
-                "openrouter.env",
-                Some("sk-test-openrouter"),
-            )
-            .expect("save openrouter key");
-
-            // Deliberately leave every profile cache missing/stale: under the
-            // old behavior this was the worst case that scheduled a refresh
-            // for each configured profile.
-            jcode_provider_openrouter_runtime::reset_profile_catalog_refresh_tracker_for_tests();
-
-            for profile in crate::provider_catalog::openai_compatible_profiles()
-                .iter()
-                .copied()
-            {
-                let _ = super::direct_openai_compatible_profile_routes(profile);
-            }
-
-            // If route building had scheduled refreshes, the profile tracker
-            // would have recorded attempts, and this direct call for the
-            // standard OpenRouter namespace would be throttled/in-flight.
-            assert!(
-                openrouter::maybe_schedule_standard_openrouter_catalog_refresh(
-                    "unit test post-render scheduling"
-                ),
-                "route building must leave the refresh tracker untouched"
-            );
-        });
-    });
-}
-
-/// The scheduler's staleness predicate must treat a missing or mismatched
-/// cache as needing a refresh, so the sweeper actually populates cold caches.
-#[test]
-fn profile_catalog_cache_needs_refresh_for_missing_cache() {
-    with_clean_provider_test_env(|| {
-        let profile = crate::provider_catalog::openai_compatible_profiles()
-            .first()
-            .copied()
-            .expect("at least one OpenAI-compatible profile is defined");
-        assert!(
-            super::catalog_scheduler::profile_catalog_cache_needs_refresh(profile),
-            "a missing catalog cache must be reported as needing a refresh"
-        );
-    });
-}

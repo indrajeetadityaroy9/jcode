@@ -472,8 +472,8 @@ pub fn populate_context_limits(models: HashMap<String, usize>) {
 /// Populate the context limit cache from named provider model configs in the
 /// user's config file.
 ///
-/// Custom OpenAI-compatible providers that lack a usable `/v1/models` endpoint
-/// rely on per-model `context_window` config. That value is honored by the
+/// Named providers that lack a usable models endpoint rely on per-model
+/// `context_window` config. That value is honored by the
 /// provider instance's own `context_window()` method, but every other
 /// resolution path (TUI info widget, compaction budget, model switching) goes
 /// through the global [`CONTEXT_LIMIT_CACHE`] via
@@ -1098,14 +1098,10 @@ pub fn provider_for_model_with_hint(
     }
 
     let model = model.trim();
-    if model.contains('@') {
-        Some("openrouter")
-    } else if jcode_provider_core::model_id::matches_known_model(model, ALL_CLAUDE_MODELS) {
+    if jcode_provider_core::model_id::matches_known_model(model, ALL_CLAUDE_MODELS) {
         Some("claude")
     } else if jcode_provider_core::model_id::matches_known_model(model, ALL_OPENAI_MODELS) {
         Some("openai")
-    } else if model.contains('/') {
-        Some("openrouter")
     } else if model.starts_with("claude-") {
         Some("claude")
     } else if model.starts_with("gpt-") {

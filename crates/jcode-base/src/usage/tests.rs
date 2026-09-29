@@ -348,27 +348,6 @@ fn test_usage_data_from_provider_report_treats_usage_limit_values_as_percent() {
 }
 
 #[test]
-fn test_provider_usage_percent_helpers_clamp_invalid_low_values() {
-    assert_eq!(
-        provider_fetch::usage_percent_from_used_limit(25.0, 100.0),
-        25.0
-    );
-    assert_eq!(
-        provider_fetch::usage_percent_from_used_limit(-5.0, 100.0),
-        0.0
-    );
-    assert_eq!(provider_fetch::usage_percent_from_used_limit(5.0, 0.0), 0.0);
-    assert_eq!(
-        provider_fetch::usage_percent_from_remaining_limit(75.0, 100.0),
-        25.0
-    );
-    assert_eq!(
-        provider_fetch::usage_percent_from_remaining_limit(125.0, 100.0),
-        0.0
-    );
-}
-
-#[test]
 fn test_active_anthropic_usage_report_prefers_marked_account() {
     let results = vec![
         ProviderUsage {

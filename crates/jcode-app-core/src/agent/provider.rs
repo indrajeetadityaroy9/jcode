@@ -22,10 +22,7 @@ impl Agent {
         );
         let error =
             match crate::provider::set_model_with_auth_refresh(self.provider.as_ref(), &request) {
-                Ok(()) => {
-                    self.reconcile_explicit_provider_pin_route();
-                    return;
-                }
+                Ok(()) => return,
                 Err(error) => error,
             };
 
@@ -36,7 +33,6 @@ impl Agent {
                 "Restored session model '{model}' without its persisted route \
                  (request '{request}' failed: {error})"
             ));
-            self.reconcile_explicit_provider_pin_route();
             return;
         }
 
@@ -214,7 +210,7 @@ impl Agent {
     }
 
     /// API method/runtime route used to select the active model (e.g.
-    /// "openai-api", "claude-oauth", "openai-compatible:nvidia-nim"). Spawned
+    /// "openai-api", "claude-oauth", "claude-api"). Spawned
     /// swarm agents inherit this so they reconstruct the coordinator's exact
     /// auth route instead of falling back to the config default.
     pub fn session_route_api_method(&self) -> Option<String> {

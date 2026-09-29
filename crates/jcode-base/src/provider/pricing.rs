@@ -1,6 +1,4 @@
-use super::{ALL_OPENAI_MODELS, openrouter};
 use crate::auth;
-use crate::provider::models::provider_for_model;
 use jcode_provider_core::pricing as core_pricing;
 use jcode_provider_core::{RouteCheapnessEstimate, RouteCostConfidence, RouteCostSource};
 use std::sync::Mutex;
@@ -107,61 +105,6 @@ pub(crate) fn openai_oauth_pricing(model: &str) -> RouteCheapnessEstimate {
     core_pricing::openai_oauth_pricing(model)
 }
 
-pub(crate) fn openrouter_pricing_from_model_pricing(
-    pricing: &openrouter::ModelPricing,
-    source: RouteCostSource,
-    confidence: RouteCostConfidence,
-    note: Option<String>,
-) -> Option<RouteCheapnessEstimate> {
-    core_pricing::openrouter_pricing_from_token_prices(
-        pricing.prompt.as_deref(),
-        pricing.completion.as_deref(),
-        pricing.input_cache_read.as_deref(),
-        source,
-        confidence,
-        note,
-    )
-}
-
-pub(crate) fn openrouter_route_pricing(
-    model: &str,
-    provider: &str,
-) -> Option<RouteCheapnessEstimate> {
-    let cache = openrouter::load_endpoints_disk_cache_public(model);
-    if let Some((endpoints, _)) = cache.as_ref() {
-        if provider == "auto"
-            && let Some(best) = endpoints.first()
-        {
-            return openrouter_pricing_from_model_pricing(
-                &best.pricing,
-                RouteCostSource::OpenRouterEndpoint,
-                RouteCostConfidence::High,
-                Some(format!(
-                    "OpenRouter auto route currently prefers {}",
-                    best.provider_name
-                )),
-            );
-        }
-        if let Some(endpoint) = endpoints.iter().find(|ep| ep.provider_name == provider) {
-            return openrouter_pricing_from_model_pricing(
-                &endpoint.pricing,
-                RouteCostSource::OpenRouterEndpoint,
-                RouteCostConfidence::High,
-                Some(format!("OpenRouter endpoint pricing for {}", provider)),
-            );
-        }
-    }
-
-    openrouter::load_model_pricing_disk_cache_public(model).and_then(|pricing| {
-        openrouter_pricing_from_model_pricing(
-            &pricing,
-            RouteCostSource::OpenRouterCatalog,
-            RouteCostConfidence::Medium,
-            Some("OpenRouter model catalog pricing".to_string()),
-        )
-    })
-}
-
 fn usd_to_micros(usd: f64) -> u64 {
     (usd * 1_000_000.0).round() as u64
 }
@@ -170,13 +113,11 @@ fn usd_to_micros(usd: f64) -> u64 {
 ///
 /// `source_key` is the cross-provider activity key (see
 /// [`crate::provider_activity::source_key_for_provider_label`]), e.g.
-/// `claude:api-key`, `openai:api-key`, `openrouter`,
-/// `openai-compatible:deepseek`.
+/// `claude:api-key`, `openai:api-key`, `gemini`.
 ///
 /// Resolution order:
 ///   1. Curated static tables (exact, hand-reviewed) for Anthropic/OpenAI.
-///   2. OpenRouter endpoint/catalog disk caches for OpenRouter routes.
-///   3. The live models.dev pricing catalog cache (140+ providers).
+///   2. The live models.dev pricing catalog cache (140+ providers).
 ///
 /// Returns `None` when nothing can price the route, so callers can
 /// distinguish "unknown" from "free" instead of silently guessing.
@@ -203,15 +144,7 @@ pub fn metered_pricing_for_source_with_tier(
         return static_estimate;
     }
 
-    // 2. OpenRouter's own caches carry per-endpoint pricing, which is more
-    // precise than any catalog average for the route actually used.
-    if source_key == "openrouter"
-        && let Some(estimate) = openrouter_route_pricing(model, "auto")
-    {
-        return Some(estimate);
-    }
-
-    // 3. Live models.dev catalog (disk cache; refreshes in the background).
+    // 2. Live models.dev catalog (disk cache; refreshes in the background).
     let cost = crate::model_pricing::lookup(source_key, model)?;
     Some(RouteCheapnessEstimate::metered(
         RouteCostSource::ModelsDevCatalog,
@@ -264,26 +197,7 @@ pub(crate) fn cheapness_for_route(
         };
     }
 
-    if let Some(profile_id) = api_method.strip_prefix("openai-compatible:") {
-        return metered_pricing_for_source(&format!("openai-compatible:{}", profile_id), model);
-    }
-
-    match api_method {
-        "openrouter" => {
-            let model_id = if model.contains('/') {
-                model.to_string()
-            } else if provider_for_model(model) == Some("claude") {
-                format!("anthropic/{}", model)
-            } else if ALL_OPENAI_MODELS.contains(&model) {
-                format!("openai/{}", model)
-            } else {
-                model.to_string()
-            };
-            openrouter_route_pricing(&model_id, provider)
-                .or_else(|| metered_pricing_for_source("openrouter", &model_id))
-        }
-        _ => None,
-    }
+    None
 }
 
 #[cfg(test)]
@@ -332,27 +246,6 @@ mod tests {
     }
 
     #[test]
-    fn openrouter_pricing_from_model_pricing_parses_token_prices() {
-        let pricing = openrouter::ModelPricing {
-            prompt: Some("0.0000025".to_string()),
-            completion: Some("0.000015".to_string()),
-            input_cache_read: Some("0.00000025".to_string()),
-            input_cache_write: None,
-        };
-        let estimate = openrouter_pricing_from_model_pricing(
-            &pricing,
-            RouteCostSource::OpenRouterCatalog,
-            RouteCostConfidence::Medium,
-            Some("test".to_string()),
-        )
-        .expect("parsed pricing");
-
-        assert_eq!(estimate.input_price_per_mtok_micros, Some(2_500_000));
-        assert_eq!(estimate.output_price_per_mtok_micros, Some(15_000_000));
-        assert_eq!(estimate.cache_read_price_per_mtok_micros, Some(250_000));
-    }
-
-    #[test]
     fn cheapness_for_openai_route_falls_back_to_subscription_for_unpriced_api_key_models() {
         with_clean_provider_test_env(|| {
             env::set_var("OPENAI_API_KEY", "test-key");
@@ -392,8 +285,8 @@ mod tests {
                     },
                 ),
                 (
-                    "deepseek",
-                    "deepseek-v4-flash",
+                    "google",
+                    "gemini-2.5-flash",
                     crate::model_pricing::ModelCost {
                         input_usd_per_mtok: 0.14,
                         output_usd_per_mtok: 0.28,
@@ -409,19 +302,16 @@ mod tests {
             assert_eq!(sonnet.source, RouteCostSource::PublicApiPricing);
             assert_eq!(sonnet.input_price_per_mtok_micros, Some(3_000_000));
 
-            // Compatible profiles resolve through the models.dev catalog.
+            // Providers without a curated table resolve through the models.dev catalog.
             let flash =
-                metered_pricing_for_source("openai-compatible:deepseek", "deepseek-v4-flash")
-                    .expect("priced model");
+                metered_pricing_for_source("gemini", "gemini-2.5-flash").expect("priced model");
             assert_eq!(flash.source, RouteCostSource::ModelsDevCatalog);
             assert_eq!(flash.input_price_per_mtok_micros, Some(140_000));
             assert_eq!(flash.output_price_per_mtok_micros, Some(280_000));
             assert_eq!(flash.cache_read_price_per_mtok_micros, Some(2_800));
 
             // Unknown models return None instead of a fabricated price.
-            assert!(
-                metered_pricing_for_source("openai-compatible:deepseek", "unknown-model").is_none()
-            );
+            assert!(metered_pricing_for_source("gemini", "unknown-model").is_none());
 
             crate::model_pricing::clear_memory_cache_for_tests();
         });

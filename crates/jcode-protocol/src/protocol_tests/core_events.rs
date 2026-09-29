@@ -101,29 +101,27 @@ fn test_notify_auth_changed_provider_hint_is_optional() -> Result<()> {
 fn test_notify_auth_changed_typed_auth_payload_roundtrip() -> Result<()> {
     let req = Request::NotifyAuthChanged {
         id: 11,
-        provider: Some("cerebras".to_string()),
+        provider: Some("openai-api".to_string()),
         auth: Some(AuthChanged {
-            provider: AuthProviderId::new("cerebras"),
+            provider: AuthProviderId::new("openai-api"),
             credential_source: Some(AuthCredentialSource::ApiKeyFile),
             auth_method: Some(AuthMethod::RemoteTuiPasteApiKey),
-            expected_runtime: Some(RuntimeProviderKey::new("openai-compatible")),
-            expected_catalog_namespace: Some(CatalogNamespace::new("cerebras")),
+            expected_runtime: Some(RuntimeProviderKey::new("openai-api")),
         }),
     };
     let json = serde_json::to_string(&req)?;
-    assert!(json.contains("\"provider\":\"cerebras\""));
+    assert!(json.contains("\"provider\":\"openai-api\""));
     assert!(json.contains("\"auth_method\":\"remote_tui_paste_api_key\""));
-    assert!(json.contains("\"expected_runtime\":\"openai-compatible\""));
-    assert!(json.contains("\"expected_catalog_namespace\":\"cerebras\""));
+    assert!(json.contains("\"expected_runtime\":\"openai-api\""));
 
     let decoded = parse_request_json(&json)?;
     let Request::NotifyAuthChanged { id, provider, auth } = decoded else {
         return Err(anyhow!("wrong request type"));
     };
     assert_eq!(id, 11);
-    assert_eq!(provider.as_deref(), Some("cerebras"));
+    assert_eq!(provider.as_deref(), Some("openai-api"));
     let auth = auth.expect("typed auth payload should roundtrip");
-    assert_eq!(auth.provider.as_str(), "cerebras");
+    assert_eq!(auth.provider.as_str(), "openai-api");
     assert_eq!(
         auth.credential_source,
         Some(AuthCredentialSource::ApiKeyFile)
@@ -133,13 +131,7 @@ fn test_notify_auth_changed_typed_auth_payload_roundtrip() -> Result<()> {
         auth.expected_runtime
             .as_ref()
             .map(RuntimeProviderKey::as_str),
-        Some("openai-compatible")
-    );
-    assert_eq!(
-        auth.expected_catalog_namespace
-            .as_ref()
-            .map(CatalogNamespace::as_str),
-        Some("cerebras")
+        Some("openai-api")
     );
     Ok(())
 }
@@ -448,7 +440,6 @@ fn test_history_event_roundtrip_preserves_side_panel_snapshot() -> Result<()> {
         was_interrupted: None,
         connection_type: Some("websocket".to_string()),
         status_detail: None,
-        upstream_provider: None,
         resolved_credential: None,
         reasoning_effort: None,
         service_tier: None,

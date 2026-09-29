@@ -101,32 +101,6 @@ pub fn redact_secrets(text: &str) -> String {
 
     let assignment_patterns = ASSIGNMENT_PATTERNS.get_or_init(|| {
         compile_static_regexes(&[
-            r"(?m)^\s*(OPENROUTER_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(OPENCODE_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(OPENCODE_GO_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(ZHIPU_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(ZAI_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(302AI_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(BASETEN_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(CORTECS_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(DEEPSEEK_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(FIRMWARE_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(HF_TOKEN\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(MOONSHOT_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(NEBIUS_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(SCALEWAY_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(STACKIT_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(GROQ_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(MISTRAL_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(PERPLEXITY_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(TOGETHER_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(DEEPINFRA_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(XAI_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(LMSTUDIO_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(OLLAMA_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(CHUTES_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(CEREBRAS_API_KEY\s*=\s*)[^\r\n]+",
-            r"(?m)^\s*(OPENAI_COMPAT_API_KEY\s*=\s*)[^\r\n]+",
             r"(?m)^\s*(ANTHROPIC_API_KEY\s*=\s*)[^\r\n]+",
             r"(?m)^\s*(OPENAI_API_KEY\s*=\s*)[^\r\n]+",
             r"(?m)^\s*(GITHUB_TOKEN\s*=\s*)[^\r\n]+",
@@ -137,32 +111,6 @@ pub fn redact_secrets(text: &str) -> String {
 
     let mut redacted = text.to_string();
     let mut redacted_keys: HashSet<String> = [
-        "OPENROUTER_API_KEY",
-        "OPENCODE_API_KEY",
-        "OPENCODE_GO_API_KEY",
-        "ZHIPU_API_KEY",
-        "ZAI_API_KEY",
-        "302AI_API_KEY",
-        "BASETEN_API_KEY",
-        "CORTECS_API_KEY",
-        "DEEPSEEK_API_KEY",
-        "FIRMWARE_API_KEY",
-        "HF_TOKEN",
-        "MOONSHOT_API_KEY",
-        "NEBIUS_API_KEY",
-        "SCALEWAY_API_KEY",
-        "STACKIT_API_KEY",
-        "GROQ_API_KEY",
-        "MISTRAL_API_KEY",
-        "PERPLEXITY_API_KEY",
-        "TOGETHER_API_KEY",
-        "DEEPINFRA_API_KEY",
-        "XAI_API_KEY",
-        "LMSTUDIO_API_KEY",
-        "OLLAMA_API_KEY",
-        "CHUTES_API_KEY",
-        "CEREBRAS_API_KEY",
-        "OPENAI_COMPAT_API_KEY",
         "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY",
         "GITHUB_TOKEN",
@@ -182,10 +130,7 @@ pub fn redact_secrets(text: &str) -> String {
     }
 
     // Also redact custom API key variable names configured at runtime.
-    for source in [
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-    ] {
+    for source in ["JCODE_ANTHROPIC_API_KEY_NAME"] {
         let Some(key_name) = std::env::var(source)
             .ok()
             .map(|v| v.trim().to_string())

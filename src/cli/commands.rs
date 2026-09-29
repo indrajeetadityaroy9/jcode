@@ -10,19 +10,17 @@ use crate::{memory, session, storage, tui};
 use super::{output::terminal_title, terminal::init_tui_runtime};
 
 mod menubar;
-mod provider_setup;
 mod report_info;
 mod restart;
 
 pub(crate) use super::auth_test::run_post_login_validation;
 #[cfg(test)]
 pub(crate) use super::auth_test::{
-    AuthTestChoicePlan, AuthTestTarget, ResolvedAuthTestTarget, auth_test_choice_plan,
-    auth_test_error_is_retryable, configured_auth_test_targets, resolve_auth_test_targets,
+    AuthTestTarget, ResolvedAuthTestTarget, auth_test_error_is_retryable,
+    configured_auth_test_targets, resolve_auth_test_targets,
 };
-pub use super::auth_test::{run_auth_test_command, run_auth_test_context_audit_command};
+pub use super::auth_test::run_auth_test_command;
 pub use menubar::{ensure_menubar_helper_running, run_menubar_command};
-pub(crate) use provider_setup::{ProviderAddOptions, run_provider_add_command};
 pub use restart::{
     maybe_run_pending_restart_restore_on_startup, run_restart_clear_command,
     run_restart_restore_command, run_restart_save_command, run_restart_status_command,
@@ -437,7 +435,6 @@ struct RunCommandReport {
 struct NdjsonRunState {
     text: String,
     session_id: Option<String>,
-    upstream_provider: Option<String>,
     connection_type: Option<String>,
     connection_phase: Option<String>,
     status_detail: Option<String>,
@@ -1480,7 +1477,6 @@ async fn run_single_message_command_ndjson(
                     "model": provider.model(),
                     "text": state.text,
                     "usage": state.usage,
-                    "upstream_provider": state.upstream_provider,
                     "connection_type": state.connection_type,
                     "connection_phase": state.connection_phase,
                     "status_detail": state.status_detail,
@@ -1601,13 +1597,6 @@ fn emit_ndjson_event(
             stdout,
             &serde_json::json!({ "type": "message_end", "stop_reason": stop_reason }),
         ),
-        ServerEvent::UpstreamProvider { provider } => {
-            state.upstream_provider = Some(provider.clone());
-            write_json_line(
-                stdout,
-                &serde_json::json!({ "type": "upstream_provider", "provider": provider }),
-            )
-        }
         ServerEvent::SessionId { session_id } => {
             state.session_id = Some(session_id.clone());
             write_json_line(
@@ -1732,9 +1721,7 @@ pub async fn run_model_command(
     if emit_json {
         let provider_label = super::provider_init::login_provider_for_choice(choice)
             .map(|provider| provider.display_name.to_string())
-            .unwrap_or_else(|| {
-                crate::provider_catalog::runtime_provider_display_name(provider.name())
-            });
+            .unwrap_or_else(|| provider.name().to_string());
         let report = ModelListReport {
             provider: provider_label,
             selected_model: provider.model(),
@@ -1742,7 +1729,7 @@ pub async fn run_model_command(
             routes: filtered_routes
                 .iter()
                 .map(|route| ModelListRouteReport {
-                    provider: cli_route_provider_display(&route.provider, &route.api_method),
+                    provider: route.provider.clone(),
                     model: route.model.clone(),
                     method: cli_api_method_display(&route.api_method),
                     available: route.available,
@@ -1752,10 +1739,7 @@ pub async fn run_model_command(
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         if verbose {
-            println!(
-                "Provider: {}",
-                crate::provider_catalog::runtime_provider_display_name(provider.name())
-            );
+            println!("Provider: {}", provider.name());
             println!("Selected model: {}", provider.model());
             println!("Available models: {}", models.len());
             println!();
@@ -1770,17 +1754,6 @@ pub async fn run_model_command(
 
 fn cli_api_method_display(raw: &str) -> String {
     crate::provider::ModelRouteApiMethod::parse(raw).display_label()
-}
-
-fn cli_route_provider_display(provider: &str, api_method: &str) -> String {
-    if crate::provider::ModelRouteApiMethod::parse(api_method).is_openrouter()
-        && provider != "auto"
-        && !provider.contains("OpenRouter")
-    {
-        format!("OpenRouter/{}", provider)
-    } else {
-        provider.to_string()
-    }
 }
 
 fn collect_cli_model_names(
@@ -1836,7 +1809,6 @@ fn filter_cli_model_routes_for_choice(
             route.api_method_kind(),
             crate::provider::ModelRouteApiMethod::OpenAIApiKey
         ),
-        ProviderChoice::Openrouter => route.api_method_kind().is_openrouter(),
         _ => true,
     };
 

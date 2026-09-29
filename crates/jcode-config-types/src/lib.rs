@@ -355,12 +355,9 @@ impl Default for CompactionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum NamedProviderType {
-    #[serde(alias = "openai-compatible", alias = "openai_compatible")]
+    #[serde(alias = "anthropic_compatible")]
     #[default]
-    OpenAiCompatible,
-    #[serde(alias = "anthropic-compatible", alias = "anthropic_compatible")]
     AnthropicCompatible,
-    OpenRouter,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -385,8 +382,6 @@ pub struct NamedProviderModelConfig {
         skip_serializing_if = "Option::is_none"
     )]
     pub context_window: Option<usize>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub input: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -395,7 +390,6 @@ pub struct NamedProviderConfig {
     #[serde(rename = "type")]
     pub provider_type: NamedProviderType,
     pub base_url: String,
-    pub api: Option<String>,
     pub auth: NamedProviderAuth,
     pub auth_header: Option<String>,
     /// Extra HTTP headers sent with every request to this provider.
@@ -405,42 +399,15 @@ pub struct NamedProviderConfig {
     pub api_key: Option<String>,
     pub env_file: Option<String>,
     pub default_model: Option<String>,
-    pub requires_api_key: Option<bool>,
-    #[serde(default)]
-    pub provider_routing: bool,
-    #[serde(default)]
-    pub model_catalog: bool,
-    #[serde(default)]
-    pub allow_provider_pinning: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub models: Vec<NamedProviderModelConfig>,
-    /// Extra top-level JSON fields merged into every chat/completions request
-    /// body sent to this provider. Lets users inject non-standard parameters
-    /// some OpenAI-compatible backends require (e.g. NVIDIA NIM DeepSeek-V4
-    /// needs `chat_template_kwargs = { thinking = true, reasoning_effort = "high" }`).
-    /// Must be a JSON object; keys here override jcode-generated body fields.
-    #[serde(default, alias = "extra-body", skip_serializing_if = "Option::is_none")]
-    pub extra_body: Option<serde_json::Value>,
-    /// Whether this endpoint accepts the DeepSeek-style top-level
-    /// `reasoning_effort` request field (`/effort` support). When unset, jcode
-    /// auto-detects it from the active model id (DeepSeek-family models
-    /// support it regardless of which gateway serves them). Set `false` to
-    /// suppress auto-detection for strict-schema endpoints.
-    #[serde(
-        default,
-        alias = "supports-reasoning-effort",
-        alias = "reasoning_effort",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub supports_reasoning_effort: Option<bool>,
 }
 
 impl Default for NamedProviderConfig {
     fn default() -> Self {
         Self {
-            provider_type: NamedProviderType::OpenAiCompatible,
+            provider_type: NamedProviderType::AnthropicCompatible,
             base_url: String::new(),
-            api: None,
             auth: NamedProviderAuth::Bearer,
             auth_header: None,
             headers: std::collections::BTreeMap::new(),
@@ -448,13 +415,7 @@ impl Default for NamedProviderConfig {
             api_key: None,
             env_file: None,
             default_model: None,
-            requires_api_key: None,
-            provider_routing: false,
-            model_catalog: false,
-            allow_provider_pinning: false,
             models: Vec::new(),
-            extra_body: None,
-            supports_reasoning_effort: None,
         }
     }
 }
@@ -526,7 +487,7 @@ pub struct AgentsConfig {
     pub memory_rerank_min_agree: usize,
     /// Which embedding backend memory dense-retrieval uses: `"local"` (bundled
     /// all-MiniLM-L6-v2 ONNX, default, no network) or `"openai"` (remote
-    /// OpenAI/openai-compatible `/v1/embeddings`, opt-in, requires an
+    /// OpenAI `/v1/embeddings`, opt-in, requires an
     /// `OPENAI_API_KEY`). A keyless `"openai"` setting silently degrades to
     /// local. Env override: `JCODE_MEMORY_EMBEDDING_BACKEND`.
     #[serde(default = "default_memory_embedding_backend")]
@@ -536,7 +497,7 @@ pub struct AgentsConfig {
     #[serde(default)]
     pub memory_embedding_model: Option<String>,
     /// Optional override for the embeddings API base URL (no trailing slash),
-    /// for OpenAI-compatible gateways. Unset = `https://api.openai.com/v1`.
+    /// for gateways serving the OpenAI embeddings API. Unset = `https://api.openai.com/v1`.
     /// Env: `JCODE_MEMORY_EMBEDDING_BASE_URL`.
     #[serde(default)]
     pub memory_embedding_base_url: Option<String>,
@@ -1082,7 +1043,7 @@ impl Default for WebSearchConfig {
 pub struct ProviderConfig {
     /// Default model to use (e.g. "claude-opus-4-8", "openai-api:gpt-5.5")
     pub default_model: Option<String>,
-    /// Default provider to use (claude|openai|gemini|openrouter)
+    /// Default provider to use (claude|openai|gemini|antigravity)
     pub default_provider: Option<String>,
     /// Reasoning effort for OpenAI Responses API (none|minimal|low|medium|high|xhigh|max)
     pub openai_reasoning_effort: Option<String>,
@@ -1104,10 +1065,9 @@ pub struct ProviderConfig {
     /// before falling back to a different provider.
     pub same_provider_account_failover: bool,
     /// When set (non-empty), /model only lists routes from these providers.
-    /// Entries match provider labels ("openai", "anthropic",
-    /// "openrouter", ...), api methods ("claude-oauth",
-    /// "openai-compatible:myprofile", ...), or openai-compatible profile ids
-    /// ("myprofile"). The active model's routes always stay visible.
+    /// Entries match provider labels ("openai", "anthropic", ...) or api
+    /// methods ("claude-oauth", "openai-api-key", ...). The active model's
+    /// routes always stay visible.
     pub model_picker_providers: Option<Vec<String>>,
     /// Max seconds to wait for streaming data before timing out a request with
     /// no data received. Base budget only: high reasoning efforts scale it up

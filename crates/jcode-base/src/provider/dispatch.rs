@@ -118,18 +118,6 @@ impl MultiProvider {
                     ))
                 }
             }
-            ActiveProvider::OpenRouter => {
-                let openrouter = self.active_openrouter_execution_provider();
-                if let Some(openrouter) = openrouter {
-                    openrouter
-                        .complete(messages, tools, system, resume_session_id)
-                        .await
-                } else {
-                    Err(anyhow::anyhow!(
-                        "OpenRouter credentials not available. Set OPENROUTER_API_KEY environment variable."
-                    ))
-                }
-            }
         }
     }
 
@@ -225,24 +213,6 @@ impl MultiProvider {
                 } else {
                     Err(anyhow::anyhow!(
                         "Gemini is not available. Run `jcode login --provider gemini`."
-                    ))
-                }
-            }
-            ActiveProvider::OpenRouter => {
-                let openrouter = self.active_openrouter_execution_provider();
-                if let Some(openrouter) = openrouter {
-                    openrouter
-                        .complete_split(
-                            messages,
-                            tools,
-                            system_static,
-                            system_dynamic,
-                            resume_session_id,
-                        )
-                        .await
-                } else {
-                    Err(anyhow::anyhow!(
-                        "OpenRouter credentials not available. Set OPENROUTER_API_KEY environment variable."
                     ))
                 }
             }

@@ -38,11 +38,6 @@ struct RefreshSummaryProvider {
     summary: crate::provider::ModelCatalogRefreshSummary,
 }
 
-#[derive(Clone)]
-struct OpenRouterSpecCaptureProvider {
-    set_model_calls: StdArc<StdMutex<Vec<String>>>,
-}
-
 #[async_trait::async_trait]
 impl Provider for MockProvider {
     async fn complete(
@@ -114,67 +109,6 @@ impl Provider for RefreshSummaryProvider {
     }
 }
 
-#[async_trait::async_trait]
-impl Provider for OpenRouterSpecCaptureProvider {
-    async fn complete(
-        &self,
-        _messages: &[Message],
-        _tools: &[crate::message::ToolDefinition],
-        _system: &str,
-        _resume_session_id: Option<&str>,
-    ) -> Result<crate::provider::EventStream> {
-        unimplemented!("OpenRouterSpecCaptureProvider")
-    }
-
-    fn name(&self) -> &str {
-        "openrouter-spec-capture"
-    }
-
-    fn model(&self) -> String {
-        "gpt-5.4".to_string()
-    }
-
-    fn model_routes(&self) -> Vec<crate::provider::ModelRoute> {
-        vec![crate::provider::ModelRoute {
-            model: "gpt-5.4".to_string(),
-            provider: "OpenAI".to_string(),
-            api_method: "openrouter".to_string(),
-            available: true,
-            detail: "cached route".to_string(),
-            cheapness: None,
-        }]
-    }
-
-    fn available_providers_for_model(&self, model: &str) -> Vec<String> {
-        if model == "gpt-5.4" || model == "openai/gpt-5.4" {
-            vec!["auto".to_string(), "OpenAI".to_string()]
-        } else {
-            Vec::new()
-        }
-    }
-
-    fn available_efforts(&self) -> Vec<&'static str> {
-        vec!["high"]
-    }
-
-    fn reasoning_effort(&self) -> Option<String> {
-        Some("high".to_string())
-    }
-
-    fn set_reasoning_effort(&self, _effort: &str) -> Result<()> {
-        Ok(())
-    }
-
-    fn set_model(&self, model: &str) -> Result<()> {
-        self.set_model_calls.lock().unwrap().push(model.to_string());
-        Ok(())
-    }
-
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
-}
-
 pub(crate) fn create_test_app() -> App {
     let _test_env = ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
@@ -234,23 +168,6 @@ fn create_refresh_summary_test_app(summary: crate::provider::ModelCatalogRefresh
     app.queue_mode = false;
     app.diff_mode = crate::config::DiffDisplayMode::Inline;
     app
-}
-
-fn create_openrouter_spec_capture_test_app() -> (App, StdArc<StdMutex<Vec<String>>>) {
-    let _test_env = ensure_test_jcode_home_if_unset();
-    clear_persisted_test_ui_state();
-    crate::tui::ui::clear_test_render_state_for_tests();
-
-    let set_model_calls = StdArc::new(StdMutex::new(Vec::new()));
-    let provider: Arc<dyn Provider> = Arc::new(OpenRouterSpecCaptureProvider {
-        set_model_calls: set_model_calls.clone(),
-    });
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let registry = rt.block_on(crate::tool::Registry::new(provider.clone()));
-    let mut app = App::new_for_test_harness(provider, registry);
-    app.queue_mode = false;
-    app.diff_mode = crate::config::DiffDisplayMode::Inline;
-    (app, set_model_calls)
 }
 
 #[test]

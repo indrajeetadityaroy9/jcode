@@ -25,7 +25,7 @@ pub(crate) enum PendingLogin {
         expected_state: String,
         redirect_uri: String,
     },
-    /// Waiting for user to paste an API key for an OpenAI-compatible provider.
+    /// Waiting for user to paste an API key for a first-party API provider.
     ApiKeyProfile {
         provider_id: String,
         provider: String,
@@ -33,14 +33,7 @@ pub(crate) enum PendingLogin {
         docs_url: String,
         env_file: String,
         key_name: String,
-        default_model: Option<String>,
         endpoint: Option<String>,
-        api_key_optional: bool,
-        openai_compatible_profile: Option<crate::provider_catalog::OpenAiCompatibleProfile>,
-    },
-    /// Waiting for the user to paste a custom OpenAI-compatible API base.
-    OpenAiCompatibleApiBase {
-        profile: crate::provider_catalog::OpenAiCompatibleProfile,
     },
     /// Waiting for the user to choose which external auth sources to import.
     AutoImportSelection {
@@ -97,8 +90,4 @@ pub(crate) enum AccountCommand {
     SetDefaultModel(Option<String>),
     SetOpenAiTransport(Option<String>),
     SetOpenAiEffort(Option<String>),
-    SetOpenAiCompatApiBase(Option<String>),
-    SetOpenAiCompatApiKeyName(Option<String>),
-    SetOpenAiCompatEnvFile(Option<String>),
-    SetOpenAiCompatDefaultModel(Option<String>),
 }

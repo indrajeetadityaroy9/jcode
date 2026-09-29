@@ -307,7 +307,7 @@ tool_profile = "acp"
 # Default model (optional, uses provider default if not set)
 # Set via /model picker with Ctrl+B to save as default
 # default_model = "claude-opus-5"
-# Default provider (optional: claude|anthropic-api|openai|openai-api|openrouter|...)
+# Default provider (optional: claude|anthropic-api|openai|openai-api|gemini|antigravity|<profile>)
 # When set, this provider is preferred on startup if available.
 #   claude        = Claude via OAuth/subscription (token in ~/.jcode/auth.json)
 #   anthropic-api = Claude via direct Anthropic API key (ANTHROPIC_API_KEY env
@@ -329,7 +329,7 @@ openai_reasoning_effort = "low"
 # for lower per-token rates; `priority` does the reverse.
 # openai_service_tier = "flex"
 # Preserve provider-native reasoning/thinking for future-turn context when supported.
-# Applies to OpenRouter, Anthropic, and OpenAI native reasoning replay. Display is separate.
+# Applies to Anthropic and OpenAI native reasoning replay. Display is separate.
 preserve_reasoning_context = true
 # Cross-provider failover when the same prompt would be resent elsewhere.
 # countdown = 3-second countdown before retrying on another provider; press Esc to cancel (default)
@@ -339,16 +339,15 @@ preserve_reasoning_context = true
 # same_provider_account_failover = false
 cross_provider_failover = "countdown"
 # Only list these providers in the /model picker (issue #460). Entries match
-# provider labels ("openai", "anthropic", "openrouter", ...), route
-# api methods ("claude-oauth", "openai-compatible:myprofile"), or bare
-# openai-compatible profile ids ("myprofile"). The active model's routes always
+# provider labels ("openai", "anthropic", ...) or route api methods
+# ("claude-oauth", "openai-api-key", ...). The active model's routes always
 # stay visible. Unset or empty = show everything.
-# model_picker_providers = ["myprofile", "openrouter"]
+# model_picker_providers = ["anthropic", "openai"]
 # Max seconds to wait for streaming data before timing out a request with no
-# data received. Raise this for slow reasoning models (e.g. DeepSeek) that think
-# silently for minutes before emitting tokens. Default: 180.
-# Applies to every streaming provider path (OpenAI native, Anthropic,
-# OpenRouter/OpenAI-compatible). The TUI's client-side stall guard also extends
+# data received. Raise this for slow reasoning models that think silently for
+# minutes before emitting tokens. Default: 180.
+# Applies to every streaming provider path (OpenAI native, Anthropic, Gemini,
+# Antigravity). The TUI's client-side stall guard also extends
 # to match this value. Also overridable per-launch via JCODE_STREAM_IDLE_TIMEOUT_SECS.
 # This is the base budget: high reasoning efforts scale it up automatically
 # (high 2x, xhigh 3x, max/swarm 4x) since they think silently for much longer.
@@ -425,7 +424,7 @@ swarm_max_concurrent_agents = 32
 #
 # Embedding backend for memory dense-retrieval. "local" (default) uses the
 # bundled all-MiniLM-L6-v2 ONNX model (no network); "openai" uses a remote
-# OpenAI / OpenAI-compatible /v1/embeddings endpoint (requires OPENAI_API_KEY;
+# OpenAI /v1/embeddings endpoint (requires OPENAI_API_KEY;
 # silently falls back to local when no key is found). Vectors from different
 # models live in separate spaces and are never compared, so switching is safe.
 # Env override: JCODE_MEMORY_EMBEDDING_BACKEND

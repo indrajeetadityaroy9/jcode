@@ -221,7 +221,7 @@ verdict "$( { ls -d crates/jcode-provider-copilot crates/jcode-provider-copilot-
        | sed 's/^/  RESURRECTED: /'
     grep -rnE '(ActiveProvider|RuntimeKey|ModelRouteApiMethod|ProviderChoice|LoginProviderTarget|LoginProviderAuthStateKey|AuthTestTarget|RuntimeProviderId)::(Copilot|Cursor|Azure)' \
       --include='*.rs' crates/ src/ tests/ 2>/dev/null | sed 's/^/  /'
-    grep -rnE 'PremiumMode|copilot_premium|JCODE_COPILOT_PREMIUM|copilot_pricing|CopilotUsageTracker|apply_azure_openai_runtime|AzureDefaultCredential|JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER' \
+    grep -rnE 'PremiumMode|copilot_premium|JCODE_COPILOT_PREMIUM|copilot_pricing|CopilotUsageTracker|apply_azure_openai_runtime|AzureDefaultCredential' \
       --include='*.rs' --include='*.toml' --include='*.json' crates/ src/ tests/ scripts/ Cargo.toml 2>/dev/null \
       | grep -v '^scripts/purge-guard.sh:' | sed 's/^/  /'
     grep -rnE 'auth::(copilot|cursor|azure)::|provider::(copilot|cursor)::|jcode_provider_(copilot|cursor)|jcode_azure_auth|copilot_usage' \
@@ -229,6 +229,35 @@ verdict "$( { ls -d crates/jcode-provider-copilot crates/jcode-provider-copilot-
     grep -rnE '(COPILOT|CURSOR)_(LOGIN_PROVIDER|RUNTIME|GITHUB_TOKEN|API_KEY|ACCESS_TOKEN)|AZURE_LOGIN_PROVIDER|AZURE_OPENAI_(ENDPOINT|MODEL|API_KEY|USE_ENTRA)' \
       --include='*.rs' --include='*.toml' --include='*.sh' crates/ src/ tests/ scripts/ 2>/dev/null \
       | grep -vE 'AZURE_CLIENT_SECRET|^scripts/purge-guard.sh:' | sed 's/^/  /'; } )"
+
+# The OpenRouter aggregator and every OpenAI-compatible endpoint (built-in
+# profiles such as Ollama/LM Studio/DeepSeek/Groq, named `openai-compatible` /
+# `openrouter` provider profiles, `jcode provider add`) are purged (see
+# docs/FORK_WORKFLOW.md §1). One runtime served all of them, so a sync that
+# re-adds a single catalog row or enum variant brings the whole surface back.
+#
+# Deliberately NOT matched, because they are live behavior:
+#   - `anthropic-compatible` named providers (`NamedProviderType::AnthropicCompatible`).
+#   - `memory_embedding_backend = "openai"` (OpenAI /v1/embeddings, not a chat provider).
+#   - the native `openai` / `openai-api` providers and their Responses runtime.
+#   - historical records: changelog/, docs/plans/, docs/audits/.
+section "openrouter / openai-compatible providers must stay deleted"
+verdict "$( { ls -d crates/jcode-provider-openrouter crates/jcode-provider-openrouter-runtime \
+       crates/jcode-base/src/provider/openrouter.rs src/cli/commands/provider_setup.rs \
+       docs/plans/OPENAI_COMPATIBLE_PROFILE_RUNTIME_PLAN.md 2>/dev/null \
+       | sed 's/^/  RESURRECTED: /'
+    grep -rn 'jcode-provider-openrouter' Cargo.toml crates/*/Cargo.toml 2>/dev/null | sed 's/^/  /'
+    grep -rnE 'jcode_provider_openrouter|provider::openrouter\b|\bOpenRouter[A-Z][A-Za-z]*|::(OpenRouter|OpenAiCompatible)[A-Za-z]*\b|OpenAiCompatibleProfile|openai_compatible_profile|register_(openrouter_factory|profile_catalog_refresh|standard_openrouter_catalog_refresh)|instantiate_openrouter_runtime|openrouter_pricing|"openai-compatible"|"openrouter"|ProviderAddOptions|run_provider_add_command' \
+      --include='*.rs' crates/ src/ tests/ 2>/dev/null | filter_tests | sed 's/^/  /'
+    grep -rnE 'OPENROUTER_API_KEY|JCODE_OPENROUTER_|openrouter\.env|OPENAI_COMPAT_|type = "(openai-compatible|openrouter)"' \
+      --include='*.rs' --include='*.toml' --include='*.sh' crates/ src/ tests/ scripts/ 2>/dev/null \
+      | grep -vE '^scripts/(purge-guard|classify-upstream|upstream-features)\.sh:' \
+      | filter_tests | sed 's/^/  /'; } )"
+
+section "tui_bench dev binary must stay deleted"
+verdict "$( { ls -d src/bin/tui_bench.rs src/bin/tui_bench 2>/dev/null | sed 's/^/  RESURRECTED: /'
+    grep -nE '"tui_bench"|debug_copy_selection_text_for_bench' Cargo.toml 2>/dev/null | sed 's/^/  /'
+    grep -rn 'debug_copy_selection_text_for_bench' --include='*.rs' crates/ src/ 2>/dev/null | sed 's/^/  /'; } )"
 
 echo
 if [ "$fail" -eq 0 ]; then echo "PURGE GUARD: clean"; else echo "PURGE GUARD: REINTRODUCTION DETECTED"; fi

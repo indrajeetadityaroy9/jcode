@@ -181,26 +181,6 @@ fn client_interaction_restores_focus_so_scroll_redraws_at_full_rate() {
 }
 
 #[test]
-fn auth_provider_hint_maps_openai_compatible_login_providers() {
-    assert_eq!(
-        auth_provider_hint_for_login_provider("cerebras"),
-        Some("cerebras")
-    );
-    assert_eq!(
-        auth_provider_hint_for_login_provider("Cerebras"),
-        Some("cerebras")
-    );
-    assert_eq!(
-        auth_provider_hint_for_login_provider("minimax"),
-        Some("minimax")
-    );
-    assert_eq!(
-        auth_provider_hint_for_login_provider("not-a-provider"),
-        None
-    );
-}
-
-#[test]
 fn auth_provider_hint_maps_direct_provider_logins_by_display_label() {
     // LoginCompleted carries the descriptor display label, which must still map
     // to the canonical server provider id so the auth-change refresh is
@@ -235,10 +215,6 @@ fn auth_provider_hint_maps_direct_provider_logins_by_display_label() {
         auth_provider_hint_for_login_provider("OpenAI API"),
         Some("openai-api")
     );
-    assert_eq!(
-        auth_provider_hint_for_login_provider("OpenRouter"),
-        Some("openrouter")
-    );
 }
 
 #[test]
@@ -246,10 +222,10 @@ fn auth_provider_hint_resolves_every_emitted_login_completed_provider() {
     // Every string published as `LoginCompleted.provider` (see the emit sites in
     // src/tui/app/auth.rs) must resolve to a canonical server provider id so the
     // auth-change refresh is attributed to the right provider and the post-login
-    // model auto-select runs. Before the loose display-name resolution, only
-    // OpenAI-compatible logins resolved; every direct provider sent no
-    // hint, so the server fell back to the session's active provider (the
-    // "OpenAI credentials are active" bug) and skipped the model switch.
+    // model auto-select runs. Before the loose display-name resolution, direct
+    // provider logins sent no hint, so the server fell back to the session's
+    // active provider (the "OpenAI credentials are active" bug) and skipped the
+    // model switch.
     //
     // Pairs of (emitted string, expected canonical hint). `None` is only correct
     // for auto-import, which intentionally has no single runtime to attribute to.
@@ -262,7 +238,6 @@ fn auth_provider_hint_resolves_every_emitted_login_completed_provider() {
         // API-key paste logins emit descriptor display labels.
         ("Anthropic API", Some("anthropic-api")),
         ("OpenAI API", Some("openai-api")),
-        ("OpenRouter", Some("openrouter")),
         // Auto-import has no single runtime to attribute the refresh to.
         ("auto-import", None),
     ];
@@ -287,7 +262,6 @@ fn auth_provider_hint_resolves_every_emitted_login_completed_provider() {
         // mapping, the single source of truth for post-login attribution.
         let expected: Option<String> = match descriptor.target {
             LoginProviderTarget::AutoImport => None,
-            LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id.to_string()),
             _ => Some(descriptor.id.to_string()),
         };
 
@@ -325,9 +299,6 @@ fn auth_changed_event_for_anthropic_api_login_targets_claude_api_route() {
         auth.credential_source,
         Some(crate::protocol::AuthCredentialSource::ApiKeyFile)
     );
-    // Direct providers must not claim the OpenAI-compatible runtime/namespace.
-    assert!(auth.expected_runtime.is_none());
-    assert!(auth.expected_catalog_namespace.is_none());
 }
 
 #[test]
@@ -338,34 +309,6 @@ fn auth_changed_event_for_oauth_claude_login_is_not_marked_as_api_key_paste() {
     // OAuth logins are not API-key pastes.
     assert!(auth.auth_method.is_none());
     assert!(auth.credential_source.is_none());
-}
-
-#[test]
-fn auth_changed_event_for_cerebras_login_carries_runtime_and_catalog_identity() {
-    let auth = super::auth_changed_event_for_login_provider("Cerebras")
-        .expect("Cerebras login should produce typed auth event");
-
-    assert_eq!(auth.provider.as_str(), "cerebras");
-    assert_eq!(
-        auth.credential_source,
-        Some(crate::protocol::AuthCredentialSource::ApiKeyFile)
-    );
-    assert_eq!(
-        auth.auth_method,
-        Some(crate::protocol::AuthMethod::RemoteTuiPasteApiKey)
-    );
-    assert_eq!(
-        auth.expected_runtime
-            .as_ref()
-            .map(crate::protocol::RuntimeProviderKey::as_str),
-        Some("openai-compatible")
-    );
-    assert_eq!(
-        auth.expected_catalog_namespace
-            .as_ref()
-            .map(crate::protocol::CatalogNamespace::as_str),
-        Some("cerebras")
-    );
 }
 
 #[test]

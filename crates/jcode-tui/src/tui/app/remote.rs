@@ -626,18 +626,15 @@ pub(super) async fn handle_bus_event(
 /// auth-change refresh for a completed login.
 ///
 /// `LoginCompleted.provider` is the login descriptor's display label (e.g.
-/// "Anthropic API"), id, or alias - not the canonical server provider id. This
-/// used to only map OpenAI-compatible logins, so direct logins
-/// (Claude OAuth/API key, OpenAI, OpenRouter, ...) sent no hint. With
-/// no hint the server fell back to the session's currently active provider,
-/// mislabeling the catalog-refresh message ("OpenAI credentials are active"
-/// after an Anthropic API-key login) and skipping the post-login model switch.
+/// "Anthropic API"), id, or alias - not the canonical server provider id.
+/// Without a hint the server falls back to the session's currently active
+/// provider, mislabeling the catalog-refresh message ("OpenAI credentials are
+/// active" after an Anthropic API-key login) and skipping the post-login model
+/// switch.
 fn auth_provider_hint_for_login_provider(provider: &str) -> Option<&'static str> {
     use crate::provider_catalog::LoginProviderTarget;
     let descriptor = crate::provider_catalog::resolve_login_provider_loose(provider)?;
     match descriptor.target {
-        // OpenAI-compatible profiles carry their own catalog namespace id.
-        LoginProviderTarget::OpenAiCompatible(profile) => Some(profile.id),
         // Auto-import has no single runtime to attribute the refresh to.
         LoginProviderTarget::AutoImport => None,
         _ => Some(descriptor.id),
@@ -645,7 +642,6 @@ fn auth_provider_hint_for_login_provider(provider: &str) -> Option<&'static str>
 }
 
 fn auth_changed_event_for_login_provider(provider: &str) -> Option<crate::protocol::AuthChanged> {
-    use crate::provider_catalog::LoginProviderTarget;
     let provider_id = auth_provider_hint_for_login_provider(provider)?;
     let mut auth = crate::protocol::AuthChanged::new(provider_id);
     // These fields are informational; the server routes off `provider` and the
@@ -654,27 +650,12 @@ fn auth_changed_event_for_login_provider(provider: &str) -> Option<crate::protoc
     let descriptor = crate::provider_catalog::resolve_login_provider_loose(provider);
     let api_key_login = descriptor
         .map(|descriptor| {
-            use crate::provider_catalog::LoginProviderAuthKind;
-            matches!(
-                descriptor.auth_kind,
-                LoginProviderAuthKind::ApiKey | LoginProviderAuthKind::Hybrid
-            )
+            descriptor.auth_kind == crate::provider_catalog::LoginProviderAuthKind::ApiKey
         })
         .unwrap_or(true);
     if api_key_login {
         auth.auth_method = Some(crate::protocol::AuthMethod::RemoteTuiPasteApiKey);
         auth.credential_source = Some(crate::protocol::AuthCredentialSource::ApiKeyFile);
-    }
-    // Only logins whose descriptor actually targets the OpenAI-compatible
-    // runtime claim its namespace. Do not key this off
-    // `openai_compatible_profile_by_id`: native providers (`anthropic-api`,
-    // `openai-api`) alias doctor-probe compat profiles with the same id, but
-    // their auth activation deliberately routes through the native runtime.
-    if descriptor.is_some_and(|d| matches!(d.target, LoginProviderTarget::OpenAiCompatible(_))) {
-        auth.expected_runtime = Some(crate::protocol::RuntimeProviderKey::new(
-            "openai-compatible",
-        ));
-        auth.expected_catalog_namespace = Some(crate::protocol::CatalogNamespace::new(provider_id));
     }
     Some(auth)
 }

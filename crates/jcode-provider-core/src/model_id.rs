@@ -2,7 +2,7 @@
 //!
 //! Model ids arrive in many shapes: mixed case, with the Anthropic `[1m]`
 //! long-context suffix, with dated releases (`claude-haiku-4-5-20251001`),
-//! or provider-qualified (`openrouter/anthropic/claude-...`). Historically
+//! or provider-qualified (`anthropic/claude-...`). Historically
 //! each subsystem (catalog, pricing, capability lookup, auth preferences,
 //! subscription matching) hand-rolled its own partial normalization, which
 //! made the same model compare unequal across layers.
@@ -50,7 +50,7 @@ pub fn strip_date_suffix(model: &str) -> &str {
 }
 
 /// Final path segment of a slash-qualified id
-/// (`openrouter/anthropic/claude-x` -> `claude-x`). Ids without `/` are
+/// (`anthropic/claude-x` -> `claude-x`). Ids without `/` are
 /// returned unchanged.
 pub fn slash_base(model: &str) -> &str {
     model.rsplit('/').next().unwrap_or(model)

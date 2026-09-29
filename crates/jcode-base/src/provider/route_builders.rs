@@ -1,18 +1,17 @@
-use super::pricing::{cheapness_for_route, openrouter_pricing_from_model_pricing};
-use super::{ModelRoute, RouteCostConfidence, RouteCostSource, provider_for_model};
+use super::ModelRoute;
+use super::pricing::cheapness_for_route;
 use std::collections::BTreeSet;
 
 pub fn is_listable_model_name(model: &str) -> bool {
     let trimmed = model.trim();
-    !trimmed.is_empty() && trimmed != "openrouter models" && !model_name_is_likely_non_chat(trimmed)
+    !trimmed.is_empty() && !model_name_is_likely_non_chat(trimmed)
 }
 
 /// Heuristic to keep obviously non-chat models out of the chat model picker:
 /// embeddings, rerankers, speech (TTS/STT), image and video generation, music,
-/// realtime-audio dialog, and robotics. OpenAI-compatible profiles (e.g. NVIDIA
-/// NIM, FPT, Chutes, Groq) and Google's Gemini catalog expose their *entire*
-/// model list, which otherwise floods the picker with entries that can never
-/// answer a chat-completions request. The match is conservative and
+/// realtime-audio dialog, and robotics. Google's Gemini catalog exposes its
+/// *entire* model list, which otherwise floods the picker with entries that can
+/// never answer a chat request. The match is conservative and
 /// token-boundary aware so it won't drop a legitimately named chat model.
 pub fn model_name_is_likely_non_chat(model: &str) -> bool {
     let lower = model.to_ascii_lowercase();
@@ -101,20 +100,6 @@ pub fn model_name_is_likely_non_chat(model: &str) -> bool {
     false
 }
 
-pub fn openrouter_catalog_model_id(model: &str) -> Option<String> {
-    let trimmed = model.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    match provider_for_model(trimmed) {
-        Some("claude") => Some(format!("anthropic/{}", trimmed)),
-        Some("openai") => Some(format!("openai/{}", trimmed)),
-        Some("openrouter") => Some(trimmed.to_string()),
-        _ => None,
-    }
-}
-
 pub fn listable_model_names_from_routes(routes: &[ModelRoute]) -> Vec<String> {
     let mut models = Vec::new();
     let mut seen = BTreeSet::new();
@@ -170,69 +155,6 @@ fn build_openai_route(
         available,
         detail: detail.into(),
         cheapness: cheapness_for_route(model, "OpenAI", api_method),
-    }
-}
-
-pub fn build_openrouter_auto_route(
-    model: &str,
-    available: bool,
-    auto_detail: impl Into<String>,
-) -> ModelRoute {
-    ModelRoute {
-        model: model.to_string(),
-        provider: "auto".to_string(),
-        api_method: "openrouter".to_string(),
-        available,
-        detail: auto_detail.into(),
-        cheapness: cheapness_for_route(model, "auto", "openrouter"),
-    }
-}
-
-pub fn build_openrouter_endpoint_route(
-    model: &str,
-    endpoint: &crate::provider::openrouter::EndpointInfo,
-    available: bool,
-    age_suffix: Option<&str>,
-) -> ModelRoute {
-    let mut detail = endpoint.detail_string();
-    if let Some(age_suffix) = age_suffix.map(str::trim).filter(|value| !value.is_empty()) {
-        if !detail.is_empty() {
-            detail = format!("{}, {}", detail, age_suffix);
-        } else {
-            detail = age_suffix.to_string();
-        }
-    }
-
-    ModelRoute {
-        model: model.to_string(),
-        provider: endpoint.provider_name.clone(),
-        api_method: "openrouter".to_string(),
-        available,
-        detail,
-        cheapness: openrouter_pricing_from_model_pricing(
-            &endpoint.pricing,
-            RouteCostSource::OpenRouterEndpoint,
-            RouteCostConfidence::High,
-            Some(format!(
-                "OpenRouter endpoint pricing for {}",
-                endpoint.provider_name
-            )),
-        ),
-    }
-}
-
-pub fn build_openrouter_fallback_provider_route(
-    display_model: &str,
-    catalog_model: &str,
-    provider: &str,
-) -> ModelRoute {
-    ModelRoute {
-        model: display_model.to_string(),
-        provider: provider.to_string(),
-        api_method: "openrouter".to_string(),
-        available: true,
-        detail: String::new(),
-        cheapness: cheapness_for_route(catalog_model, provider, "openrouter"),
     }
 }
 
@@ -335,6 +257,5 @@ mod listable_tests {
     fn empty_and_sentinels_filtered() {
         assert!(!is_listable_model_name(""));
         assert!(!is_listable_model_name("   "));
-        assert!(!is_listable_model_name("openrouter models"));
     }
 }

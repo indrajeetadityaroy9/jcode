@@ -107,7 +107,7 @@ pub fn classify(message: &str) -> Option<SchemaRejection> {
         });
     }
 
-    // Anthropic / OpenRouter (#495) and the Antigravity Claude bridge.
+    // Anthropic (#495) and the Antigravity Claude bridge.
     if message.contains("does not support oneOf, allOf, or anyOf")
         || (message.contains("input_schema") && message.contains("JSON Schema draft 2020-12"))
     {

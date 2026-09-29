@@ -4,10 +4,9 @@ use crate::provider_catalog::{LoginProviderAuthKind, LoginProviderDescriptor};
 pub const VALIDATION_STALE_AFTER_MS: i64 = 7 * 24 * 60 * 60 * 1000;
 
 /// True when `jcode provider-doctor` has a native-runtime driver for
-/// `provider_id` (a provider whose live path is not OpenAI-compatible and so
-/// cannot be exercised by the generic OpenAI-compatible doctor). Today this is
-/// the Claude OAuth/subscription provider, the Antigravity (Google OAuth Cloud
-/// Code) provider, and the generic native-runtime providers (OpenAI, Gemini).
+/// `provider_id`. Today this is the Claude OAuth/subscription provider, the
+/// Antigravity (Google OAuth Cloud Code) provider, and the generic
+/// native-runtime providers (OpenAI, Gemini).
 ///
 /// The drivers themselves live downstream in the `jcode-provider-doctor`
 /// crate (which re-exports this predicate); this roster lives here so
@@ -202,7 +201,6 @@ pub fn recommended_actions(
 
     if matches!(provider.auth_kind, LoginProviderAuthKind::OAuth)
         || matches!(provider.auth_kind, LoginProviderAuthKind::DeviceCode)
-        || matches!(provider.auth_kind, LoginProviderAuthKind::Hybrid)
     {
         actions.push(format!(
             "For browser/callback issues, use the manual-safe flow: jcode login --provider {} --print-auth-url",

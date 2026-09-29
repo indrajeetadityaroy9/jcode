@@ -117,12 +117,12 @@ violation fails the guardrail sweep.
 
 What it actually blocks: a crate whose name matches `jcode-*-types`
 (`scripts/check_dependency_boundaries.py:60-61`) may not directly depend on any
-of the 17 crates in `FORBIDDEN_INTERNAL_DEPS` (`:28-46`):
+of the 16 crates in `FORBIDDEN_INTERNAL_DEPS` (`:28-45`):
 
 `jcode`, `jcode-agent-runtime`, `jcode-core`, `jcode-embedding`, `jcode-pdf`,
 `jcode-plan`, `jcode-protocol`, `jcode-provider-core`, `jcode-provider-gemini`,
-`jcode-provider-metadata`, `jcode-provider-openrouter`, `jcode-terminal-launch`,
-`jcode-tui-core`, `jcode-tui-markdown`, `jcode-tui-mermaid`, `jcode-tui-render`,
+`jcode-provider-metadata`, `jcode-terminal-launch`, `jcode-tui-core`,
+`jcode-tui-markdown`, `jcode-tui-mermaid`, `jcode-tui-render`,
 `jcode-tui-workspace`.
 
 `jcode-message-types` is the only allowed internal dependency
@@ -147,7 +147,7 @@ python3 scripts/compile_isolation_report.py
 
 It prints LOC, inline-test, `async_trait`, and target-state dependency
 advisories, and exits non-zero only when `--strict-target-state` is passed
-(`scripts/compile_isolation_report.py:4-5`, `:174-178`, `:244-246`). It is not
+(`scripts/compile_isolation_report.py:4-5`, `:172-176`, `:243-245`). It is not
 wired into `scripts/check_guardrails.sh`.
 
 ## Test policy
@@ -188,10 +188,10 @@ Implication: the compile-speed target is not simply "move things out of the spin
 
 ## `jcode-core` fan-out audit
 
-`jcode-core` now has 10 direct Cargo dependents: `jcode-app-core`, `jcode-base`,
+`jcode-core` now has 9 direct Cargo dependents: `jcode-app-core`, `jcode-base`,
 `jcode-build-support`, `jcode-logging`, `jcode-provider-env`,
-`jcode-provider-openai`, `jcode-provider-openrouter`, `jcode-setup-hints`,
-`jcode-storage`, and `jcode-tui`. Two of those are spine crates, and
+`jcode-provider-openai`, `jcode-setup-hints`, `jcode-storage`, and `jcode-tui`.
+Two of those are spine crates, and
 `jcode-storage`/`jcode-logging` are themselves depended on broadly, so a touch to
 `jcode-core` still invalidates most of the workspace. Treat it as a high-fan-out
 crate.

@@ -137,7 +137,6 @@ fn provider_id_for_label(label: &str) -> Option<&'static str> {
         "Claude" => Some("claude"),
         "Gemini" => Some("gemini"),
         "Antigravity" => Some("antigravity"),
-        "OpenRouter/API-key providers" => Some("openrouter"),
         _ => None,
     }
 }
@@ -159,7 +158,7 @@ impl ExternalAuthAutoImportOutcome {
     /// by the remaining supported providers. The precise OAuth/API-key variant
     /// is resolved from `AuthStatus` by the caller when possible.
     pub fn preferred_activation_provider(&self) -> Option<&'static str> {
-        const ORDER: &[&str] = &["claude", "openai", "gemini", "antigravity", "openrouter"];
+        const ORDER: &[&str] = &["claude", "openai", "gemini", "antigravity"];
         ORDER.iter().copied().find(|provider| {
             self.imported_auth_labels
                 .iter()
@@ -477,15 +476,6 @@ async fn validate_antigravity_import() -> Result<String> {
     ))
 }
 
-fn validate_openrouter_like_import() -> Result<String> {
-    for (env_key, env_file) in crate::provider_catalog::openrouter_like_api_key_sources() {
-        if crate::provider_catalog::load_api_key_from_env_or_config(&env_key, &env_file).is_some() {
-            return Ok(format!("Loaded API key for `{}`.", env_key));
-        }
-    }
-    anyhow::bail!("No reusable API key became available after import.")
-}
-
 async fn validate_shared_external_import(
     source: auth::external::ExternalAuthSource,
 ) -> Result<String> {
@@ -496,7 +486,6 @@ async fn validate_shared_external_import(
             "Claude" => validate_claude_import().await,
             "Gemini" => validate_gemini_import().await,
             "Antigravity" => validate_antigravity_import().await,
-            "OpenRouter/API-key providers" => validate_openrouter_like_import(),
             _ => continue,
         };
         match result {

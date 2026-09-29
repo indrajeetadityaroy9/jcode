@@ -217,7 +217,6 @@ pub(super) fn handle_bus_event(
             }
             app.provider_session_id = None;
             app.session.provider_session_id = None;
-            app.upstream_provider = None;
             app.invalidate_model_picker_cache();
             app.update_context_limit_for_model(&model);
             app.session.provider_key = provider_key.or_else(|| {
